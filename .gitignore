@@ -32,3 +32,6 @@ src-tauri/chat.db
 
 # App data
 %APPDATA%/terracrypt-chat/
+
+# Reference folder (Kotlin app for reference)
+chat/
