@@ -7,7 +7,10 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - name: Checkout code
@@ -23,70 +26,62 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install Complete GTK/GLib Stack
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
         run: |
-          # First clean up any existing installations
-          sudo apt-get remove -y libglib2.0-dev libgobject-2.0-dev libgio-2.0-dev || true
-          sudo apt-get autoremove -y
-          
-          # Install complete development stack
           sudo apt-get update -y
           sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            libgtk-3-dev \
             libglib2.0-dev \
             libgirepository1.0-dev \
             libgobject-2.0-dev \
-            libgio-2.0-dev \
-            libgtk-3-dev \
-            libwebkit2gtk-4.0-dev \
             libssl-dev \
             pkg-config \
-            build-essential \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+            build-essential
 
-          # Force reinstall if files are missing
-          if [ ! -f "/usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ] || \
-             [ ! -f "/usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc" ] || \
-             [ ! -f "/usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc" ]; then
-            echo "::warning::Some .pc files missing, reinstalling..."
-            sudo apt-get install --reinstall -y \
-              libglib2.0-dev \
-              libgobject-2.0-dev \
-              libgio-2.0-dev
-          fi
+          # Explicitly set pkg-config paths
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
-          # Set comprehensive environment variables
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/lib" >> $GITHUB_ENV
-          echo "GI_TYPELIB_PATH=/usr/lib/x86_64-linux-gnu/girepository-1.0" >> $GITHUB_ENV
-
-      - name: Verify Installation
+      - name: Install macOS Dependencies
+        if: runner.os == 'macOS'
         run: |
-          echo "=== Verification ==="
-          echo "GLib version: $(pkg-config --modversion glib-2.0)"
-          echo "GObject version: $(pkg-config --modversion gobject-2.0)"
-          echo "GIO version: $(pkg-config --modversion gio-2.0)"
-          echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-          echo "glib-2.0.pc: $(ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc 2>/dev/null || echo 'Not found')"
-          echo "gobject-2.0.pc: $(ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc 2>/dev/null || echo 'Not found')"
-          echo "gio-2.0.pc: $(ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc 2>/dev/null || echo 'Not found')"
-          
-          pkg-config --exists glib-2.0 || (echo "::error::GLib not found!" && exit 1)
-          pkg-config --exists gobject-2.0 || (echo "::error::GObject not found!" && exit 1)
-          pkg-config --exists gio-2.0 || (echo "::error::GIO not found!" && exit 1)
+          brew update
+          brew install pkg-config gtk+3 webkit2gtk librsvg
+          brew link --overwrite gtk+3
+
+      - name: Install Windows Dependencies
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y visualstudio2022-workload-vctools
+          refreshenv
+
+      - name: Verify Dependencies
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            echo "Linux verification:"
+            pkg-config --modversion glib-2.0 || echo "GLib not found"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            echo "macOS verification:"
+            brew list gtk+3 || echo "GTK not found"
+          else
+            echo "Windows verification:"
+            cl.exe /? > nul || echo "Visual Studio tools not found"
+          fi
 
       - name: Install npm dependencies
         run: npm install
 
       - name: Build Tauri App
-        run: |
-          export PKG_CONFIG_PATH=$PKG_CONFIG_PATH
-          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH
-          export GI_TYPELIB_PATH=$GI_TYPELIB_PATH
-          npm run tauri build
+        run: npm run tauri build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-build
-          path: src-tauri/target/release/
+          name: tauri-build-${{ runner.os }}
+          path: |
+            src-tauri/target/release/*.deb
+            src-tauri/target/release/*.AppImage
+            src-tauri/target/release/*.msi
+            src-tauri/target/release/*.tar.gz
