@@ -7,7 +7,10 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - name: Checkout code
@@ -22,65 +25,81 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+          targets: x86_64-unknown-linux-gnu  # Only needed for Linux
 
-      - name: Nuclear GLib Installation
+      # Linux-specific setup
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
-          # Complete system cleanup
-          sudo apt-get remove -y libglib2.0-* libgobject-* libgio-* || true
-          sudo apt-get autoremove -y
-          sudo find /usr -name "*glib*" -delete 2>/dev/null || true
-          sudo find /usr -name "*gobject*" -delete 2>/dev/null || true
-          sudo find /usr -name "*gio*" -delete 2>/dev/null || true
-
-          # Install from fresh with all possible variants
           sudo apt-get update -y
           sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            libgtk-3-dev \
             libglib2.0-dev \
-            libglib2.0-dev-bin \
             libgirepository1.0-dev \
             libgobject-2.0-dev \
             libgio-2.0-dev \
-            libgtk-3-dev \
-            libwebkit2gtk-4.0-dev \
+            libssl-dev \
             pkg-config \
-            build-essential
+            build-essential \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
 
-          # Force-create symlinks in all possible locations
-          sudo mkdir -p /usr/share/pkgconfig /usr/local/lib/pkgconfig
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc /usr/share/pkgconfig/
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc /usr/local/lib/pkgconfig/
-          sudo ldconfig
+          # Create symlinks to ensure pkg-config can find the files
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc /usr/share/pkgconfig/ || true
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc /usr/share/pkgconfig/ || true
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc /usr/share/pkgconfig/ || true
 
-          # Set exhaustive environment paths
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/lib" >> $GITHUB_ENV
-          echo "GI_TYPELIB_PATH=/usr/lib/x86_64-linux-gnu/girepository-1.0" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
-      - name: Verify Installation
+      # macOS-specific setup
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
         run: |
-          echo "=== Nuclear Verification ==="
-          echo "GLib version: $(pkg-config --modversion glib-2.0 || echo 'FAILED')"
-          echo "GObject version: $(pkg-config --modversion gobject-2.0 || echo 'FAILED')"
-          echo "GIO version: $(pkg-config --modversion gio-2.0 || echo 'FAILED')"
-          
-          echo "All glib-2.0.pc locations:"
-          sudo find /usr -name "glib-2.0.pc" 2>/dev/null || echo "NONE FOUND"
-          
-          if ! pkg-config --exists glib-2.0; then
-            echo "::error::CRITICAL FAILURE: GLib still not found after nuclear installation"
-            echo "::error::This suggests a fundamental system issue - consider using a different base image"
-            exit 1
+          brew update
+          brew install pkg-config gtk+3 webkit2gtk librsvg
+          brew link --overwrite gtk+3
+
+      # Windows-specific setup
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y visualstudio2022-workload-vctools
+          refreshenv
+
+      - name: Verify dependencies
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            echo "=== Linux Verification ==="
+            pkg-config --modversion glib-2.0 || echo "GLib not found"
+            pkg-config --modversion gobject-2.0 || echo "GObject not found"
+            pkg-config --modversion gio-2.0 || echo "GIO not found"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            echo "=== macOS Verification ==="
+            brew list gtk+3 || echo "GTK not found"
+            brew list webkit2gtk || echo "WebKitGTK not found"
+          else
+            echo "=== Windows Verification ==="
+            cl.exe /? > nul || echo "Visual Studio tools not found"
           fi
 
-      - name: Build Tauri App
-        run: |
-          # Hardcode paths as final fallback
-          export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
-          export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
-          npm run tauri build
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Build Tauri app
+        env:
+          PKG_CONFIG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig' || '' }}
+          LD_LIBRARY_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu' || '' }}
+        run: npm run tauri build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-build
-          path: src-tauri/target/release/
+          name: tauri-build-${{ runner.os }}
+          path: |
+            src-tauri/target/release/*.deb
+            src-tauri/target/release/*.AppImage
+            src-tauri/target/release/*.tar.gz
+            src-tauri/target/release/*.msi
+            src-tauri/target/release/*.exe
