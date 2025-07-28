@@ -1,4 +1,4 @@
-name: Build Tauri App
+name: Tauri Build
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
   build:
     strategy:
       matrix:
-        platform: [ubuntu-22.04, macos-latest, windows-latest]
+        platform: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -26,40 +26,85 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Linux - Install Dependencies
+      # Linux specific setup
+      - name: Linux - Install GLib Stack (with nuclear option)
         if: runner.os == 'Linux'
         run: |
+          # Complete cleanup
+          sudo apt-get remove -y libglib2.0-dev libgobject-2.0-dev libgio-2.0-dev || true
+          sudo apt-get autoremove -y
+          sudo rm -f /usr/lib/x86_64-linux-gnu/pkgconfig/{glib,gobject,gio}-2.0.pc
+          sudo rm -f /usr/share/pkgconfig/{glib,gobject,gio}-2.0.pc
+
+          # Install specific versions
           sudo apt-get update -y
           sudo apt-get install -y \
-            libwebkit2gtk-4.0-dev \
+            libglib2.0-dev=2.72.4-0ubuntu2 \
+            libgobject-2.0-dev=2.72.4-0ubuntu2 \
+            libgio-2.0-dev=2.72.4-0ubuntu2 \
             libgtk-3-dev \
-            libglib2.0-dev \
-            libgobject-2.0-dev \
-            libgio-2.0-dev \
+            libwebkit2gtk-4.0-dev \
             pkg-config \
             build-essential
 
-      - name: macOS - Install Dependencies
+          # Force symlinks
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc /usr/share/pkgconfig/
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc /usr/share/pkgconfig/
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc /usr/share/pkgconfig/
+          sudo ldconfig
+
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+
+      # macOS specific setup
+      - name: macOS - Install GTK Stack
         if: runner.os == 'macOS'
         run: |
           brew update
           brew install pkg-config gtk+3 webkit2gtk
           brew link --overwrite gtk+3
+          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig" >> $GITHUB_ENV
 
-      - name: Windows - Install Dependencies
+      # Windows specific setup
+      - name: Windows - Install Build Tools
         if: runner.os == 'Windows'
         run: |
           choco install -y visualstudio2022-workload-vctools
           refreshenv
 
+      - name: Verify Dependencies
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            echo "=== Linux Verification ==="
+            pkg-config --modversion glib-2.0 || echo "::error::GLib not found"
+            pkg-config --modversion gobject-2.0 || echo "::error::GObject not found"
+            echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            echo "=== macOS Verification ==="
+            brew list gtk+3 || echo "::error::GTK not found"
+            brew list webkit2gtk || echo "::error::WebKitGTK not found"
+          else
+            echo "=== Windows Verification ==="
+            cl.exe /? > nul || echo "::error::Visual Studio tools not found"
+          fi
+
       - name: Install npm dependencies
         run: npm install
 
       - name: Build Tauri App
-        run: npm run tauri build
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+            export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
+          fi
+          npm run tauri build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tauri-build-${{ runner.os }}
-          path: src-tauri/target/release/
+          path: |
+            src-tauri/target/release/*.deb
+            src-tauri/target/release/*.AppImage
+            src-tauri/target/release/*.msi
+            src-tauri/target/release/*.exe
