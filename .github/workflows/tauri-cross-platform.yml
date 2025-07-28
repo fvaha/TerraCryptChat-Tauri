@@ -17,17 +17,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
-      - name: Install Complete GLib/GTK Stack
+      - name: Install Complete GTK/GLib Stack
         run: |
-          # First remove any potentially broken installations
-          sudo apt-get remove -y libglib2.0-dev libgobject-2.0-dev || true
+          # First clean up any existing installations
+          sudo apt-get remove -y libglib2.0-dev libgobject-2.0-dev libgio-2.0-dev || true
           sudo apt-get autoremove -y
           
           # Install complete development stack
@@ -36,6 +35,7 @@ jobs:
             libglib2.0-dev \
             libgirepository1.0-dev \
             libgobject-2.0-dev \
+            libgio-2.0-dev \
             libgtk-3-dev \
             libwebkit2gtk-4.0-dev \
             libssl-dev \
@@ -44,18 +44,16 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-          # Verify all required .pc files exist
-          REQUIRED_PC_FILES=(
-            "/usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc"
-            "/usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc"
-          )
-
-          for pc_file in "${REQUIRED_PC_FILES[@]}"; do
-            if [ ! -f "$pc_file" ]; then
-              echo "::error::Missing required file: $pc_file"
-              exit 1
-            fi
-          done
+          # Force reinstall if files are missing
+          if [ ! -f "/usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ] || \
+             [ ! -f "/usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc" ] || \
+             [ ! -f "/usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc" ]; then
+            echo "::warning::Some .pc files missing, reinstalling..."
+            sudo apt-get install --reinstall -y \
+              libglib2.0-dev \
+              libgobject-2.0-dev \
+              libgio-2.0-dev
+          fi
 
           # Set comprehensive environment variables
           echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig" >> $GITHUB_ENV
@@ -67,13 +65,15 @@ jobs:
           echo "=== Verification ==="
           echo "GLib version: $(pkg-config --modversion glib-2.0)"
           echo "GObject version: $(pkg-config --modversion gobject-2.0)"
-          echo "GTK version: $(pkg-config --modversion gtk+-3.0)"
-          echo "WebKit version: $(pkg-config --modversion webkit2gtk-4.0)"
+          echo "GIO version: $(pkg-config --modversion gio-2.0)"
           echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-          echo "glib-2.0.pc exists: $(find /usr -name glib-2.0.pc 2>/dev/null | head -1)"
-          echo "gobject-2.0.pc exists: $(find /usr -name gobject-2.0.pc 2>/dev/null | head -1)"
+          echo "glib-2.0.pc: $(ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc 2>/dev/null || echo 'Not found')"
+          echo "gobject-2.0.pc: $(ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc 2>/dev/null || echo 'Not found')"
+          echo "gio-2.0.pc: $(ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc 2>/dev/null || echo 'Not found')"
+          
           pkg-config --exists glib-2.0 || (echo "::error::GLib not found!" && exit 1)
           pkg-config --exists gobject-2.0 || (echo "::error::GObject not found!" && exit 1)
+          pkg-config --exists gio-2.0 || (echo "::error::GIO not found!" && exit 1)
 
       - name: Install npm dependencies
         run: npm install
@@ -89,7 +89,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tauri-build
-          path: |
-            src-tauri/target/release/*.deb
-            src-tauri/target/release/*.AppImage
-            src-tauri/target/release/*.tar.gz
+          path: src-tauri/target/release/
