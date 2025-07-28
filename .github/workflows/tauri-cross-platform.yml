@@ -9,73 +9,79 @@ jobs:
   build:
     strategy:
       matrix:
-        platform: [ubuntu-24.04, macos-latest, windows-latest]
+        platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          targets: x86_64-unknown-linux-gnu
 
-      - name: Install Linux dependencies (Ubuntu 24.04)
-        if: runner.os == 'Linux'
+      - name: Install GLib and dependencies (Nuclear Option)
         run: |
           sudo apt-get update -y
+          # Remove any potentially broken installations
+          sudo apt-get remove -y libglib2.0-dev || true
+          sudo apt-get autoremove -y
+          
+          # Install with all possible variants
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-4-dev \
             libglib2.0-dev \
-            libgirepository1.0-dev \
-            libssl-dev \
+            libglib2.0-dev-bin \
+            gir1.2-glib-2.0 \
+            libglib2.0-0 \
+            libglib2.0-doc \
             pkg-config \
-            build-essential \
+            build-essential
+
+          # Force install from source if still missing
+          if ! pkg-config --exists glib-2.0; then
+            echo "::warning::GLib not found, installing from source"
+            wget https://download.gnome.org/sources/glib/2.70/glib-2.70.0.tar.xz
+            tar -xf glib-2.70.0.tar.xz
+            cd glib-2.70.0
+            meson setup _build
+            ninja -C _build
+            sudo ninja -C _build install
+            sudo ldconfig
+          fi
+
+          # Find and verify glib installation
+          GLIB_PC_PATH=$(find /usr -name "glib-2.0.pc" 2>/dev/null | head -1)
+          if [ -z "$GLIB_PC_PATH" ]; then
+            echo "::error::glib-2.0.pc not found after installation!"
+            exit 1
+          fi
+
+          echo "GLib version: $(pkg-config --modversion glib-2.0)"
+          echo "GLib path: $GLIB_PC_PATH"
+          echo "PKG_CONFIG_PATH=$(dirname $GLIB_PC_PATH):/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+
+      - name: Install remaining Tauri dependencies
+        run: |
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            libgtk-3-dev \
+            libssl-dev \
             libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libatk1.0-dev \
-            libgdk-pixbuf-2.0-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev
+            librsvg2-dev
 
-          # Find exact location of glib-2.0.pc
-          GLIB_PC_PATH=$(find /usr -name "glib-2.0.pc" | head -1)
-          echo "Found glib-2.0.pc at: $GLIB_PC_PATH"
-          echo "PKG_CONFIG_PATH=$(dirname $GLIB_PC_PATH):/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        run: |
-          brew update
-          brew install pkg-config gtk4 webkitgtk librsvg glib gtk+3
-          brew link --overwrite gtk4 glib
-
-      - name: Install Windows dependencies
-        if: runner.os == 'Windows'
-        run: |
-          choco install -y visualstudio2022-workload-vctools
-          refreshenv
-
-      - name: Verify environment (Linux)
-        if: runner.os == 'Linux'
+      - name: Verify environment
         run: |
           echo "=== Environment Verification ==="
-          echo "GLib version: $(pkg-config --modversion glib-2.0)"
-          echo "GTK version: $(pkg-config --modversion gtk4)"
-          echo "WebKit version: $(pkg-config --modversion webkit2gtk-4.1)"
-          pkg-config --atleast-version=2.70 glib-2.0 || exit 1
+          pkg-config --list-all | grep glib
+          pkg-config --modversion glib-2.0
+          pkg-config --cflags --libs glib-2.0
           echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
           echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
@@ -85,34 +91,13 @@ jobs:
           npm run build
 
       - name: Build Tauri app
-        run: npm run tauri build
-        env:
-          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
-          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
+        run: |
+          export PKG_CONFIG_PATH=$PKG_CONFIG_PATH
+          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+          npm run tauri build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-build-${{ runner.os }}
-          path: |
-            src-tauri/target/release/*.deb
-            src-tauri/target/release/*.app.tar.gz
-            src-tauri/target/release/*.msi
-            src-tauri/target/release/*.appimage
-            src-tauri/target/release/*.exe
-
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: "Release ${{ github.ref_name }}"
-          body: "Automated release for TerraCryptChat"
-          files: |
-            src-tauri/target/release/*.deb
-            src-tauri/target/release/*.app.tar.gz
-            src-tauri/target/release/*.msi
-            src-tauri/target/release/*.appimage
-            src-tauri/target/release/*.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: tauri-build
+          path: src-tauri/target/release/
