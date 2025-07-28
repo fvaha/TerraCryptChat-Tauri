@@ -1,4 +1,4 @@
-# Terracrypt Chat - Desktop App
+# Terracrypt Chat - Desktop App .
 
 A secure, real-time chat application built with Tauri, React, and TypeScript. This desktop app provides a robust messaging experience with end-to-end encryption, real-time notifications, and a modern user interface.
 
