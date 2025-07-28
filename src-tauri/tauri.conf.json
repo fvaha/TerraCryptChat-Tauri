@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Terracrypt Chat",
+  "version": "0.2.0",
+  "identifier": "com.terracrypt.chat",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": null,
+      "capabilities": ["default"]
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Terracrypt Chat",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "url": "http://localhost:5173"
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png",
+      "icons/favicon.ico",
+      "icons/apple-icon-60x60.png",
+      "icons/apple-icon-76x76.png",
+      "icons/apple-icon-120x120.png",
+      "icons/apple-icon-144x144.png",
+      "icons/apple-icon-152x152.png",
+      "icons/android-icon-48x48.png",
+      "icons/android-icon-72x72.png",
+      "icons/android-icon-96x96.png",
+      "icons/android-icon-144x144.png",
+      "icons/android-icon-192x192.png"
+    ]
+  },
+  "plugins": {
+    "fs": {
+      "scope": {
+        "allow": ["$APPDATA", "$APPDATA/**"],
+        "requireLiteralLeadingDot": false,
+        "directories": ["$APPDATA"]
+      }
+    }
+  }
+}

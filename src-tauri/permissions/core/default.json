@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../node_modules/@tauri-apps/cli/schemas/permission-schema.json",
+  "identifier": "core:default",
+  "description": "Enables core default permissions.",
+  "commands": [],
+  "windows": [
+    {
+      "name": "main",
+      "urls": ["local", "http://localhost:*", "http://127.0.0.1:*", "dev", "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175"]
+    }
+  ]
+} 

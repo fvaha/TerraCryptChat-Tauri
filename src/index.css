@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* Simple loading animation */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@layer components {
+  .message-bubble {
+    max-width: 20rem;
+    padding: 0.5rem 1rem;
+    border-radius: 1rem;
+  }
+  
+  @media (min-width: 1024px) {
+    .message-bubble {
+      max-width: 28rem;
+    }
+  }
+  
+  .message-bubble.sent {
+    background-color: #2563eb;
+    color: white;
+    margin-left: auto;
+  }
+  
+  .message-bubble.received {
+    background-color: #e5e7eb;
+    color: #111827;
+  }
+  
+  .dark .message-bubble.received {
+    background-color: #374151;
+    color: white;
+  }
+  
+  .chat-input {
+    flex: 1;
+    padding: 0.5rem 1rem;
+    background-color: #f3f4f6;
+    border: none;
+    border-radius: 9999px;
+    color: #111827;
+    resize: none;
+  }
+  
+  .chat-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px #3b82f6;
+  }
+  
+  .dark .chat-input {
+    background-color: #1f2937;
+    color: white;
+  }
+  
+  .chat-input::placeholder {
+    color: #6b7280;
+  }
+  
+  .dark .chat-input::placeholder {
+    color: #9ca3af;
+  }
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.7);
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(75, 85, 99, 0.5);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(75, 85, 99, 0.7);
+}
