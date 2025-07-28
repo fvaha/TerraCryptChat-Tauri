@@ -1,4 +1,4 @@
-name: Tauri Build
+name: Tauri Linux Build
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # Using LTS version for stability
+    runs-on: ubuntu-22.04  # Using LTS for stability
 
     steps:
       - name: Checkout code
@@ -24,62 +24,106 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu
 
-      - name: Install GLib with Absolute Path Guarantee
+      - name: Nuclear GLib/GObject Installation
         run: |
-          # Complete system cleanup
+          # 1. COMPLETE SYSTEM CLEANUP
+          echo "=== STEP 1: Removing existing installations ==="
           sudo apt-get remove -y libglib2.0-dev libgobject-2.0-dev libgio-2.0-dev || true
           sudo apt-get autoremove -y
           sudo rm -f /usr/lib/x86_64-linux-gnu/pkgconfig/{glib,gobject,gio}-2.0.pc
           sudo rm -f /usr/share/pkgconfig/{glib,gobject,gio}-2.0.pc
+          sudo rm -f /usr/local/lib/pkgconfig/{glib,gobject,gio}-2.0.pc
 
-          # Install specific versions with dependencies
+          # 2. INSTALL DEPENDENCIES
+          echo "=== STEP 2: Installing build dependencies ==="
           sudo apt-get update -y
           sudo apt-get install -y \
-            libglib2.0-dev=2.72.4-0ubuntu2 \
-            libgobject-2.0-dev=2.72.4-0ubuntu2 \
-            libgio-2.0-dev=2.72.4-0ubuntu2 \
+            build-essential \
+            libssl-dev \
+            libffi-dev \
+            libmount-dev \
+            zlib1g-dev \
+            gettext \
+            cmake \
+            ninja-build \
+            meson
+
+          # 3. INSTALL SPECIFIC GLib VERSION
+          echo "=== STEP 3: Installing GLib 2.72 from source ==="
+          wget https://download.gnome.org/sources/glib/2.72/glib-2.72.4.tar.xz
+          tar -xf glib-2.72.4.tar.xz
+          cd glib-2.72.4
+          meson setup _build \
+            --prefix=/usr/local \
+            --libdir=lib/x86_64-linux-gnu \
+            -Dselinux=disabled \
+            -Dman=false
+          ninja -C _build
+          sudo ninja -C _build install
+          cd ..
+
+          # 4. INSTALL SYSTEM PACKAGES
+          echo "=== STEP 4: Installing system packages ==="
+          sudo apt-get install -y \
             libgtk-3-dev \
             libwebkit2gtk-4.0-dev \
-            pkg-config \
-            build-essential \
-            libssl-dev
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
-          # Create explicit symlinks
-          sudo mkdir -p /usr/share/pkgconfig
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc /usr/share/pkgconfig/
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc /usr/share/pkgconfig/
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc /usr/share/pkgconfig/
+          # 5. SETUP PATHS AND SYMLINKS
+          echo "=== STEP 5: Configuring paths ==="
           sudo ldconfig
+          sudo mkdir -p /usr/share/pkgconfig
+          sudo ln -sf /usr/local/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc /usr/share/pkgconfig/
+          sudo ln -sf /usr/local/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc /usr/share/pkgconfig/
+          sudo ln -sf /usr/local/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc /usr/share/pkgconfig/
 
-          # Set exhaustive environment variables
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/local/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+          echo "GI_TYPELIB_PATH=/usr/local/lib/x86_64-linux-gnu/girepository-1.0" >> $GITHUB_ENV
 
-      - name: Verify GLib Installation
+      - name: Verify Installation
         run: |
-          echo "=== GLib Verification ==="
+          echo "=== VERIFICATION ==="
           echo "GLib version: $(pkg-config --modversion glib-2.0)"
           echo "GObject version: $(pkg-config --modversion gobject-2.0)"
-          echo "File locations:"
-          ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc
-          ls -la /usr/share/pkgconfig/glib-2.0.pc
+          echo "GIO version: $(pkg-config --modversion gio-2.0)"
           
-          if ! pkg-config --exists glib-2.0; then
-            echo "::error::GLib still not found after installation"
-            exit 1
-          fi
+          echo "=== FILE LOCATIONS ==="
+          echo "glib-2.0.pc:"
+          sudo find /usr -name "glib-2.0.pc" 2>/dev/null || echo "Not found"
+          
+          echo "=== PKG-CONFIG TEST ==="
+          pkg-config --exists glib-2.0 || (echo "::error::GLib not found"; exit 1)
+          pkg-config --exists gobject-2.0 || (echo "::error::GObject not found"; exit 1)
+          pkg-config --exists gio-2.0 || (echo "::error::GIO not found"; exit 1)
+
+          echo "=== ENVIRONMENT ==="
+          echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+          echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
       - name: Install npm dependencies
         run: npm install
 
       - name: Build Tauri App
         run: |
-          export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
-          export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
+          # Explicitly set all paths
+          export PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
+          export LD_LIBRARY_PATH=/usr/local/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu
+          export GI_TYPELIB_PATH=/usr/local/lib/x86_64-linux-gnu/girepository-1.0
+          
+          # Debug output
+          echo "=== BUILD ENVIRONMENT ==="
+          pkg-config --list-all | grep -E 'glib|gobject|gio'
+          
           npm run tauri build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-build
-          path: src-tauri/target/release/
+          name: tauri-linux-build
+          path: |
+            src-tauri/target/release/*.deb
+            src-tauri/target/release/*.AppImage
+            src-tauri/target/release/*.tar.gz
