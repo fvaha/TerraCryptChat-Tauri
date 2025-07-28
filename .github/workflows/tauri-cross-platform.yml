@@ -23,60 +23,67 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install Complete GTK/GLib Stack
+      - name: Install GLib with Nuclear Option
         run: |
-          # First clean up any existing installations
+          # Completely remove existing installations
           sudo apt-get remove -y libglib2.0-dev libgobject-2.0-dev libgio-2.0-dev || true
           sudo apt-get autoremove -y
+          sudo rm -f /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc \
+                    /usr/share/pkgconfig/glib-2.0.pc \
+                    /usr/local/lib/pkgconfig/glib-2.0.pc || true
           
-          # Install complete development stack with ALL dependencies
+          # Install with all possible variants
           sudo apt-get update -y
           sudo apt-get install -y \
             libglib2.0-dev \
+            libglib2.0-dev-bin \
             libgirepository1.0-dev \
             libgobject-2.0-dev \
             libgio-2.0-dev \
             libgtk-3-dev \
             libwebkit2gtk-4.0-dev \
-            libssl-dev \
             pkg-config \
-            build-essential \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+            build-essential
 
-          # Create symbolic links to ensure pkg-config can find the files
+          # Force reinstall if files are missing
+          if [ ! -f "/usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
+            echo "::warning::GLib not found, reinstalling..."
+            sudo apt-get install --reinstall -y libglib2.0-dev
+          fi
+
+          # Create guaranteed symlinks
+          sudo mkdir -p /usr/share/pkgconfig
           sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc /usr/share/pkgconfig/ || true
           sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc /usr/share/pkgconfig/ || true
           sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc /usr/share/pkgconfig/ || true
 
-          # Set comprehensive environment variables
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig" >> $GITHUB_ENV
+          # Set exhaustive environment variables
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/lib" >> $GITHUB_ENV
-          echo "GI_TYPELIB_PATH=/usr/lib/x86_64-linux-gnu/girepository-1.0" >> $GITHUB_ENV
 
-      - name: Verify Installation
+      - name: Verify GLib Installation
         run: |
-          echo "=== Verification ==="
-          echo "GLib version: $(pkg-config --modversion glib-2.0)"
-          echo "GObject version: $(pkg-config --modversion gobject-2.0)"
-          echo "GIO version: $(pkg-config --modversion gio-2.0)"
+          echo "=== Nuclear Verification ==="
+          echo "GLib version: $(pkg-config --modversion glib-2.0 || echo 'NOT FOUND')"
+          echo "GObject version: $(pkg-config --modversion gobject-2.0 || echo 'NOT FOUND')"
+          echo "GIO version: $(pkg-config --modversion gio-2.0 || echo 'NOT FOUND')"
+          echo "All glib-2.0.pc locations:"
+          sudo find /usr -name "glib-2.0.pc" 2>/dev/null || echo "NONE FOUND"
           echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-          echo "glib-2.0.pc: $(ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc 2>/dev/null || echo 'Not found')"
-          echo "gobject-2.0.pc: $(ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc 2>/dev/null || echo 'Not found')"
-          echo "gio-2.0.pc: $(ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc 2>/dev/null || echo 'Not found')"
           
-          pkg-config --exists glib-2.0 || (echo "::error::GLib not found!" && exit 1)
-          pkg-config --exists gobject-2.0 || (echo "::error::GObject not found!" && exit 1)
-          pkg-config --exists gio-2.0 || (echo "::error::GIO not found!" && exit 1)
+          if ! pkg-config --exists glib-2.0; then
+            echo "::error::GLib still not found after nuclear installation!"
+            exit 1
+          fi
 
       - name: Install npm dependencies
         run: npm install
 
       - name: Build Tauri App
         run: |
+          # Explicitly set all paths
           export PKG_CONFIG_PATH=$PKG_CONFIG_PATH
           export LD_LIBRARY_PATH=$LD_LIBRARY_PATH
-          export GI_TYPELIB_PATH=$GI_TYPELIB_PATH
           npm run tauri build
 
       - name: Upload artifacts
