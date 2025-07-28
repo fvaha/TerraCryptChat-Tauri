@@ -41,14 +41,12 @@ jobs:
             file \
             build-essential \
             libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libsqlite3-dev \
-            libssl-dev \
-            zlib1g-dev
-          # Ensuring PKG_CONFIG_PATH is correct
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+            librsvg2-dev
+
+          # Ensure PKG_CONFIG_PATH and LD_LIBRARY_PATH are set
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-          
+
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
@@ -62,7 +60,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/x86_64-linux-gnu
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
           LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu
         with:
           releaseId: ${{ github.event.release.id }}
