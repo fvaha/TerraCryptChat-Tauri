@@ -1,17 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from './AppContext';
 import LoginScreen from './LoginScreen';
 import ChatList from './ChatList';
-import ChatView from './ChatView';
+import ChatScreen from './ChatScreen';
 import FriendsScreen from './FriendsScreen';
 import SettingsScreen from './SettingsScreen';
 import ErrorBoundary from './ErrorBoundary';
+import Sidebar from './components/Sidebar';
+import MenuBar from './components/MenuBar';
+import ScreenToggleButton from './components/ScreenToggleButton';
+import './App.css';
 import { ThemeProvider } from './ThemeContext';
+import SettingsContent from './components/SettingsContent';
 
 const ChatApp: React.FC = () => {
   const { user, token, isLoading, error } = useAppContext();
-  const [currentScreen, setCurrentScreen] = useState<'main' | 'friends' | 'settings'>('main');
+  const [activeTab, setActiveTab] = useState<'chats' | 'friends' | 'settings'>('chats');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [selectedSettingsCategory, setSelectedSettingsCategory] = useState<string>('general');
+  const [zoomLevel, setZoomLevel] = useState(1);
+
+  // Update zoom level in CSS custom property
+  useEffect(() => {
+    document.documentElement.style.setProperty('--app-zoom', zoomLevel.toString());
+  }, [zoomLevel]);
+
+  // Pass zoom level to SettingsContent
+  const handleZoomChange = (newZoom: number) => {
+    setZoomLevel(newZoom);
+  };
 
   console.log("🎯 ChatApp render - token:", !!token, "isLoading:", isLoading, "error:", error);
 
@@ -80,139 +98,149 @@ const ChatApp: React.FC = () => {
     return <LoginScreen onSuccess={() => {}} onShowRegister={() => {}} />;
   }
 
-  // Signal-like layout
+  // Signal-like layout with proper sidebar navigation
   return (
-    <div style={{
-      width: '100vw',
-      height: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      backgroundColor: '#ffffff'
-    }}>
-      {/* Top Bar */}
-      <div style={{
-        height: '60px',
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #e0e0e0',
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 16px',
-        justifyContent: 'space-between'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div style={{
-            width: '32px',
-            height: '32px',
-            backgroundColor: '#0078d4',
-            borderRadius: '50%',
-            marginRight: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#ffffff',
-            fontSize: '16px',
-            fontWeight: 'bold'
-          }}>
-            T
-          </div>
-          <span style={{ fontSize: '18px', fontWeight: '600', color: '#1a1a1a' }}>
-            TerraCrypt
-          </span>
-        </div>
-        
-        <div style={{ display: 'flex', gap: '16px' }}>
-          <button
-            onClick={() => setCurrentScreen('friends')}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: currentScreen === 'friends' ? '#0078d4' : 'transparent',
-              color: currentScreen === 'friends' ? '#ffffff' : '#1a1a1a',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            Friends
-          </button>
-          <button
-            onClick={() => setCurrentScreen('settings')}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: currentScreen === 'settings' ? '#0078d4' : 'transparent',
-              color: currentScreen === 'settings' ? '#ffffff' : '#1a1a1a',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            Settings
-          </button>
-        </div>
-      </div>
-
+    <div className="app-container">
+      {/* Menu Bar */}
+      <MenuBar />
+      
       {/* Main Content */}
-      <div style={{ flex: 1, display: 'flex' }}>
-        {currentScreen === 'main' ? (
-          <>
-            {/* Chat List - Left Panel (Dark theme like Signal) */}
-            <div style={{
-              width: '350px',
-              backgroundColor: '#2d2d2d',
-              borderRight: '1px solid #404040',
-              display: 'flex',
-              flexDirection: 'column'
-            }}>
-              <ChatList onSelect={setSelectedChatId} />
-            </div>
-            
-            {/* Chat View - Right Panel (Light theme like Signal) */}
-            <div style={{ flex: 1, backgroundColor: '#ffffff' }}>
-              {selectedChatId ? (
-                <ChatView chatId={selectedChatId} />
-              ) : (
+      <div className="main-content">
+        {/* Sidebar */}
+        <Sidebar 
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+        
+        {/* Content Area */}
+        <div className="chat-screen-area">
+          {activeTab === 'chats' ? (
+            <>
+              {/* Chat List Panel */}
+              <div style={{
+                width: '350px',
+                backgroundColor: '#2d2d2d',
+                borderRight: '1px solid #404040',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                position: 'relative'
+              }}>
+                <ChatList 
+                  onSelect={setSelectedChatId}
+                  isCollapsed={sidebarCollapsed}
+                  onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+                />
+              </div>
+
+              {/* Chat Screen Panel */}
+              <div style={{
+                flex: 1,
+                backgroundColor: '#333333',
+                overflow: 'hidden',
+                position: 'relative'
+              }}>
+                {selectedChatId ? (
+                  <ChatScreen chatId={selectedChatId} />
+                ) : (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    color: '#ffffff',
+                    fontSize: '16px'
+                  }}>
+                    Select a chat to start messaging
+                  </div>
+                )}
+              </div>
+            </>
+          ) : activeTab === 'friends' ? (
+            <>
+              {/* Friends List Panel */}
+              <div style={{
+                width: '350px',
+                backgroundColor: '#2d2d2d',
+                borderRight: '1px solid #404040',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                position: 'relative'
+              }}>
+                <FriendsScreen
+                  onBack={() => setActiveTab('chats')}
+                  onOpenChat={(friendId: string, friendName: string) => {
+                    console.log("Open chat with friend:", friendId, friendName);
+                    // TODO: Implement chat creation with friend
+                  }}
+                  isCollapsed={sidebarCollapsed}
+                  onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+                />
+              </div>
+
+              {/* Friend Chat Screen Panel */}
+              <div style={{
+                flex: 1,
+                backgroundColor: '#333333',
+                overflow: 'hidden',
+                position: 'relative'
+              }}>
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   height: '100%',
-                  color: '#666666',
+                  color: '#ffffff',
                   fontSize: '16px'
                 }}>
-                  Select a chat to start messaging
+                  Select a friend to start messaging
                 </div>
-              )}
-            </div>
-          </>
-        ) : currentScreen === 'friends' ? (
-          <div style={{ flex: 1, backgroundColor: '#ffffff' }}>
-            <FriendsScreen 
-              onBack={() => setCurrentScreen('main')} 
-              onOpenChat={(friendId: string, friendName: string) => {
-                console.log("Open chat with friend:", friendId, friendName);
-                // TODO: Implement chat creation with friend
-              }}
-            />
-          </div>
-        ) : (
-          <div style={{ flex: 1, backgroundColor: '#ffffff' }}>
-            <SettingsScreen onBack={() => setCurrentScreen('main')} />
-          </div>
-        )}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Settings Sidebar */}
+              <div style={{
+                width: '250px',
+                backgroundColor: '#2d2d2d',
+                borderRight: '1px solid #404040',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                position: 'relative'
+              }}>
+                <SettingsScreen 
+                  onBack={() => setActiveTab('chats')} 
+                  isCollapsed={sidebarCollapsed}
+                  onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  onCategoryChange={setSelectedSettingsCategory}
+                />
+              </div>
+              
+              {/* Settings Content Panel */}
+              <SettingsContent 
+                selectedCategory={selectedSettingsCategory} 
+                zoomLevel={zoomLevel}
+                onZoomChange={handleZoomChange}
+              />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
 const App = () => {
-  console.log("🎨 App component rendering");
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
+    <ThemeProvider>
+      <ErrorBoundary>
         <ChatApp />
-      </ThemeProvider>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 };
 

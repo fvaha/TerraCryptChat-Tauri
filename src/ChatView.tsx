@@ -60,34 +60,48 @@ const ChatView: React.FC<ChatViewProps> = ({ chatId, onBack }) => {
         setError(null);
         console.log("📂 Loading chat data for:", chatId);
 
-        // Load chat members from native API
-        nativeApiService.setToken(token);
-        const membersData = await nativeApiService.getChatMembers(chatId);
-        console.log("✅ Chat members loaded:", membersData);
-        
-        // Validate members data
-        const validMembers = membersData.data?.filter(member => 
-          member && member.user && member.user.user_id
-        ) || [];
-        
-        setChatMembers(validMembers);
+        // Load chat members from native API with error handling
+        try {
+          nativeApiService.setToken(token);
+          const membersData = await nativeApiService.getChatMembers(chatId);
+          console.log("✅ Chat members loaded:", membersData);
+          
+          // Validate members data
+          const validMembers = membersData.data?.filter(member => 
+            member && member.user && member.user.user_id
+          ) || [];
+          
+          setChatMembers(validMembers);
 
-        // Create chat data based on members
-        const otherMember = validMembers.find(member => member.user.user_id !== user?.userId);
-        const isGroup = validMembers.length > 2;
-        
-        const chatName = isGroup 
-          ? `Group Chat (${validMembers.length} members)`
-          : (otherMember?.user.name || otherMember?.user.username || "Unknown");
+          // Create chat data based on members
+          const otherMember = validMembers.find(member => member.user.user_id !== user?.userId);
+          const isGroup = validMembers.length > 2;
+          
+          const chatName = isGroup 
+            ? `Group Chat (${validMembers.length} members)`
+            : (otherMember?.user.username || otherMember?.user.name || "Unknown");
 
-        setChatData({
-          chat_id: chatId,
-          chat_name: chatName,
-          chat_type: isGroup ? "group" : "direct",
-          is_group: isGroup,
-          created_at: new Date().toISOString(),
-          creator_id: user?.userId || ""
-        });
+          setChatData({
+            chat_id: chatId,
+            chat_name: chatName,
+            chat_type: isGroup ? "group" : "direct",
+            is_group: isGroup,
+            created_at: new Date().toISOString(),
+            creator_id: user?.userId || ""
+          });
+        } catch (membersError) {
+          console.error("❌ Failed to load chat members:", membersError);
+          // Create fallback chat data
+          setChatData({
+            chat_id: chatId,
+            chat_name: `Chat ${chatId.slice(0, 8)}`,
+            chat_type: "direct",
+            is_group: false,
+            created_at: new Date().toISOString(),
+            creator_id: user?.userId || ""
+          });
+          setChatMembers([]);
+        }
 
         // Load messages with error handling
         try {
@@ -237,60 +251,12 @@ const ChatView: React.FC<ChatViewProps> = ({ chatId, onBack }) => {
       flexDirection: "column", 
       backgroundColor: styles.theme.background
     }}>
-      {/* Chat Header */}
-      <div style={{ 
-        padding: "16px 24px", 
-        borderBottom: `1px solid ${styles.theme.border}`, 
-        backgroundColor: styles.theme.surface,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between"
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          {onBack && (
-            <button
-              onClick={onBack}
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "50%",
-                border: "none",
-                backgroundColor: styles.theme.border,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                fontSize: "16px",
-                color: styles.theme.textSecondary
-              }}
-            >
-              ←
-            </button>
-          )}
-          <UserInitialsAvatar username={chatData.chat_name || "CH"} size="medium" style={{ marginRight: "12px" }} />
-          <div>
-            <h2 style={{ fontSize: "18px", fontWeight: "600", color: styles.theme.text }}>
-              {chatData.chat_name}
-            </h2>
-            <p style={{ fontSize: "14px", color: styles.theme.textSecondary }}>
-              {chatData.is_group ? `${chatMembers.length} members` : 'Direct message'}
-              {websocketStatus.is_connected && (
-                <span style={{ marginLeft: "8px", color: styles.theme.success }}>• Online</span>
-              )}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Chat Screen */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        <ChatScreen
-          chatId={chatId}
-          messages={messages}
-          isGroupChat={chatData.is_group}
-          onMessageSent={handleMessageSent}
-        />
-      </div>
+      <ChatScreen
+        chatId={chatId}
+        chatName={chatData.chat_name || "Unknown"}
+        isGroupChat={chatData.is_group}
+        receiverId={chatMembers.find(m => m.user.user_id !== user?.userId)?.user.user_id || ""}
+      />
     </div>
   );
 };

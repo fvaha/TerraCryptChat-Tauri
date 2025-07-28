@@ -73,7 +73,7 @@ class NativeApiService {
     this.token = null;
   }
 
-  private async makeRequest<T>(command: string, args: any[] = []): Promise<T> {
+  private async makeRequest<T>(command: string, args: Record<string, any> = {}): Promise<T> {
     if (!this.token) {
       throw new Error('No token available');
     }
@@ -106,7 +106,7 @@ class NativeApiService {
 
   async getChatMembers(chatId: string): Promise<ChatMemberResponse> {
     console.log(`Getting chat members for chat ${chatId} via native API...`);
-    return this.makeRequest<ChatMemberResponse>('get_chat_members_with_token', [chatId]);
+    return this.makeRequest<ChatMemberResponse>('get_chat_members_with_token', { chat_id: chatId });
   }
 
   // Chats API
@@ -118,7 +118,7 @@ class NativeApiService {
   // Messages API
   async getMessages(chatId: string): Promise<ChatMessage[]> {
     console.log(`Getting messages for chat ${chatId} via native API...`);
-    return this.makeRequest<ChatMessage[]>('get_messages', [chatId]);
+    return this.makeRequest<ChatMessage[]>('get_messages', { chat_id: chatId });
   }
 
   async sendMessage(
@@ -127,17 +127,17 @@ class NativeApiService {
     replyToMessageId?: string
   ): Promise<SendMessageResponse> {
     console.log(`Sending message to chat ${chatId} via native API...`);
-    return this.makeRequest<SendMessageResponse>('send_message', [
+    return this.makeRequest<SendMessageResponse>('send_message', {
       content,
-      chatId,
-      replyToMessageId
-    ]);
+      chat_id: chatId,
+      reply_to_message_id: replyToMessageId
+    });
   }
 
   // User search API
   async searchUsers(query: string): Promise<UserData[]> {
     console.log(`Searching users with query: ${query} via native API...`);
-    return this.makeRequest<UserData[]>('search_users', [query]);
+    return this.makeRequest<UserData[]>('search_users', { query });
   }
 }
 

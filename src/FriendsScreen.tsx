@@ -41,9 +41,11 @@ interface UserSearchResult {
 interface FriendsScreenProps {
   onBack: () => void;
   onOpenChat: (friendId: string, friendName: string) => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
-const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => {
+const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat, isCollapsed, onToggleCollapse }) => {
   const { user, services } = useAppContext();
   const styles = useThemedStyles();
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -235,13 +237,13 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
         flex: 1, 
         display: "flex", 
         flexDirection: "column", 
-        ...styles.background 
+        backgroundColor: "#333333"
       }}>
         {/* Header */}
         <div style={{ 
           padding: "16px 24px", 
-          borderBottom: "1px solid #e5e7eb", 
-          backgroundColor: "white",
+          borderBottom: "1px solid #404040", 
+          backgroundColor: "#333333",
           display: "flex",
           alignItems: "center",
           gap: "16px"
@@ -253,7 +255,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
               height: "40px",
               borderRadius: "50%",
               border: "none",
-              backgroundColor: "#f3f4f6",
+              backgroundColor: "#404040",
+              color: "#ffffff",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -263,13 +266,13 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
           >
             ←
           </button>
-          <h1 style={{ fontSize: "20px", fontWeight: "600", color: "#111827", margin: 0 }}>
+          <h1 style={{ fontSize: "20px", fontWeight: "600", color: "#ffffff", margin: 0 }}>
             Add Friend
           </h1>
         </div>
 
         {/* Search */}
-        <div style={{ padding: "16px 24px", backgroundColor: "white", borderBottom: "1px solid #e5e7eb" }}>
+        <div style={{ padding: "16px 24px", backgroundColor: "#333333", borderBottom: "1px solid #404040" }}>
           <div style={{ position: "relative" }}>
             <input
               type="text"
@@ -285,10 +288,12 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
                 paddingRight: "16px",
                 paddingTop: "12px",
                 paddingBottom: "12px",
-                border: "1px solid #d1d5db",
+                border: "1px solid #404040",
                 borderRadius: "8px",
                 fontSize: "14px",
-                outline: "none"
+                outline: "none",
+                backgroundColor: "#404040",
+                color: "#ffffff"
               }}
             />
             <span style={{
@@ -310,17 +315,17 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
                 display: "inline-block",
                 width: "32px",
                 height: "32px",
-                border: "2px solid #e5e7eb",
+                border: "2px solid #404040",
                 borderTop: "2px solid #3b82f6",
                 borderRadius: "50%",
                 animation: "spin 1s linear infinite",
                 marginBottom: "16px"
               }}></div>
-              <p style={{ color: "#6b7280" }}>Searching...</p>
+              <p style={{ color: "#9ca3af" }}>Searching...</p>
             </div>
           ) : filteredSearchResults.length === 0 && searchQuery ? (
             <div style={{ textAlign: "center", padding: "32px" }}>
-              <p style={{ color: "#6b7280" }}>No users found</p>
+              <p style={{ color: "#9ca3af" }}>No users found</p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -331,9 +336,9 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
                     display: "flex",
                     alignItems: "center",
                     padding: "12px",
-                    backgroundColor: "white",
+                    backgroundColor: "#404040",
                     borderRadius: "8px",
-                    border: "1px solid #e5e7eb"
+                    border: "1px solid #404040"
                   }}
                 >
                   <div style={{
@@ -352,10 +357,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
                     {getUserInitials(result.name, result.username)}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: "14px", fontWeight: "500", color: "#111827", margin: "0 0 2px 0" }}>
+                    <h3 style={{ fontSize: "14px", fontWeight: "500", color: "#ffffff", margin: "0 0 2px 0" }}>
                       {result.name || result.username}
                     </h3>
-                    <p style={{ fontSize: "12px", color: "#6b7280", margin: 0 }}>
+                    <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>
                       @{result.username}
                     </p>
                   </div>
@@ -390,36 +395,51 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
       flex: 1, 
       display: "flex", 
       flexDirection: "column", 
-      ...styles.background 
+      backgroundColor: "#2d2d2d"
     }}>
       {/* Header */}
       <div style={{ 
         padding: "16px 24px", 
-        borderBottom: "1px solid #e5e7eb", 
-        backgroundColor: "white",
+        borderBottom: "1px solid #404040", 
+        backgroundColor: "#2d2d2d",
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between"
+        justifyContent: "space-between",
+
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div style={{ 
+          display: "flex", 
+          alignItems: "center", 
+          gap: "12px",
+          transform: isCollapsed ? 'translateX(0)' : 'translateX(0)',
+          transition: 'transform 0.3s ease-in-out'
+        }}>
           <button
-            onClick={onBack}
+            onClick={onToggleCollapse}
             style={{
-              width: "40px",
-              height: "40px",
-              borderRadius: "50%",
+              background: "none",
               border: "none",
-              backgroundColor: "#f3f4f6",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              color: "#9ca3af",
               cursor: "pointer",
-              fontSize: "18px"
+              padding: "4px",
+              borderRadius: "4px",
+              fontSize: "16px",
+              transition: "all 0.3s ease-in-out",
+              transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
+              opacity: isCollapsed ? 1 : 0
             }}
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            ←
+            ☰
           </button>
-          <h1 style={{ fontSize: "20px", fontWeight: "600", color: "#111827", margin: 0 }}>
+          <h1 style={{ 
+            fontSize: "20px", 
+            fontWeight: "600", 
+            color: "#ffffff", 
+            margin: 0,
+            transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
+            transition: 'transform 0.3s ease-in-out'
+          }}>
             Friends
           </h1>
         </div>
@@ -471,7 +491,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
 
 
       {/* Friends List */}
-      <div style={{ flex: 1, overflowY: "auto", backgroundColor: "white" }}>
+      <div style={{ flex: 1, overflowY: "auto", backgroundColor: "#2d2d2d" }}>
         {isLoading ? (
           <div style={{ padding: "24px" }}>
             {[...Array(5)].map((_, i) => (
@@ -481,25 +501,25 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
                 padding: "12px 0", 
                 marginBottom: "8px" 
               }}>
-                <div style={{ 
+                                <div style={{ 
                   width: "48px", 
                   height: "48px", 
-                  backgroundColor: "#f3f4f6", 
+                  backgroundColor: "#404040", 
                   borderRadius: "50%",
                   marginRight: "12px"
                 }}></div>
                 <div style={{ flex: 1 }}>
                   <div style={{ 
                     height: "16px", 
-                    backgroundColor: "#f3f4f6", 
+                    backgroundColor: "#404040", 
                     borderRadius: "4px", 
                     marginBottom: "4px",
                     width: "60%"
                   }}></div>
                   <div style={{ 
                     height: "12px", 
-                    backgroundColor: "#f3f4f6", 
-                    borderRadius: "4px", 
+                    backgroundColor: "#404040", 
+                    borderRadius: "4px",
                     width: "40%"
                   }}></div>
                 </div>
@@ -518,7 +538,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
             <div style={{
               width: "80px",
               height: "80px",
-              backgroundColor: "#f3f4f6",
+              backgroundColor: "#404040",
               borderRadius: "50%",
               display: "flex",
               alignItems: "center",
@@ -527,10 +547,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
             }}>
               <span style={{ fontSize: "32px" }}>👥</span>
             </div>
-            <h3 style={{ fontSize: "18px", fontWeight: "600", color: "#111827", margin: "0 0 8px 0" }}>
+            <h3 style={{ fontSize: "18px", fontWeight: "600", color: "#ffffff", margin: "0 0 8px 0" }}>
               No friends yet
             </h3>
-            <p style={{ fontSize: "14px", color: "#6b7280", marginBottom: "24px" }}>
+            <p style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "24px" }}>
               Add friends to start secure conversations
             </p>
             <button
@@ -560,8 +580,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
                     alignItems: "center",
                     padding: "12px",
                     borderRadius: "8px",
-                    border: "1px solid #e5e7eb",
-                    backgroundColor: "white"
+                    border: "1px solid #404040",
+                    backgroundColor: "#404040"
                   }}
                 >
                   <div style={{
@@ -580,10 +600,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat }) => 
                     {getUserInitials(friend.name, friend.username)}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: "14px", fontWeight: "500", color: "#111827", margin: "0 0 2px 0" }}>
+                    <h3 style={{ fontSize: "14px", fontWeight: "500", color: "#ffffff", margin: "0 0 2px 0" }}>
                       {friend.name || friend.username}
                     </h3>
-                    <p style={{ fontSize: "12px", color: "#6b7280", margin: 0 }}>
+                    <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>
                       @{friend.username}
                     </p>
                   </div>

@@ -1,49 +1,181 @@
-#root {
-  max-width: 600px;
-  margin: 4rem auto;
-  padding: 2rem;
-  text-align: center;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --app-zoom: 1;
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
-h1 {
-  font-size: 2rem;
-  margin-bottom: 1rem;
+* {
+  transition: all 0.2s ease-in-out;
+  font-family: var(--font-family);
 }
 
-input {
-  padding: 10px;
-  width: 100%;
-  max-width: 400px;
-  font-size: 1rem;
-  margin: 1rem auto;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  display: block;
+.app-container {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  background-color: #2d2d2d;
+  display: flex;
+  flex-direction: column;
+  transform: scale(var(--app-zoom));
+  transform-origin: top left;
+  width: calc(100% / var(--app-zoom));
+  height: calc(100vh / var(--app-zoom));
 }
 
-button {
-  background-color: #4f46e5;
-  color: white;
+.top-bar {
+  height: 60px;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #404040;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  justify-content: space-between;
+}
+
+.hamburger-button {
+  background: none;
   border: none;
-  padding: 10px 20px;
-  font-size: 1rem;
-  border-radius: 6px;
+  color: #9ca3af;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 16px;
+  transition: all 0.2s ease;
 }
 
-button:hover {
-  background-color: #4338ca;
+.hamburger-button:hover {
+  background-color: #404040;
+  color: #ffffff;
 }
 
-.result {
-  margin-top: 2rem;
-  background-color: #f3f4f6;
-  padding: 1rem;
+.main-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background-color: #2d2d2d;
+}
+
+.sidebar {
+  width: 72px;
+  background-color: #2d2d2d;
+  border-right: 1px solid #404040;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  transition: width 0.3s ease-in-out;
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 0px;
+}
+
+.sidebar.expanded {
+  width: 72px;
+}
+
+.chat-screen-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background-color: #333333;
+}
+
+.nav-button {
+  width: 48px;
+  height: 48px;
+  border: none;
+  background-color: transparent;
+  color: #9ca3af;
   border-radius: 8px;
-  word-break: break-word;
-  font-family: monospace;
-  font-size: 0.9rem;
-  color: #111827;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+}
+
+.nav-button:hover {
+  background-color: #404040;
+  color: #ffffff;
+}
+
+.nav-button.active {
+  background-color: #0078d4;
+  color: #ffffff;
+}
+
+.logo {
+  width: 32px;
+  height: 32px;
+  background-color: #0078d4;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+.app-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-left: 12px;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid #ffffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.error-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background-color: #2d2d2d;
+  color: #ffffff;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.error-content {
+  text-align: center;
+  max-width: 400px;
+}
+
+.reload-button {
+  background-color: #0078d4;
+  color: #ffffff;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.reload-button:hover {
+  background-color: #106ebe;
 }

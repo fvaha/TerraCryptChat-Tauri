@@ -33,20 +33,10 @@ export async function getFriendRequests(token: string): Promise<FriendRequest[]>
 
 export async function acceptFriendRequest(token: string, requestId: string): Promise<void> {
   try {
-    const response = await fetch("https://dev.v1.terracrypt.cc/api/v1/friends/request/accept", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        request_id: requestId
-      })
+    await invoke("accept_friend_request", {
+      token,
+      request_id: requestId
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to accept friend request");
-    }
   } catch (error) {
     console.error("Error accepting friend request:", error);
     throw error;
@@ -55,20 +45,10 @@ export async function acceptFriendRequest(token: string, requestId: string): Pro
 
 export async function declineFriendRequest(token: string, requestId: string): Promise<void> {
   try {
-    const response = await fetch("https://dev.v1.terracrypt.cc/api/v1/friends/request/decline", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        request_id: requestId
-      })
+    await invoke("decline_friend_request", {
+      token,
+      request_id: requestId
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to decline friend request");
-    }
   } catch (error) {
     console.error("Error declining friend request:", error);
     throw error;

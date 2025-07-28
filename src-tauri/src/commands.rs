@@ -376,7 +376,7 @@ pub async fn get_friend_requests_with_token(token: String) -> Result<Vec<FriendR
     
     let client = reqwest::Client::new();
     let res = client
-        .get("https://dev.v1.terracrypt.cc/api/v1/friends/requests")
+        .get("https://dev.v1.terracrypt.cc/api/v1/friends/request/pending")
         .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
         .send()
@@ -1044,4 +1044,92 @@ pub async fn db_get_dark_mode(user_id: String) -> Result<bool, String> {
 pub async fn db_clear_all_data() -> Result<(), String> {
     database::clear_all_data()
         .map_err(|e| format!("Failed to clear all data: {}", e))
+}
+
+// Friend request actions
+#[tauri::command]
+pub async fn send_friend_request(token: String, receiver_id: String) -> Result<(), String> {
+    println!("Sending friend request to: {}", receiver_id);
+    
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://dev.v1.terracrypt.cc/api/v1/friends/request")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "receiver_id": receiver_id
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let status = res.status();
+    let text = res.text().await.unwrap_or_else(|_| "<no body>".into());
+    
+    println!("Send friend request response status: {}", status);
+    println!("Send friend request response body: {}", text);
+
+    if status.is_success() {
+        println!("Send friend request successful");
+        Ok(())
+    } else {
+        println!("Send friend request failed with status: {}", status);
+        Err(format!("Send friend request failed: {} - {}", status, text))
+    }
+}
+
+#[tauri::command]
+pub async fn accept_friend_request(token: String, request_id: String) -> Result<(), String> {
+    println!("Accepting friend request: {}", request_id);
+    
+    let client = reqwest::Client::new();
+    let res = client
+        .put(&format!("https://dev.v1.terracrypt.cc/api/v1/friends/request/{}/accept", request_id))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let status = res.status();
+    let text = res.text().await.unwrap_or_else(|_| "<no body>".into());
+    
+    println!("Accept friend request response status: {}", status);
+    println!("Accept friend request response body: {}", text);
+
+    if status.is_success() {
+        println!("Accept friend request successful");
+        Ok(())
+    } else {
+        println!("Accept friend request failed with status: {}", status);
+        Err(format!("Accept friend request failed: {} - {}", status, text))
+    }
+}
+
+#[tauri::command]
+pub async fn decline_friend_request(token: String, request_id: String) -> Result<(), String> {
+    println!("Declining friend request: {}", request_id);
+    
+    let client = reqwest::Client::new();
+    let res = client
+        .put(&format!("https://dev.v1.terracrypt.cc/api/v1/friends/request/{}/reject", request_id))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let status = res.status();
+    let text = res.text().await.unwrap_or_else(|_| "<no body>".into());
+    
+    println!("Decline friend request response status: {}", status);
+    println!("Decline friend request response body: {}", text);
+
+    if status.is_success() {
+        println!("Decline friend request successful");
+        Ok(())
+    } else {
+        println!("Decline friend request failed with status: {}", status);
+        Err(format!("Decline friend request failed: {} - {}", status, text))
+    }
 }

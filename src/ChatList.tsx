@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppContext } from './AppContext';
 import { useThemedStyles } from './useThemedStyles';
 import { nativeApiService } from './nativeApiService';
+import { participantService } from './participantService';
 import { invoke } from '@tauri-apps/api/core';
 
 interface ChatData {
@@ -28,9 +29,11 @@ interface ChatData {
 
 interface ChatListProps {
   onSelect: (chatId: string) => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
-const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
+const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleCollapse }) => {
   const { user, websocketStatus, services } = useAppContext();
   const styles = useThemedStyles();
   const [chats, setChats] = useState<ChatData[]>([]);
@@ -39,6 +42,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [isLoadingChats, setIsLoadingChats] = useState(false); // Prevent multiple simultaneous loads
   const [hasInitialized, setHasInitialized] = useState(false); // Track if we've completed initial load
+  const [searchQuery, setSearchQuery] = useState(''); // Search query state
 
   // Load chats when component mounts or token changes
   useEffect(() => {
@@ -116,49 +120,60 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
           // Continue even if database save fails
         }
         
-        const chatsWithNames = chatsData
-          .filter((chat: any) => chat && chat.chat_id) // Filter out invalid chats
-          .map((chat: any) => {
-            try {
-              console.log(`🔍 Raw chat data:`, chat);
-              
-              // Convert the native API response to the expected format
-              const chatData: ChatData = {
-                chat_id: chat.chat_id,
-                chat_name: chat.name || null,
-                chat_type: chat.is_group ? "group" : "direct",
-                is_group: Boolean(chat.is_group),
-                created_at: new Date(chat.created_at * 1000).toISOString(), // Convert timestamp to ISO string
-                creator_id: chat.creator_id || "",
-                participants: Array.isArray(chat.participants) ? chat.participants : [],
-                display_name: chat.name || `Chat ${chat.chat_id.slice(0, 8)}`
-              };
-              
-              console.log(`🔍 Processed chat ${chat.chat_id}:`, {
-                chatName: chat.name,
-                isGroup: chat.is_group,
-                participantsCount: chat.participants?.length || 0,
-                currentUserId: user?.userId,
-                processedData: chatData
-              });
-              
-              return chatData;
-            } catch (processError) {
-              console.error("❌ Failed to process chat:", chat, processError);
-              // Return a fallback chat object
-              return {
-                chat_id: chat.chat_id || "unknown",
-                chat_name: "Unknown Chat",
-                chat_type: "direct",
-                is_group: false,
-                created_at: new Date().toISOString(),
-                creator_id: "",
-                participants: [],
-                display_name: "Unknown Chat"
-              };
-            }
-          });
+        console.log("🔍 Raw chats data:", chatsData);
         
+        // Process chats and resolve participant names for direct chats
+        const chatsWithNames = await Promise.all(
+          chatsData
+            .filter((chat: any) => chat && chat.chat_id) // Filter out invalid chats
+            .map(async (chat: any) => {
+              try {
+                console.log(`🔍 Raw chat data:`, chat);
+                console.log(`🔍 Current user ID:`, user?.userId);
+                
+                // Resolve chat name using Swift pattern
+                let displayName = await resolveChatName(chat, user?.userId);
+                
+                // Convert the native API response to the expected format
+                const chatData: ChatData = {
+                  chat_id: chat.chat_id,
+                  chat_name: chat.name || null,
+                  chat_type: chat.is_group ? "group" : "direct",
+                  is_group: Boolean(chat.is_group),
+                  created_at: new Date(chat.created_at * 1000).toISOString(), // Convert timestamp to ISO string
+                  creator_id: chat.creator_id || "",
+                  participants: Array.isArray(chat.participants) ? chat.participants : [],
+                  display_name: displayName
+                };
+                
+                console.log(`🔍 Processed chat ${chat.chat_id}:`, {
+                  chatName: chat.name,
+                  isGroup: chat.is_group,
+                  participantsCount: chat.participants?.length || 0,
+                  currentUserId: user?.userId,
+                  displayName: displayName,
+                  processedData: chatData
+                });
+                
+                return chatData;
+              } catch (processError) {
+                console.error("❌ Failed to process chat:", chat, processError);
+                // Return a fallback chat object
+                return {
+                  chat_id: chat.chat_id || "unknown",
+                  chat_name: "Unknown Chat",
+                  chat_type: "direct",
+                  is_group: false,
+                  created_at: new Date().toISOString(),
+                  creator_id: "",
+                  participants: [],
+                  display_name: "Unknown Chat"
+                };
+              }
+            })
+        );
+        
+        console.log("🔍 About to set chats, length:", chatsWithNames.length);
         setChats(chatsWithNames);
         console.log("✅ Chats processed and set:", chatsWithNames);
         console.log("🔍 Chats array length:", chatsWithNames.length);
@@ -201,9 +216,84 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
     }
   };
 
+  // Swift-style resolveChatName function using ParticipantService
+  const resolveChatName = async (chat: any, currentUserId?: string): Promise<string> => {
+    // For group chats, use the group name
+    if (chat.is_group) {
+      return chat.name || "Unnamed Group";
+    }
+    
+    // For direct chats, try multiple approaches to get the other participant's username
+    if (currentUserId) {
+      try {
+        console.log(`🔍 Resolving chat name for direct chat: ${chat.chat_id}, currentUserId: ${currentUserId}`);
+        
+        // First, check if API already provided a name (like "vaha")
+        if (chat.name && chat.name !== `Chat ${chat.chat_id.slice(0, 8)}`) {
+          console.log(`✅ Using API-provided name: ${chat.name}`);
+          return chat.name;
+        }
+        
+        // Try direct API call first (more reliable)
+        try {
+          console.log(`🔍 Trying direct API call for chat ${chat.chat_id}`);
+          const membersResponse = await nativeApiService.getChatMembers(chat.chat_id);
+          console.log(`🔍 Direct API response for chat ${chat.chat_id}:`, membersResponse);
+          
+          if (membersResponse && membersResponse.data && Array.isArray(membersResponse.data)) {
+            const otherParticipant = membersResponse.data.find(
+              (member: any) => member.user && member.user.user_id !== currentUserId
+            );
+            
+            if (otherParticipant && otherParticipant.user && otherParticipant.user.username) {
+              console.log(`✅ Found other participant via direct API: ${otherParticipant.user.username}`);
+              return otherParticipant.user.username;
+            }
+          }
+        } catch (apiError) {
+          console.warn(`⚠️ Direct API call failed for ${chat.chat_id}:`, apiError);
+        }
+        
+        // Fallback: Try ParticipantService
+        try {
+          const participants = await participantService.getParticipants(chat.chat_id);
+          console.log(`🔍 Participants from ParticipantService for chat ${chat.chat_id}:`, participants);
+          
+          const otherParticipant = participants.find(
+            (participant) => participant.userId !== currentUserId
+          );
+          
+          if (otherParticipant && otherParticipant.username) {
+            console.log(`✅ Found other participant via ParticipantService: ${otherParticipant.username}`);
+            return otherParticipant.username;
+          }
+        } catch (participantError) {
+          console.warn(`⚠️ ParticipantService failed for ${chat.chat_id}:`, participantError);
+        }
+        
+      } catch (error) {
+        console.warn(`⚠️ All chat name resolution methods failed for ${chat.chat_id}:`, error);
+      }
+    }
+    
+    // Final fallback
+    if (chat.name) {
+      return chat.name;
+    }
+    
+    return "Unknown";
+  };
+
   const getChatName = (chat: ChatData) => {
     return chat.display_name || chat.chat_name || `Chat ${chat.chat_id.slice(0, 8)}`;
   };
+
+  // Filter chats based on search query
+  const filteredChats = chats.filter(chat => {
+    if (!searchQuery.trim()) return true;
+    const chatName = getChatName(chat).toLowerCase();
+    return chatName.includes(searchQuery.toLowerCase());
+  });
 
   // const getLastMessagePreview = (chat: ChatData) => {
   //   if (chat.last_message) {
@@ -226,7 +316,8 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
         backgroundColor: "#2d2d2d",
         display: "flex", 
         flexDirection: "column", 
-        height: "100%" 
+        height: "100%",
+        overflow: "hidden"
       }}>
         {/* Header */}
         <div style={{ 
@@ -287,7 +378,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
         </div>
         
         {/* Loading skeleton */}
-        <div style={{ flex: 1, padding: "12px" }}>
+        <div style={{ flex: 1, padding: "12px", overflowY: "auto", overflowX: "hidden" }}>
           {[...Array(8)].map((_, i) => (
             <div key={i} style={{ 
               display: "flex", 
@@ -384,7 +475,8 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
     );
   }
 
-  console.log("🔍 ChatList render - chats length:", chats.length, "isLoading:", isLoading, "hasInitialized:", hasInitialized);
+  console.log("🔍 ChatList render - chats length:", chats.length, "isLoading:", isLoading, "hasInitialized:", hasInitialized, "error:", error);
+  console.log("🔍 Chats array:", chats);
 
   return (
     <div style={{ 
@@ -392,7 +484,8 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
       backgroundColor: "#2d2d2d",
       display: "flex", 
       flexDirection: "column", 
-      height: "100%" 
+      height: "100%",
+      overflow: "hidden"
     }}>
       {/* Header */}
       <div style={{ 
@@ -406,20 +499,84 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
           justifyContent: "space-between", 
           marginBottom: "12px" 
         }}>
-          <h1 style={{ 
-            fontSize: "20px", 
-            fontWeight: "600", 
-            color: "#ffffff",
-            margin: 0
-          }}>
-            Chats
-          </h1>
           <div style={{ 
-            width: "8px", 
-            height: "8px", 
-            borderRadius: "50%", 
-            backgroundColor: websocketStatus.is_connected ? "#10b981" : "#6b7280" 
-          }}></div>
+            display: "flex", 
+            alignItems: "center", 
+            gap: "12px",
+            transform: isCollapsed ? 'translateX(0)' : 'translateX(0)',
+            transition: 'transform 0.3s ease-in-out'
+          }}>
+            <button
+              onClick={onToggleCollapse}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#9ca3af",
+                cursor: "pointer",
+                padding: "4px",
+                borderRadius: "4px",
+                fontSize: "16px",
+                transition: "all 0.3s ease-in-out",
+                transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
+                opacity: isCollapsed ? 1 : 0
+              }}
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              ☰
+            </button>
+            <h1 style={{ 
+              fontSize: "20px", 
+              fontWeight: "600", 
+              color: "#ffffff",
+              margin: 0,
+              transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
+              transition: 'transform 0.3s ease-in-out'
+            }}>
+              Chats
+            </h1>
+          </div>
+          <div style={{
+            display: "flex",
+            gap: "8px",
+            alignItems: "center"
+          }}>
+            <div style={{ 
+              width: "8px", 
+              height: "8px", 
+              borderRadius: "50%", 
+              backgroundColor: websocketStatus.is_connected ? "#10b981" : "#6b7280" 
+            }}></div>
+            <button style={{
+              background: "none",
+              border: "none",
+              color: "#9ca3af",
+              cursor: "pointer",
+              padding: "4px",
+              borderRadius: "4px",
+              fontSize: "16px",
+              transition: "color 0.2s ease"
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "#ffffff"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "#9ca3af"}
+            >
+              ✏️
+            </button>
+            <button style={{
+              background: "none",
+              border: "none",
+              color: "#9ca3af",
+              cursor: "pointer",
+              padding: "4px",
+              borderRadius: "4px",
+              fontSize: "16px",
+              transition: "color 0.2s ease"
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "#ffffff"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "#9ca3af"}
+            >
+              ⋮
+            </button>
+          </div>
         </div>
         
         {/* Search Bar */}
@@ -429,7 +586,15 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
         }}>
           <input
             type="text"
-            placeholder="Search chats..."
+            placeholder="Search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                // Clear search on Enter
+                setSearchQuery('');
+              }
+            }}
             style={{
               width: "100%",
               padding: "8px 12px 8px 36px",
@@ -440,6 +605,25 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
               fontSize: "14px"
             }}
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{
+                position: "absolute",
+                right: "8px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                color: "#9ca3af",
+                cursor: "pointer",
+                fontSize: "16px",
+                padding: "4px"
+              }}
+            >
+              ✕
+            </button>
+          )}
           <div style={{
             position: "absolute",
             left: "12px",
@@ -453,7 +637,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
       </div>
       
       {/* Chat List */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
         {error && (
           <div style={{ 
             padding: "16px", 
@@ -467,7 +651,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
           </div>
         )}
         
-        {chats.length === 0 && !isLoading ? (
+        {filteredChats.length === 0 && !isLoading ? (
           <div style={{ 
             padding: "32px 16px", 
             textAlign: "center",
@@ -492,7 +676,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect }) => {
             </p>
           </div>
         ) : (
-          chats.map((chat) => (
+          filteredChats.map((chat) => (
             <div
               key={chat.chat_id}
               onClick={() => handleChatSelect(chat.chat_id)}

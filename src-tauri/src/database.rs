@@ -427,7 +427,7 @@ pub fn insert_or_update_message(message: &Message) -> Result<()> {
 }
 
 pub fn insert_messages(messages: &[Message]) -> Result<()> {
-    let conn = get_connection()?;
+    let mut conn = get_connection()?;
     let tx = conn.transaction()?;
     
     for message in messages {

@@ -1,252 +1,504 @@
-import { useEffect, useRef, useState } from "react";
-import { useAppContext } from "./AppContext";
-import { MessageEntity } from "./models";
-import { useTheme } from "./ThemeContext";
-import { nativeApiService } from "./nativeApiService";
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { databaseService } from './databaseService';
+import { nativeApiService } from './nativeApiService';
+import { messageService } from './messageService';
+import { participantService } from './participantService';
+import { MessageEntity } from './models';
+import { useAppContext } from './AppContext';
+import './ChatScreen.css';
 
-interface Props {
+interface ChatScreenProps {
   chatId: string;
-  messages: MessageEntity[];
-  isGroupChat?: boolean;
-  onMessageSent?: (message: MessageEntity) => void;
 }
 
-function ChatScreen({ chatId, messages, isGroupChat = false, onMessageSent }: Props) {
-  const [newMessage, setNewMessage] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
-  const { user } = useAppContext();
-  const { theme, isDarkMode } = useTheme();
-  const currentUserId = user?.userId;
-
-  const sendMessage = async () => {
-    if (!newMessage.trim() || isSending || !currentUserId || !user?.tokenHash) return;
-    
-    try {
-      setIsSending(true);
-      
-      // Set token in native API service
-      nativeApiService.setToken(user.tokenHash);
-      
-      // Send message using native API
-      const response = await nativeApiService.sendMessage(
-        newMessage.trim(),
-        chatId
-      );
-      
-      console.log("✅ Message sent successfully:", response);
-      
-      // Create a local message entity for immediate display
-      const localMessage: MessageEntity = {
-        messageId: response.message_id,
-        clientMessageId: response.message_id,
-        chatId: chatId,
-        senderId: currentUserId,
-        content: newMessage.trim(),
-        timestamp: response.timestamp * 1000, // Convert to milliseconds
-        isRead: false,
-        isSent: true,
-        isDelivered: false,
-        isFailed: false,
-        senderUsername: user.username || user.name || "You"
-      };
-      
-      // Call the callback to add message to the parent component
-      if (onMessageSent) {
-        onMessageSent(localMessage);
-      }
-      
-      setNewMessage("");
-    } catch (error) {
-      console.error("❌ Failed to send message:", error);
-      // TODO: Show error toast/notification
-    } finally {
-      setIsSending(false);
-    }
+interface ChatMember {
+  user: {
+    user_id: string;
+    username: string;
+    name: string;
+    email: string;
+    picture?: string;
   };
+  is_admin: boolean;
+  joined_at: string;
+}
 
+interface ChatMemberResponse {
+  data: ChatMember[];
+  limit: number;
+  offset: number;
+}
+
+const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
+  const { token, user } = useAppContext();
+  const [messages, setMessages] = useState<MessageEntity[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [replyTo, setReplyTo] = useState<MessageEntity | null>(null);
+  const [participantNames, setParticipantNames] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [chatData, setChatData] = useState<{
+    chatName: string;
+    isGroupChat: boolean;
+    receiverId: string;
+  }>({
+    chatName: 'Loading...',
+    isGroupChat: false,
+    receiverId: ''
+  });
+
+  // Load current user and set up message flow
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const loadCurrentUser = async () => {
+      try {
+        const user = await databaseService.getMostRecentUser();
+        if (user) {
+          setCurrentUserId(user.user_id);
+        }
+      } catch (error) {
+        console.error('Failed to load current user:', error);
+      }
+    };
+    loadCurrentUser();
+
+    // Set up message flow for incoming messages
+    messageService.setMessageFlow((message: MessageEntity) => {
+      if (message.chatId === chatId) {
+        console.log(`📨 Received new message for chat ${chatId}:`, message);
+        setMessages(prev => {
+          // Check if message already exists to avoid duplicates
+          const exists = prev.some(m => m.clientMessageId === message.clientMessageId);
+          if (exists) {
+            console.log(`📨 Message already exists, skipping:`, message.clientMessageId);
+            return prev;
+          }
+          console.log(`📨 Adding new message to state:`, message.clientMessageId);
+          return [message, ...prev];
+        });
+      }
+    });
+
+    return () => {
+      messageService.setMessageFlow(() => {});
+    };
+  }, [chatId]);
+
+  // Load chat data and participants
+  useEffect(() => {
+    const loadChatData = async () => {
+      if (!token || !user) return;
+      
+      try {
+        setIsLoading(true);
+        setError(null);
+        console.log(`🔄 Loading chat data for chat ${chatId}`);
+
+        // Load chat members to get chat info
+        try {
+          console.log(`🔍 Loading chat members for chat ${chatId}`);
+          const membersResponse = await nativeApiService.getChatMembers(chatId);
+          console.log(`🔍 Members response:`, membersResponse);
+          
+          if (membersResponse && membersResponse.data && Array.isArray(membersResponse.data)) {
+            const validMembers = membersResponse.data.filter(member => 
+              member && member.user && member.user.user_id
+            );
+            
+            console.log(`🔍 Valid members:`, validMembers);
+            console.log(`🔍 Current user ID:`, user.userId);
+            
+            const otherMember = validMembers.find(member => member.user.user_id !== user.userId);
+            console.log(`🔍 Other member:`, otherMember);
+            
+            const isGroup = validMembers.length > 2;
+            
+            const chatName = isGroup 
+              ? `Group Chat (${validMembers.length} members)`
+              : (otherMember?.user.username || otherMember?.user.name || "Unknown");
+
+            console.log(`✅ Setting chat name to: ${chatName}`);
+
+            setChatData({
+              chatName,
+              isGroupChat: isGroup,
+              receiverId: otherMember?.user.user_id || ""
+            });
+
+            // Set participant names
+            const names = validMembers.map(m => m.user.username).sort();
+            setParticipantNames(names);
+          } else {
+            console.warn(`⚠️ Invalid members response for chat ${chatId}:`, membersResponse);
+            throw new Error('Invalid members response');
+          }
+        } catch (participantError) {
+          console.warn('Failed to load chat members, using fallback:', participantError);
+          setChatData({
+            chatName: `Chat ${chatId.slice(0, 8)}`,
+            isGroupChat: false,
+            receiverId: ""
+          });
+          setParticipantNames([]);
+        }
+
+        // Load messages from database
+        try {
+          console.log(`📨 Loading messages for chat ${chatId}`);
+          const messageEntities = await messageService.fetchMessages(chatId, 50);
+          console.log(`📨 Loaded ${messageEntities.length} messages:`, messageEntities);
+          
+          // Sort messages by timestamp (newest first for display)
+          const sortedMessages = messageEntities.sort((a, b) => b.timestamp - a.timestamp);
+          setMessages(sortedMessages);
+
+          // Mark messages as read
+          await messageService.markAllMessagesAsRead(chatId);
+        } catch (dbError) {
+          console.warn('Failed to load messages from database, continuing with empty messages:', dbError);
+          setMessages([]);
+        }
+        
+        setIsLoading(false);
+        console.log(`✅ Finished loading chat data for chat ${chatId}`);
+      } catch (error) {
+        console.error('Failed to load chat data:', error);
+        setError('Failed to load chat data');
+        setIsLoading(false);
+      }
+    };
+
+    loadChatData();
+  }, [chatId, token, user]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
-  const getBubbleColor = (isMe: boolean, senderId: string) => {
-    if (isMe) return theme.primary;
-    if (isGroupChat) {
-      // Generate a consistent color based on senderId
-      const hash = senderId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      const hue = hash % 360;
-      return `hsla(${hue}, 70%, 85%, 0.2)`;
+  // Handle scroll to show/hide scroll to bottom button
+  const handleScroll = useCallback(() => {
+    if (messagesContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShowScrollToBottom(!isNearBottom);
     }
-    return isDarkMode ? theme.surface : "#f3f4f6";
+  }, []);
+
+  // Send message
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !token) return;
+
+    try {
+      // Store the message text before clearing
+      const messageText = newMessage.trim();
+      
+      const content = replyTo 
+        ? `⟪${participantService.getSenderName(replyTo.senderId, chatId)}⟫: ${replyTo.content}\n${messageText}`
+        : messageText;
+
+      // Save message locally first
+      const clientMessageId = await messageService.saveMessage(chatId, messageText, currentUserId, Date.now());
+      
+      // Add to local state immediately
+      const newMessageEntity: MessageEntity = {
+        id: 0,
+        messageId: undefined,
+        clientMessageId,
+        chatId,
+        senderId: currentUserId,
+        content: content, // Use the content with reply if present
+        timestamp: Date.now(),
+        isRead: false,
+        isSent: false,
+        isDelivered: false,
+        isFailed: false,
+        senderUsername: "Me",
+        replyToMessageId: replyTo?.messageId || undefined
+      };
+
+      console.log(`📨 Adding sent message to state:`, newMessageEntity);
+      setMessages(prev => {
+        // Check if message already exists to avoid duplicates
+        const exists = prev.some(m => m.clientMessageId === newMessageEntity.clientMessageId);
+        if (exists) {
+          console.log(`📨 Sent message already exists, skipping:`, newMessageEntity.clientMessageId);
+          return prev;
+        }
+        return [newMessageEntity, ...prev];
+      });
+      
+      // Clear input immediately
+      console.log('🧹 Clearing input, current value:', newMessage);
+      setNewMessage('');
+      setReplyTo(null);
+      console.log('🧹 Input cleared');
+      
+      // Focus back to input
+      setTimeout(() => {
+        if (messageInputRef.current) {
+          messageInputRef.current.focus();
+        }
+      }, 0);
+
+             // Send via WebSocket
+      const payload = {
+        chat_id: chatId,
+        message_text: messageText,
+        client_message_id: clientMessageId
+      };
+      await messageService.sendMessage("chat", payload, () => {
+        console.log("Message sent successfully");
+      });
+      
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
-  const getTextColor = (isMe: boolean) =>
-    isMe ? "#fff" : isDarkMode ? theme.text : "#1f2937";
-
-  const parseReply = (text: string) => {
-    const pattern = /⟪(.*?)⟫: (.*)/;
-    const match = text.match(pattern);
-    if (!match) return null;
-    
-    const [, originalSender, originalMessage] = match;
-    const replyOnly = text.replace(pattern, '').trim();
-    
-    return {
-      originalSender,
-      originalMessage: originalMessage.replace(/- \*$/, ''),
-      replyMessage: replyOnly
-    };
+  // Handle reply to message
+  const handleReply = (message: MessageEntity) => {
+    setReplyTo(message);
   };
 
-  const getStatusIcon = (message: MessageEntity) => {
-    if (message.isFailed) return "⚠️";
-    if (message.isDelivered) return "✓✓";
-    if (message.isSent) return "✓";
-    return "";
+  // Cancel reply
+  const handleCancelReply = () => {
+    setReplyTo(null);
   };
 
-  const isUnsafeMessage = (message: MessageEntity) => {
-    const cleaned = message.content.replace(/- \*$/, '').trim();
-    return !message.isSent && (cleaned.length === 0 || message.content.includes('-*'));
+  // Scroll to bottom
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      setShowScrollToBottom(false);
+    }
   };
+
+  // Group messages by date
+  const groupMessagesByDate = (messages: MessageEntity[]) => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const groups: { [key: string]: MessageEntity[] } = {};
+
+    messages.forEach(message => {
+      const messageDate = new Date(message.timestamp);
+      let dateLabel = '';
+
+      if (messageDate.toDateString() === today.toDateString()) {
+        dateLabel = 'Today';
+      } else if (messageDate.toDateString() === yesterday.toDateString()) {
+        dateLabel = 'Yesterday';
+      } else {
+        dateLabel = messageDate.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        });
+      }
+
+      if (!groups[dateLabel]) {
+        groups[dateLabel] = [];
+      }
+      groups[dateLabel].push(message);
+    });
+
+    return Object.entries(groups)
+      .sort(([a], [b]) => {
+        const dateA = a === 'Today' ? today : a === 'Yesterday' ? yesterday : new Date(a);
+        const dateB = b === 'Today' ? today : b === 'Yesterday' ? yesterday : new Date(b);
+        return dateB.getTime() - dateA.getTime();
+      })
+      .map(([date, msgs]) => ({
+        date,
+        messages: msgs.sort((a, b) => b.timestamp - a.timestamp)
+      }));
+  };
+
+  const groupedMessages = groupMessagesByDate(messages);
+
+  if (isLoading) {
+    return (
+      <div className="chat-screen">
+        <div className="chat-header">
+          <div className="chat-title">
+            <div className="chat-name">{chatData.chatName}</div>
+            {chatData.isGroupChat && participantNames.length > 0 && (
+              <div className="participant-names">
+                {participantNames.join(', ')}
+              </div>
+            )}
+          </div>
+          <button 
+            onClick={() => setIsSearching(!isSearching)} 
+            className="search-button"
+          >
+            🔍
+          </button>
+        </div>
+        <div className="loading">Loading messages...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="chat-screen">
+        <div className="chat-header">
+          <div className="chat-title">{chatData.chatName}</div>
+        </div>
+        <div className="error">
+          {error}
+          <button onClick={() => window.location.reload()}>Retry</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto space-y-1 pr-2 py-2">
-        {messages.map((msg, index) => {
-          const isMe = msg.senderId === currentUserId;
-          const previousMessage = index > 0 ? messages[index - 1] : null;
-          const isFromSameSender = previousMessage?.senderId === msg.senderId;
-          
-          const replyData = parseReply(msg.content);
-          const displayContent = replyData?.replyMessage || msg.content.replace(/- \*$/, '').trim();
-
-          return (
-            <div
-              key={msg.clientMessageId || msg.messageId}
-              className={`flex w-full ${isMe ? "justify-end" : "justify-start"}`}
-              style={{
-                paddingTop: isFromSameSender ? 1 : 6,
-                paddingBottom: isFromSameSender ? 1 : 6,
-              }}
-            >
-              <div
-                className="flex flex-col max-w-[75%]"
-                style={{ alignItems: isMe ? "flex-end" : "flex-start" }}
-              >
-                {/* Username for group chats */}
-                {isGroupChat && !isMe && !isFromSameSender && msg.senderUsername && (
-                  <span
-                    className="text-xs font-medium mb-1"
-                    style={{ 
-                      color: getBubbleColor(false, msg.senderId),
-                      opacity: 0.7
-                    }}
-                  >
-                    {msg.senderUsername}
-                  </span>
-                )}
-
-                {/* Message bubble */}
-                <div
-                  className="relative rounded-2xl px-4 py-2 shadow-sm"
-                  style={{
-                    background: getBubbleColor(isMe, msg.senderId),
-                    color: getTextColor(isMe),
-                    borderRadius: isMe ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                    maxWidth: "75vw",
-                    minWidth: 90,
-                  }}
-                >
-                  {/* Reply preview */}
-                  {replyData && (
-                    <div
-                      className="mb-2 p-2 rounded-lg cursor-pointer"
-                      style={{
-                        background: "rgba(255,255,255,0.1)",
-                        borderLeft: "3px solid rgba(255,255,255,0.3)"
-                      }}
-                      onClick={() => {
-                        // TODO: Scroll to replied message
-                        console.log("Scroll to reply:", replyData);
-                      }}
-                    >
-                      <div className="text-xs opacity-75 mb-1">
-                        ↩ {replyData.originalSender}
-                      </div>
-                      <div className="text-xs opacity-50 truncate">
-                        {replyData.originalMessage}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Message content */}
-                  <div className="mb-4">
-                    <span style={{ wordBreak: "break-word" }}>{displayContent}</span>
-                  </div>
-
-                  {/* Timestamp and status */}
-                  <div className="flex items-center justify-end gap-1 absolute bottom-2 right-3">
-                    <span
-                      className="text-xs opacity-85"
-                      style={{ color: getTextColor(isMe) }}
-                    >
-                      {new Date(msg.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    
-                    {isMe && (
-                      <span className="text-xs ml-1" style={{ color: getTextColor(isMe) }}>
-                        {getStatusIcon(msg)}
-                      </span>
-                    )}
-
-                    {!isMe && isUnsafeMessage(msg) && (
-                      <span className="text-xs ml-1 text-yellow-500">⚠️</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Resend button for failed messages */}
-                {isMe && msg.isFailed && (
-                  <button
-                    className="mt-2 p-2 rounded-full bg-red-500 text-white text-xs hover:bg-red-600 transition-colors"
-                    onClick={() => {
-                      // TODO: Implement resend logic
-                      console.log("Resend message:", msg);
-                    }}
-                  >
-                    ↻
-                  </button>
-                )}
-              </div>
+    <div className="chat-screen">
+      {/* Chat Header */}
+      <div className="chat-header">
+        <div className="chat-title">
+          <div className="chat-name">{chatData.chatName}</div>
+          {chatData.isGroupChat && participantNames.length > 0 && (
+            <div className="participant-names">
+              {participantNames.join(', ')}
             </div>
-          );
-        })}
-        <div ref={endRef} />
-      </div>
-
-      <div className="mt-4 flex items-center gap-2">
-        <input
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-          disabled={isSending}
-          className="flex-1 bg-gray-700 text-white rounded px-3 py-2 disabled:opacity-50"
-          placeholder={isSending ? "Sending..." : "Type your message..."}
-        />
-        <button
-          onClick={sendMessage}
-          disabled={isSending || !newMessage.trim()}
-          className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 disabled:bg-gray-500 disabled:cursor-not-allowed text-white transition-colors"
+          )}
+        </div>
+        <button 
+          onClick={() => setIsSearching(!isSearching)} 
+          className="search-button"
         >
-          {isSending ? "Sending..." : "Send"}
+          🔍
         </button>
       </div>
+
+      {/* Search Bar */}
+      {isSearching && (
+        <div className="search-bar">
+          <input
+            type="text"
+            placeholder="Search messages..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            className="search-input"
+          />
+        </div>
+      )}
+
+      {/* Messages Container */}
+      <div 
+        className="messages-container"
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+      >
+        {groupedMessages.map(({ date, messages: dateMessages }) => (
+          <div key={date} className="message-group">
+            <div className="date-separator">{date}</div>
+            {dateMessages.map((message) => (
+              <div
+                key={message.clientMessageId}
+                className={`message ${message.senderId === currentUserId ? 'own' : 'other'}`}
+              >
+                <div className="message-content">
+                  {message.senderId !== currentUserId && (
+                    <div className="sender-name">{participantService.getSenderName(message.senderId, chatId)}</div>
+                  )}
+                  <div className="message-text">{message.content}</div>
+                  <div className="message-time">
+                    {new Date(message.timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </div>
+                  {message.isFailed && (
+                    <div className="message-status failed">Failed</div>
+                  )}
+                  {message.isSent && !message.isDelivered && (
+                    <div className="message-status sent">Sent</div>
+                  )}
+                  {message.isDelivered && !message.isRead && (
+                    <div className="message-status delivered">Delivered</div>
+                  )}
+                  {message.isRead && (
+                    <div className="message-status read">Read</div>
+                  )}
+                </div>
+                  <button
+                  onClick={() => handleReply(message)}
+                  className="reply-button"
+                >
+                  Reply
+                  </button>
+              </div>
+            ))}
+            </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Reply Preview */}
+      {replyTo && (
+        <div className="reply-preview">
+          <div className="reply-content">
+            <div className="reply-sender">{participantService.getSenderName(replyTo.senderId, chatId)}</div>
+            <div className="reply-text">{replyTo.content}</div>
+          </div>
+          <button onClick={handleCancelReply} className="cancel-reply">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Message Input */}
+      <div className="message-input-container">
+        <div className="message-input-wrapper">
+          <textarea
+            ref={messageInputRef}
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            placeholder="Type a message..."
+            className="message-input"
+            rows={1}
+        />
+        <button
+            onClick={handleSendMessage}
+            disabled={!newMessage.trim()}
+            className="send-button"
+          >
+            Send
+          </button>
+        </div>
+      </div>
+
+      {/* Scroll to Bottom Button */}
+      {showScrollToBottom && (
+        <button 
+          onClick={scrollToBottom}
+          className="scroll-to-bottom"
+        >
+          ↓
+        </button>
+      )}
     </div>
   );
-}
+};
 
 export default ChatScreen;

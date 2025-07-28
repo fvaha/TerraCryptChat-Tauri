@@ -75,7 +75,9 @@ export class MessageService {
         sender_username: messageEntity.senderUsername,
         reply_to_message_id: messageEntity.replyToMessageId
       };
+      console.log("[MessageService] Saving to database:", dbMessage);
       await invoke('db_insert_message', { message: dbMessage });
+      console.log("[MessageService] Successfully saved to database");
       
       // Emit to UI
       if (this.messageFlow) {
