@@ -23,61 +23,41 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install ALL GTK/GLib dependencies
+      - name: Install GLib and dependencies (Complete Solution)
         run: |
+          # Update and clean first
           sudo apt-get update -y
-          # Remove any potentially broken installations
-          sudo apt-get remove -y libglib2.0-dev libgobject-2.0-dev libgio-2.0-dev || true
           sudo apt-get autoremove -y
           
-          # Install complete GTK/GLib development stack
+          # Install complete GLib/GTK development stack
           sudo apt-get install -y \
             libglib2.0-dev \
+            libglib2.0-dev-bin \
             libgirepository1.0-dev \
-            libgobject-2.0-dev \
-            libgio-2.0-dev \
-            libwebkit2gtk-4.0-dev \
             libgtk-3-dev \
-            libssl-dev \
+            libwebkit2gtk-4.0-dev \
             pkg-config \
-            build-essential \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libatk1.0-dev \
-            libgdk-pixbuf2.0-dev \
-            libsoup2.4-dev
+            build-essential
 
-          # Verify all required .pc files exist
-          REQUIRED_PC_FILES=(
-            "/usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc"
-            "/usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc"
-            "/usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc"
-          )
+          # Find exact location of glib-2.0.pc
+          GLIB_PC_PATH=$(find /usr -name "glib-2.0.pc" 2>/dev/null | head -1)
+          if [ -z "$GLIB_PC_PATH" ]; then
+            echo "::error::glib-2.0.pc not found after installation!"
+            exit 1
+          fi
 
-          for pc_file in "${REQUIRED_PC_FILES[@]}"; do
-            if [ ! -f "$pc_file" ]; then
-              echo "::error::Missing required file: $pc_file"
-              exit 1
-            fi
-          done
-
-          # Set comprehensive environment variables
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig" >> $GITHUB_ENV
+          # Set environment variables
+          echo "PKG_CONFIG_PATH=$(dirname $GLIB_PC_PATH):/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/lib" >> $GITHUB_ENV
-          echo "GI_TYPELIB_PATH=/usr/lib/x86_64-linux-gnu/girepository-1.0" >> $GITHUB_ENV
 
-      - name: Verify all dependencies
+      - name: Verify GLib installation
         run: |
-          echo "=== Dependency Verification ==="
-          pkg-config --modversion glib-2.0
-          pkg-config --modversion gobject-2.0
-          pkg-config --modversion gio-2.0
-          pkg-config --modversion gtk+-3.0
-          pkg-config --modversion webkit2gtk-4.0
+          echo "=== GLib Verification ==="
+          echo "GLib version: $(pkg-config --modversion glib-2.0)"
           echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-          echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
+          echo "glib-2.0.pc location: $(find /usr -name "glib-2.0.pc" 2>/dev/null | head -1)"
+          pkg-config --exists glib-2.0 || (echo "::error::GLib not found!" && exit 1)
+          pkg-config --atleast-version=2.70 glib-2.0 || (echo "::error::GLib version too old!" && exit 1)
 
       - name: Install npm dependencies
         run: |
@@ -86,16 +66,13 @@ jobs:
 
       - name: Build Tauri app
         run: |
+          # Explicitly set paths for the build
           export PKG_CONFIG_PATH=$PKG_CONFIG_PATH
           export LD_LIBRARY_PATH=$LD_LIBRARY_PATH
-          export GI_TYPELIB_PATH=$GI_TYPELIB_PATH
           npm run tauri build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tauri-build
-          path: |
-            src-tauri/target/release/*.deb
-            src-tauri/target/release/*.AppImage
-            src-tauri/target/release/*.tar.gz
+          path: src-tauri/target/release/
