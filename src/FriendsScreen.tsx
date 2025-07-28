@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, ChangeEvent, MouseEvent } from "react";
 import { useAppContext } from "./AppContext";
 import FriendRequestsModal from "./FriendRequestsModal";
 import { nativeApiService } from "./nativeApiService";
@@ -202,9 +202,9 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
   };
 
   // Filter search results to exclude current user and existing friends
-  const filteredSearchResults = searchResults.filter(result => 
+  const filteredSearchResults = searchResults.filter((result: UserSearchResult) => 
     result.user_id !== user?.userId && 
-    !friends.some(friend => friend.user_id === result.user_id)
+    !friends.some((friend: Friend) => friend.user_id === result.user_id)
   );
 
   if (showAddFriend) {
@@ -253,7 +253,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => {
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
                 setSearchQuery(e.target.value);
                 searchUsers(e.target.value);
               }}
@@ -305,7 +305,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {filteredSearchResults.map((result) => (
+              {filteredSearchResults.map((result: UserSearchResult) => (
                 <div
                   key={result.user_id}
                   style={{
@@ -541,7 +541,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
             </button>
           </div>
         ) : (
-          friends.map((friend) => (
+          friends.map((friend: Friend) => (
             <div
               key={friend.user_id}
               style={{
@@ -600,10 +600,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
                     fontSize: "16px",
                     transition: "all 0.2s ease"
                   }}
-                  onMouseEnter={(e) => {
+                  onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => {
                     e.currentTarget.style.backgroundColor = "#106ebe";
                   }}
-                  onMouseLeave={(e) => {
+                  onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => {
                     e.currentTarget.style.backgroundColor = "#0078d4";
                   }}
                   title="Start chat"
@@ -629,10 +629,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
                     fontSize: "16px",
                     transition: "all 0.2s ease"
                   }}
-                  onMouseEnter={(e) => {
+                  onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => {
                     e.currentTarget.style.backgroundColor = "#b91c1c";
                   }}
-                  onMouseLeave={(e) => {
+                  onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => {
                     e.currentTarget.style.backgroundColor = "#dc2626";
                   }}
                   title="Remove friend"
@@ -650,8 +650,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
         isOpen={showRequestsModal}
         onClose={() => setShowRequestsModal(false)}
         requests={pendingRequests}
-        onAccept={(requestId) => handleFriendRequest(requestId, "accepted")}
-        onDecline={(requestId) => handleFriendRequest(requestId, "rejected")}
+        onAccept={(requestId: string) => handleFriendRequest(requestId, "accepted")}
+        onDecline={(requestId: string) => handleFriendRequest(requestId, "rejected")}
         isLoading={isLoading}
       />
     </div>
