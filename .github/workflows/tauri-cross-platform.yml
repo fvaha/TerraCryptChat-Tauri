@@ -27,8 +27,8 @@ jobs:
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt update
-          sudo apt install -y \
+          sudo apt-get update
+          sudo apt-get install -y \
             libwebkit2gtk-4.0-dev \
             libgtk-3-dev \
             libglib2.0-dev \
@@ -41,30 +41,62 @@ jobs:
             file \
             build-essential \
             libayatana-appindicator3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            libglib2.0-dev-bin \
+            libcairo2-dev \
+            libpango1.0-dev
 
-          # Ensure PKG_CONFIG_PATH and LD_LIBRARY_PATH are set globally
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+          # Find and verify glib-2.0.pc location
+          echo "glib-2.0.pc locations:"
+          sudo find /usr -name "glib-2.0.pc" 2>/dev/null || true
+
+          # Set comprehensive pkg-config paths
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/lib" >> $GITHUB_ENV
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install pkg-config cairo gtk+3 webkit2gtk || true
+          brew install pkg-config cairo gtk+3 webkit2gtk librsvg || true
+          brew link --overwrite gtk+3
+
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y visualstudio2022-workload-vctools
+          refreshenv
+
+      - name: Verify pkg-config setup (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+          pkg-config --list-all | grep glib || true
+          pkg-config --modversion glib-2.0 || true
+          pkg-config --cflags --libs glib-2.0 || true
 
       - name: Install npm dependencies
         run: npm install
 
-      - name: Tauri Build and Release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app
+        run: npm run tauri build
+        env:
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu:/usr/local/lib
+
+      - name: Create release and upload artifacts
+        uses: softprops/action-gh-release@v1
+        if: success()
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "TerraCrypt Chat ${{ github.ref_name }}"
+          body: "Auto-generated release for TerraCrypt Chat"
+          draft: false
+          prerelease: false
+          files: |
+            src-tauri/target/release/*.deb
+            src-tauri/target/release/*.app.tar.gz
+            src-tauri/target/release/*.msi
+            src-tauri/target/release/*.appimage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
-          LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu
-        with:
-          releaseId: ${{ github.event.release.id }}
-          tagName: ${{ github.ref_name }}
-          releaseName: "TerraCrypt Chat ${{ github.ref_name }}"
-          releaseDraft: false
-          prerelease: false
