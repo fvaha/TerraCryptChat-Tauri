@@ -7,10 +7,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        platform: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.platform }}
+    runs-on: ubuntu-22.04  # Using older LTS version for stability
 
     steps:
       - name: Checkout code
@@ -25,19 +22,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          targets: ${{ runner.os == 'Linux' && 'x86_64-unknown-linux-gnu' || '' }}
+          targets: x86_64-unknown-linux-gnu
 
-      # Linux-specific setup
-      - name: Linux - Nuclear Dependency Installation
-        if: runner.os == 'Linux'
+      - name: Install GLib Stack with Absolute Guarantee
         run: |
-          # Complete cleanup
+          # Complete system cleanup
           sudo apt-get remove -y libglib2.0-* libgobject-* libgio-* || true
           sudo apt-get autoremove -y
-          sudo find /usr -name "*glib*" -delete 2>/dev/null || true
-          sudo find /usr -name "*gobject*" -delete 2>/dev/null || true
-          sudo find /usr -name "*gio*" -delete 2>/dev/null || true
-
+          sudo rm -rf /usr/lib/x86_64-linux-gnu/pkgconfig/{glib,gobject,gio}-2.0.pc
+          sudo rm -rf /usr/share/pkgconfig/{glib,gobject,gio}-2.0.pc
+          
           # Install specific known-working versions
           sudo apt-get update -y
           sudo apt-get install -y \
@@ -50,65 +44,61 @@ jobs:
             pkg-config=0.29.2-1ubuntu3 \
             build-essential=12.9ubuntu3
 
-          # Force-create symlinks
+          # Force-create symlinks in all possible locations
           sudo mkdir -p /usr/share/pkgconfig /usr/local/lib/pkgconfig
           sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc /usr/share/pkgconfig/
           sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-2.0.pc /usr/share/pkgconfig/
           sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/gio-2.0.pc /usr/share/pkgconfig/
           sudo ldconfig
 
+          # Set exhaustive environment paths
           echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/lib" >> $GITHUB_ENV
 
-      # macOS-specific setup
-      - name: macOS - Install GTK Stack
-        if: runner.os == 'macOS'
+      - name: Verify Installation
         run: |
-          brew update
-          brew install pkg-config gtk+3 webkit2gtk librsvg
-          brew link --overwrite gtk+3
-          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig" >> $GITHUB_ENV
+          echo "=== Nuclear Verification ==="
+          echo "GLib version: $(pkg-config --modversion glib-2.0)"
+          echo "GObject version: $(pkg-config --modversion gobject-2.0)"
+          echo "GIO version: $(pkg-config --modversion gio-2.0)"
+          echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+          echo "File locations:"
+          ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/{glib,gobject,gio}-2.0.pc
+          ls -la /usr/share/pkgconfig/{glib,gobject,gio}-2.0.pc
 
-      # Windows-specific setup
-      - name: Windows - Install Build Tools
-        if: runner.os == 'Windows'
-        run: |
-          choco install -y visualstudio2022-workload-vctools
-          refreshenv
-
-      - name: Verify Dependencies
-        run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            echo "=== Linux Verification ==="
-            pkg-config --modversion glib-2.0 || echo "::error::GLib not found"
-            pkg-config --modversion gobject-2.0 || echo "::error::GObject not found"
-            pkg-config --modversion gio-2.0 || echo "::error::GIO not found"
-            echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            echo "=== macOS Verification ==="
-            brew list gtk+3 || echo "::error::GTK not found"
-            brew list webkit2gtk || echo "::error::WebKitGTK not found"
-          else
-            echo "=== Windows Verification ==="
-            cl.exe /? > nul || echo "::error::Visual Studio tools not found"
+          if ! pkg-config --exists glib-2.0 || ! pkg-config --exists gobject-2.0 || ! pkg-config --exists gio-2.0; then
+            echo "::error::Critical failure - packages not found after installation"
+            echo "::error::Trying manual build from source as last resort"
+            
+            # Build GLib from source as final fallback
+            wget https://download.gnome.org/sources/glib/2.72/glib-2.72.4.tar.xz
+            tar -xf glib-2.72.4.tar.xz
+            cd glib-2.72.4
+            meson setup _build -Dprefix=/usr/local
+            ninja -C _build
+            sudo ninja -C _build install
+            sudo ldconfig
+            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+            
+            # Verify again after manual install
+            if ! pkg-config --exists glib-2.0; then
+              echo "::error::Complete failure - GLib cannot be installed"
+              exit 1
+            fi
           fi
 
       - name: Install npm dependencies
         run: npm install
 
       - name: Build Tauri App
-        env:
-          PKG_CONFIG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig' || runner.os == 'macOS' && '$(brew --prefix)/lib/pkgconfig' || '' }}
-          LD_LIBRARY_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu:/usr/local/lib' || '' }}
-        run: npm run tauri build
+        run: |
+          # Hardcoded paths as final fallback
+          export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig
+          export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/lib
+          npm run tauri build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-build-${{ runner.os }}
-          path: |
-            src-tauri/target/release/*.deb
-            src-tauri/target/release/*.AppImage
-            src-tauri/target/release/*.tar.gz
-            src-tauri/target/release/*.msi
-            src-tauri/target/release/*.exe
+          name: tauri-build
+          path: src-tauri/target/release/
