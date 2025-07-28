@@ -24,7 +24,6 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # Linux-specific dependencies
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -43,13 +42,15 @@ jobs:
             build-essential \
             libayatana-appindicator3-dev \
             librsvg2-dev
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
 
-      # macOS-specific setup for notarization (no signing since user opted out)
-      - name: Install macOS system dependencies
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+
+      - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install pkg-config cairo gtk+3 webkit2gtk
+          brew update
+          brew install pkg-config cairo gtk+3 webkit2gtk || true
 
       - name: Install npm dependencies
         run: npm install
