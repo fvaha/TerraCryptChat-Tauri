@@ -1,18 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect } from 'react';
 import { useAppContext } from "./AppContext";
 import { sendFriendRequest, getFriendRequests } from "./chatRequestService";
 import { FriendEntity } from "./models";
 import { databaseService } from "./databaseService";
 import { nativeApiService } from "./nativeApiService";
-
-type User = {
-  user_id: string;
-  name: string;
-  username: string;
-  email: string;
-  picture?: string;
-  verified: boolean;
-};
 
 type Props = {
   token: string;

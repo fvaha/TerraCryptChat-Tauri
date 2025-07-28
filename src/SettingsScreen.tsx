@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useAppContext } from "./AppContext";
+import React from 'react';
+import { useAppContext } from './AppContext';
 
 interface SettingsScreenProps {
   onBack: () => void;
@@ -8,7 +8,7 @@ interface SettingsScreenProps {
   onCategoryChange: (category: string) => void;
 }
 
-const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, isCollapsed, onToggleCollapse, onCategoryChange }) => {
+const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCollapse, onCategoryChange }) => {
   const { user } = useAppContext();
 
   const getUserInitials = (name: string) => {
@@ -51,18 +51,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, isCollapsed, on
         }}>
           <button
             onClick={onToggleCollapse}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#9ca3af",
-              cursor: "pointer",
-              padding: "4px",
-              borderRadius: "4px",
-              fontSize: "16px",
-              transition: "all 0.3s ease-in-out",
-              transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
-              opacity: isCollapsed ? 1 : 0
-            }}
+            className={`toggle-button ${isCollapsed ? 'slide-in' : 'slide-out'}`}
             title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             ☰

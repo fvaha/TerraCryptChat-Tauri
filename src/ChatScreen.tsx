@@ -11,24 +11,6 @@ interface ChatScreenProps {
   chatId: string;
 }
 
-interface ChatMember {
-  user: {
-    user_id: string;
-    username: string;
-    name: string;
-    email: string;
-    picture?: string;
-  };
-  is_admin: boolean;
-  joined_at: string;
-}
-
-interface ChatMemberResponse {
-  data: ChatMember[];
-  limit: number;
-  offset: number;
-}
-
 const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
   const { token, user } = useAppContext();
   const [messages, setMessages] = useState<MessageEntity[]>([]);

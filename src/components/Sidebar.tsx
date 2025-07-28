@@ -25,21 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isCollapsed, 
       {/* Toggle Button - Always visible at top */}
       <button
         onClick={onToggleCollapse}
-        style={{
-          width: '32px',
-          height: '32px',
-          borderRadius: '8px',
-          border: 'none',
-          backgroundColor: 'transparent',
-          color: '#9ca3af',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '16px',
-          transition: 'all 0.2s ease',
-          marginBottom: '16px'
-        }}
+        className="toggle-button"
         title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
         ☰

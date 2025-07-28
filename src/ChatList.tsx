@@ -508,18 +508,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
           }}>
             <button
               onClick={onToggleCollapse}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#9ca3af",
-                cursor: "pointer",
-                padding: "4px",
-                borderRadius: "4px",
-                fontSize: "16px",
-                transition: "all 0.3s ease-in-out",
-                transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
-                opacity: isCollapsed ? 1 : 0
-              }}
+              className={`toggle-button ${isCollapsed ? 'slide-in' : 'slide-out'}`}
               title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               ☰

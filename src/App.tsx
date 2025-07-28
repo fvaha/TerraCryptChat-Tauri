@@ -8,25 +8,56 @@ import SettingsScreen from './SettingsScreen';
 import ErrorBoundary from './ErrorBoundary';
 import Sidebar from './components/Sidebar';
 import MenuBar from './components/MenuBar';
-import ScreenToggleButton from './components/ScreenToggleButton';
 import './App.css';
 import { ThemeProvider } from './ThemeContext';
 import SettingsContent from './components/SettingsContent';
+import { nativeApiService } from './nativeApiService';
 
 const ChatApp: React.FC = () => {
   const { user, token, isLoading, error } = useAppContext();
   const [activeTab, setActiveTab] = useState<'chats' | 'friends' | 'settings'>('chats');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [chats, setChats] = useState<any[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedSettingsCategory, setSelectedSettingsCategory] = useState<string>('general');
   const [zoomLevel, setZoomLevel] = useState(1);
+
+  // Load chats when component mounts
+  useEffect(() => {
+    loadChats();
+  }, []);
+
+  const loadChats = async () => {
+    try {
+      const chatsData = await nativeApiService.getChats();
+      console.log('Loaded chats:', chatsData);
+      // Handle different response formats
+      if (chatsData) {
+        const chatsArray = Array.isArray(chatsData) ? chatsData : 
+                          (chatsData as any).data ? (chatsData as any).data : [];
+        setChats(chatsArray);
+      }
+    } catch (error) {
+      console.error('Failed to load chats:', error);
+    }
+  };
+
+  // Function to find chat with a specific friend
+  const findChatWithFriend = (friendId: string) => {
+    // Look for a direct chat (non-group) that includes this friend
+    // This is a simplified version - in a real implementation, you'd need to check participants
+    const directChat = chats.find(chat => 
+      !chat.is_group && 
+      (chat.creator_id === friendId || chat.participants?.includes(friendId))
+    );
+    return directChat?.chat_id || null;
+  };
 
   // Update zoom level in CSS custom property
   useEffect(() => {
     document.documentElement.style.setProperty('--app-zoom', zoomLevel.toString());
   }, [zoomLevel]);
 
-  // Pass zoom level to SettingsContent
   const handleZoomChange = (newZoom: number) => {
     setZoomLevel(newZoom);
   };
@@ -174,7 +205,17 @@ const ChatApp: React.FC = () => {
                   onBack={() => setActiveTab('chats')}
                   onOpenChat={(friendId: string, friendName: string) => {
                     console.log("Open chat with friend:", friendId, friendName);
-                    // TODO: Implement chat creation with friend
+                    // Find existing chat with this friend or create new one
+                    const existingChatId = findChatWithFriend(friendId);
+                    if (existingChatId) {
+                      setSelectedChatId(existingChatId);
+                    } else {
+                      // TODO: Implement proper chat creation logic
+                      console.log("Creating new chat for friend:", friendId);
+                      // For now, we'll just set the selected chat ID to trigger chat screen
+                      // This will be the chat ID once we implement proper logic
+                      setSelectedChatId(friendId); // This will be the chat ID once we implement proper logic
+                    }
                   }}
                   isCollapsed={sidebarCollapsed}
                   onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -188,16 +229,20 @@ const ChatApp: React.FC = () => {
                 overflow: 'hidden',
                 position: 'relative'
               }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: '100%',
-                  color: '#ffffff',
-                  fontSize: '16px'
-                }}>
-                  Select a friend to start messaging
-                </div>
+                {selectedChatId ? (
+                  <ChatScreen chatId={selectedChatId} />
+                ) : (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    color: '#ffffff',
+                    fontSize: '16px'
+                  }}>
+                    Select a friend to start messaging
+                  </div>
+                )}
               </div>
             </>
           ) : (

@@ -38,15 +38,55 @@
   border: none;
   color: #9ca3af;
   cursor: pointer;
-  padding: 8px;
+  padding: 4px;
   border-radius: 4px;
   font-size: 16px;
   transition: all 0.2s ease;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .hamburger-button:hover {
   background-color: #404040;
   color: #ffffff;
+}
+
+.toggle-button {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 16px;
+  transition: all 0.15s ease-in-out;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toggle-button:hover {
+  background-color: #404040;
+  color: #ffffff;
+}
+
+.toggle-button:active {
+  background-color: #000000;
+  color: #ffffff;
+  transform: scale(0.95);
+}
+
+.toggle-button.slide-out {
+  opacity: 0;
+}
+
+.toggle-button.slide-in {
+  opacity: 1;
 }
 
 .main-content {

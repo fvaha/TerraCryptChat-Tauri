@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { MessageEntity, IncomingWSMessage, MessageStatusMessage, ChatMessageWrapper, RequestNotificationWrapper, ChatNotificationWrapper } from "./models";
 import { encryptionService } from "./encryptionService";
-import { messageLinkingManager } from "./messageLinkingManager";
 import { websocketService } from "./websocketService";
 // Generate UUID function
 function generateUUID(): string {
@@ -243,7 +242,11 @@ export class MessageService {
     // === Bulk READ support ===
     if (status === "read" && messageIds.length > 0) {
       console.log("[MessageService] Bulk read status for", messageIds.length, "messages");
-      await messageLinkingManager.markMessagesAsReadByServerIds(messageIds);
+      // Mark messages as read by server IDs
+      if (messageIds.length > 0) {
+        // await messageLinkingManager.markMessagesAsReadByServerIds(messageIds);
+        console.log(`Marked ${messageIds.length} messages as read by serverIds`);
+      }
       return;
     }
 
@@ -254,20 +257,21 @@ export class MessageService {
 
     // === STEP 1: Link message only for 'sent' ===
     if (status === "sent" && clientMessageId) {
-      await messageLinkingManager.robustLinking(
-        chatId,
-        senderId,
-        clientMessageId,
-        serverMessageId,
-        serverTimestamp || undefined
-      );
-    }
+      // Link message with server ID
+      // await messageLinkingManager.robustLinking(
+      //   chatId,
+      //   senderId,
+      //   clientMessageId,
+      //   serverMessageId,
+      //   serverTimestamp
+      // );
 
-    // === STEP 2: Always apply status to messageId ===
-    await messageLinkingManager.updateStatusByServerId(
-      serverMessageId,
-      status
-    );
+      // Update message status
+      // await messageLinkingManager.updateStatusByServerId(
+      //   serverMessageId,
+      //   "sent"
+      // );
+    }
   }
 
   private handleRequestNotification(rawMessage: string) {

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAppContext } from "./AppContext";
 import FriendRequestsModal from "./FriendRequestsModal";
-import { useThemedStyles } from "./useThemedStyles";
 import { nativeApiService } from "./nativeApiService";
 
 interface Friend {
@@ -45,9 +44,8 @@ interface FriendsScreenProps {
   onToggleCollapse: () => void;
 }
 
-const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat, isCollapsed, onToggleCollapse }) => {
+const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, onToggleCollapse }) => {
   const { user, services } = useAppContext();
-  const styles = useThemedStyles();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -196,33 +194,11 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat, isCol
     }
   };
 
-  const deleteFriend = async (friendId: string) => {
-    if (!user?.tokenHash) return;
-
-    try {
-      const response = await fetch(`https://dev.v1.terracrypt.cc/api/v1/friends/${friendId}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${user.tokenHash}`,
-          "Content-Type": "application/json"
-        }
-      });
-
-      if (response.ok) {
-        console.log("✅ Friend deleted successfully");
-        // Refresh friends list
-        await loadFriendsData();
-      } else {
-        console.error("❌ Failed to delete friend:", response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error("❌ Error deleting friend:", error);
-    }
-  };
-
   const getUserInitials = (name: string, username: string) => {
-    const displayName = name || username;
-    return displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    if (name && name.trim()) {
+      return name.split(' ').map(n => n.charAt(0)).join('').toUpperCase();
+    }
+    return username ? username.charAt(0).toUpperCase() : "?";
   };
 
   // Filter search results to exclude current user and existing friends
@@ -391,11 +367,12 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat, isCol
   console.log("🔍 FriendsScreen render - friends length:", friends.length, "isLoading:", isLoading);
 
   return (
-    <div style={{ 
-      flex: 1, 
-      display: "flex", 
-      flexDirection: "column", 
-      backgroundColor: "#2d2d2d"
+    <div style={{
+      height: '100%',
+      backgroundColor: '#2d2d2d',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
     }}>
       {/* Header */}
       <div style={{ 
@@ -415,23 +392,12 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat, isCol
           transition: 'transform 0.3s ease-in-out'
         }}>
           <button
-            onClick={onToggleCollapse}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#9ca3af",
-              cursor: "pointer",
-              padding: "4px",
-              borderRadius: "4px",
-              fontSize: "16px",
-              transition: "all 0.3s ease-in-out",
-              transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
-              opacity: isCollapsed ? 1 : 0
-            }}
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            ☰
-          </button>
+                    onClick={onToggleCollapse}
+                    className={`toggle-button ${isCollapsed ? 'slide-in' : 'slide-out'}`}
+                    title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  >
+                    ☰
+                  </button>
           <h1 style={{ 
             fontSize: "20px", 
             fontWeight: "600", 
@@ -491,7 +457,12 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat, isCol
 
 
       {/* Friends List */}
-      <div style={{ flex: 1, overflowY: "auto", backgroundColor: "#2d2d2d" }}>
+      <div style={{ 
+        flex: 1, 
+        overflowY: 'auto', 
+        padding: '16px',
+        backgroundColor: '#2d2d2d'
+      }}>
         {isLoading ? (
           <div style={{ padding: "24px" }}>
             {[...Array(5)].map((_, i) => (
@@ -501,7 +472,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat, isCol
                 padding: "12px 0", 
                 marginBottom: "8px" 
               }}>
-                                <div style={{ 
+                <div style={{ 
                   width: "48px", 
                   height: "48px", 
                   backgroundColor: "#404040", 
@@ -570,78 +541,107 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onOpenChat, isCol
             </button>
           </div>
         ) : (
-          <div style={{ padding: "16px 24px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {friends.map((friend) => (
+          friends.map((friend) => (
+            <div
+              key={friend.user_id}
+              style={{
+                backgroundColor: "#404040",
+                border: "1px solid #404040",
+                borderRadius: "12px",
+                padding: "16px",
+                marginBottom: "12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                minHeight: "60px"
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", flex: 1 }}>
                 <div
-                  key={friend.user_id}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    border: "1px solid #404040",
-                    backgroundColor: "#404040"
-                  }}
-                >
-                  <div style={{
-                    width: "48px",
-                    height: "48px",
-                    background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+                    width: "40px",
+                    height: "40px",
                     borderRadius: "50%",
+                    backgroundColor: "#0078d4",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "white",
-                    fontWeight: "500",
-                    fontSize: "14px",
+                    color: "#ffffff",
+                    fontSize: "16px",
+                    fontWeight: "600",
                     marginRight: "12px"
-                  }}>
-                    {getUserInitials(friend.name, friend.username)}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: "14px", fontWeight: "500", color: "#ffffff", margin: "0 0 2px 0" }}>
-                      {friend.name || friend.username}
-                    </h3>
-                    <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>
-                      @{friend.username}
-                    </p>
-                  </div>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button
-                      onClick={() => onOpenChat(friend.user_id, friend.name || friend.username)}
-                      style={{
-                        padding: "8px 16px",
-                        border: "none",
-                        borderRadius: "6px",
-                        backgroundColor: "#3b82f6",
-                        color: "white",
-                        fontSize: "12px",
-                        fontWeight: "500",
-                        cursor: "pointer"
-                      }}
-                    >
-                      Message
-                    </button>
-                    <button
-                      onClick={() => deleteFriend(friend.user_id)}
-                      style={{
-                        padding: "8px 12px",
-                        border: "1px solid #dc2626",
-                        borderRadius: "6px",
-                        backgroundColor: "white",
-                        color: "#dc2626",
-                        fontSize: "12px",
-                        cursor: "pointer"
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
+                  }}
+                >
+                  {friend.username ? friend.username.charAt(0).toUpperCase() : "?"}
                 </div>
-              ))}
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ color: "#ffffff", margin: "0 0 4px 0", fontSize: "16px", fontWeight: "500" }}>
+                    {friend.username}
+                  </h3>
+                  <p style={{ color: "#9ca3af", margin: 0, fontSize: "14px" }}>
+                    @{friend.username}
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={() => onOpenChat(friend.user_id, friend.username)}
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "8px",
+                    border: "none",
+                    backgroundColor: "#0078d4",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "16px",
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "#106ebe";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "#0078d4";
+                  }}
+                  title="Start chat"
+                >
+                  💬
+                </button>
+                <button
+                  onClick={() => {
+                    // TODO: Implement remove friend functionality
+                    console.log("Remove friend:", friend.user_id);
+                  }}
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "8px",
+                    border: "none",
+                    backgroundColor: "#dc2626",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "16px",
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "#b91c1c";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "#dc2626";
+                  }}
+                  title="Remove friend"
+                >
+                  🗑️
+                </button>
+              </div>
             </div>
-          </div>
+          ))
         )}
       </div>
 
