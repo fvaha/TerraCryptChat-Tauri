@@ -43,7 +43,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-          # Ensure PKG_CONFIG_PATH and LD_LIBRARY_PATH are set
+          # Ensure PKG_CONFIG_PATH and LD_LIBRARY_PATH are set globally
           echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
