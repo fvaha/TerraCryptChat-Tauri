@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # Using older LTS version for stability
+    runs-on: ubuntu-22.04  # Using older LTS for stability
 
     steps:
       - name: Checkout code
@@ -24,14 +24,15 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu
 
-      - name: Install GLib Stack with Absolute Guarantee
+      - name: Nuclear GLib/GObject Installation
         run: |
-          # Complete system cleanup
+          # Complete system purge
           sudo apt-get remove -y libglib2.0-* libgobject-* libgio-* || true
           sudo apt-get autoremove -y
-          sudo rm -rf /usr/lib/x86_64-linux-gnu/pkgconfig/{glib,gobject,gio}-2.0.pc
-          sudo rm -rf /usr/share/pkgconfig/{glib,gobject,gio}-2.0.pc
-          
+          sudo find /usr -name "*glib*" -delete 2>/dev/null || true
+          sudo find /usr -name "*gobject*" -delete 2>/dev/null || true
+          sudo find /usr -name "*gio*" -delete 2>/dev/null || true
+
           # Install specific known-working versions
           sudo apt-get update -y
           sudo apt-get install -y \
@@ -55,36 +56,37 @@ jobs:
           echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/lib" >> $GITHUB_ENV
 
+      - name: Build GLib from Source (Fallback)
+        if: ${{ failure() }}
+        run: |
+          # Install build dependencies
+          sudo apt-get install -y meson ninja-build gettext libffi-dev libmount-dev libselinux1-dev
+          
+          # Build and install GLib
+          wget https://download.gnome.org/sources/glib/2.72/glib-2.72.4.tar.xz
+          tar -xf glib-2.72.4.tar.xz
+          cd glib-2.72.4
+          meson setup _build -Dprefix=/usr/local -Dselinux=disabled
+          ninja -C _build
+          sudo ninja -C _build install
+          sudo ldconfig
+          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+
       - name: Verify Installation
         run: |
-          echo "=== Nuclear Verification ==="
-          echo "GLib version: $(pkg-config --modversion glib-2.0)"
-          echo "GObject version: $(pkg-config --modversion gobject-2.0)"
-          echo "GIO version: $(pkg-config --modversion gio-2.0)"
+          echo "=== System Verification ==="
+          echo "GLib version: $(pkg-config --modversion glib-2.0 || echo 'NOT FOUND')"
+          echo "GObject version: $(pkg-config --modversion gobject-2.0 || echo 'NOT FOUND')"
+          echo "GIO version: $(pkg-config --modversion gio-2.0 || echo 'NOT FOUND')"
           echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
           echo "File locations:"
-          ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/{glib,gobject,gio}-2.0.pc
-          ls -la /usr/share/pkgconfig/{glib,gobject,gio}-2.0.pc
+          sudo find /usr -name "glib-2.0.pc" 2>/dev/null || echo "Not found"
+          sudo find /usr -name "gobject-2.0.pc" 2>/dev/null || echo "Not found"
+          sudo find /usr -name "gio-2.0.pc" 2>/dev/null || echo "Not found"
 
           if ! pkg-config --exists glib-2.0 || ! pkg-config --exists gobject-2.0 || ! pkg-config --exists gio-2.0; then
             echo "::error::Critical failure - packages not found after installation"
-            echo "::error::Trying manual build from source as last resort"
-            
-            # Build GLib from source as final fallback
-            wget https://download.gnome.org/sources/glib/2.72/glib-2.72.4.tar.xz
-            tar -xf glib-2.72.4.tar.xz
-            cd glib-2.72.4
-            meson setup _build -Dprefix=/usr/local
-            ninja -C _build
-            sudo ninja -C _build install
-            sudo ldconfig
-            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-            
-            # Verify again after manual install
-            if ! pkg-config --exists glib-2.0; then
-              echo "::error::Complete failure - GLib cannot be installed"
-              exit 1
-            fi
+            exit 1
           fi
 
       - name: Install npm dependencies
