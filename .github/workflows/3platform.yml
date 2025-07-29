@@ -1,10 +1,10 @@
-name: Tauri Cross-Platform Build3
+name: Tauri Cross-Platform 4
 
 on:
   push:
     tags:
       - "v*.*.*"
-  workflow_dispatch:   # <-- manual trigger support
+  workflow_dispatch:
 
 jobs:
   build:
@@ -57,7 +57,18 @@ jobs:
       - name: Install Windows dependencies
         if: matrix.os == 'windows-latest'
         run: |
-          choco install -y nodejs python --version=3.11.5
+          # Install Chocolatey if not present
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          
+          # Refresh PATH
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          
+          # Install dependencies with specific versions
+          choco install -y nodejs-lts --version=18.17.1
+          choco install -y python --version=3.10.11
+          choco install -y vcredist2015
 
       - name: Prepare macOS environment
         if: matrix.os == 'macos-latest'
