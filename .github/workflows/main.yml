@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build
+name: Tauri Cross-Platform Build 67
 
 on:
   push:
@@ -52,8 +52,7 @@ jobs:
             libwebkit2gtk-4.0-dev \
             build-essential \
             libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            libsoup2.4-dev
+            libayatana-appindicator3-dev
 
       - name: Install Windows dependencies
         if: matrix.os == 'windows-latest'
@@ -67,18 +66,13 @@ jobs:
         run: |
           brew update || true
           brew upgrade || true
-          brew install cmake pkg-config gtk+3 webkitgtk libsoup || true
-          brew install libayatana-appindicator || true
-          brew link --overwrite libayatana-appindicator || true
+          brew install cmake pkg-config gtk+3 libsoup || true
 
       - name: Install npm dependencies
         run: npm install
 
-      - name: Install Tauri CLI (local)
-        run: npm install @tauri-apps/cli
-
       - name: Build Tauri app
-        run: npx tauri build
+        run: npm run tauri build
 
       - name: Verify build outputs
         run: |
@@ -112,8 +106,8 @@ jobs:
           files: |
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/**/*.msi
-            src-tauri/target/release/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.pkg
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/osx/*.pkg
           draft: false
           prerelease: false
