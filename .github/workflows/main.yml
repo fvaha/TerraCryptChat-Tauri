@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build
+name: Tauri Cross-Platform 5
 
 on:
   push:
