@@ -57,21 +57,25 @@ jobs:
 
       - name: Install Windows dependencies
         if: matrix.os == 'windows-latest'
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.10
+        run: |
+          choco install -y nodejs-lts --version=18.17.1
+          choco install -y python --version=3.10.11
+          choco install -y vcredist2015
 
-      - name: Setup macOS dependencies
+      - name: Setup macOS environment
         if: matrix.os == 'macos-latest'
         run: |
-          brew update
-          brew install cmake pkg-config gtk+3 libsoup || true
-
-      - name: Install Tauri CLI
-        run: npm install @tauri-apps/cli
+          brew update || true
+          brew upgrade || true
+          brew install cmake pkg-config gtk+3 webkitgtk libsoup || true
+          brew install libayatana-appindicator || true
+          brew link --overwrite libayatana-appindicator || true
 
       - name: Install npm dependencies
         run: npm install
+
+      - name: Install Tauri CLI (local)
+        run: npm install @tauri-apps/cli
 
       - name: Build Tauri app
         run: npx tauri build
@@ -79,7 +83,11 @@ jobs:
       - name: Verify build outputs
         run: |
           echo "Build artifacts:"
-          find src-tauri/target/release/bundle -type f || true
+          ls -la src-tauri/target/release/
+          ls -la src-tauri/target/release/bundle/ || true
+          ls -la src-tauri/target/release/bundle/msi/ || true
+          ls -la src-tauri/target/release/bundle/dmg/ || true
+          ls -la src-tauri/target/release/bundle/osx/ || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -88,9 +96,9 @@ jobs:
           path: |
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/**/*.msi
-            src-tauri/target/release/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.pkg
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/osx/*.pkg
 
       - name: Create Release
         if: success() && startsWith(github.ref, 'refs/tags/')
