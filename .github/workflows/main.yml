@@ -61,30 +61,24 @@ jobs:
           choco install -y python --version=3.10.11
           choco install -y vcredist2015
 
-      - name: Prepare macOS environment
+      - name: Setup macOS environment
         if: matrix.os == 'macos-latest'
         run: |
-          # Clean up Homebrew state
+          # Clean Homebrew state and update
           brew untap homebrew/core || true
           brew untap homebrew/cask || true
           brew update-reset || true
           brew update
           brew upgrade
 
-      - name: Install macOS dependencies
-        if: matrix.os == 'macos-latest'
-        run: |
-          # Install only essential build tools
+          # Install only absolutely required dependencies
           brew install cmake pkg-config
-          
-          # Install minimal required dependencies
-          # Note: WebKit is already available on macOS
           brew install gtk+3 libsoup
           
           # Attempt to install system tray support (optional)
-          brew install libayatana-appindicator || \
-            brew install ayatana-indicator-ayatana || \
+          if ! brew install libayatana-appindicator; then
             echo "System tray support might be limited"
+          fi
 
       - name: Install npm dependencies
         run: npm install
@@ -92,16 +86,16 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri build
 
-      - name: Find built artifacts
+      - name: Verify build outputs
         run: |
-          echo "Build outputs:"
+          echo "Build artifacts:"
           ls -la src-tauri/target/release/
           ls -la src-tauri/target/release/bundle/ || true
           ls -la src-tauri/target/release/bundle/msi/ || true
           ls -la src-tauri/target/release/bundle/dmg/ || true
           ls -la src-tauri/target/release/bundle/osx/ || true
 
-      - name: Upload build artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tauri-${{ matrix.os }}-build
@@ -112,7 +106,7 @@ jobs:
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/osx/*.pkg
 
-      - name: Create GitHub Release
+      - name: Create Release
         if: success() && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
