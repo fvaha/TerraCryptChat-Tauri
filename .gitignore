@@ -7,11 +7,19 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependency directories
 node_modules
+
+# Build outputs
 dist
 dist-ssr
+
+# Local config
 *.local
-.cursor
+
+# Cursor dev environment
+.cursor/
+.cursor/rules
 
 # Editor directories and files
 .vscode/*
@@ -31,8 +39,8 @@ dist-ssr
 chat.db
 src-tauri/chat.db
 
-# App data
+# App data (Windows)
 %APPDATA%/terracrypt-chat/
 
-# Reference folder (Kotlin app for reference)
+# Kotlin reference folder
 chat/

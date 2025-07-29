@@ -3,9 +3,8 @@ import { useAppContext } from './AppContext';
 import { useThemedStyles } from './useThemedStyles';
 import { chatService } from './chatService';
 import { friendService } from './friendService';
-import { participantService, ParticipantService } from './participantService';
+import { ParticipantService } from './participantService';
 import { invoke } from '@tauri-apps/api/core';
-import { nativeApiService } from './nativeApiService';
 
 interface ChatData {
   chat_id: string;
@@ -298,11 +297,11 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
     onSelect(chatId);
   };
 
-  const handleCreateChat = async () => {
-    setShowCreateChat(false);
-    // Reload chats after creation
-    await loadChats();
-  };
+  // const handleCreateChat = async () => {
+  //   setShowCreateChat(false);
+  //   // Reload chats after creation
+  //   await loadChats();
+  // };
 
   // Function to create a chat with a specific friend
   const handleCreateChatWithFriend = async (friend: any) => {

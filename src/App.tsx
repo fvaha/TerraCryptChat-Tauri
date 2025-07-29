@@ -138,10 +138,10 @@ const ChatApp: React.FC = () => {
     setZoomLevel(newZoom);
   };
 
-  const handleCreateChat = async () => {
-    // Reload chats after creation
-    await loadChats();
-  };
+  // const handleCreateChat = async () => {
+  //   // Reload chats after creation
+  //   await loadChats();
+  // };
 
   // Add database fix utility to window object for debugging
   useEffect(() => {

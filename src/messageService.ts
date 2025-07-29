@@ -3,8 +3,7 @@ import { MessageEntity, IncomingWSMessage, MessageStatusMessage, ChatMessageWrap
 import { encryptionService } from "./encryptionService";
 import { websocketService } from "./websocketService";
 import { messageLinkingManager } from "./messageLinkingManager";
-import { sessionManager } from "./sessionManager";
-import { chatService } from "./chatService";
+
 import { databaseService } from "./databaseService";
 
 // Generate UUID function
@@ -639,10 +638,10 @@ export class MessageService {
 
   // MARK: - Utility Methods
 
-  private async resolveSenderUsername(senderId: string): Promise<string> {
-    // This would typically query the database for user information
-    return "Unknown";
-  }
+  // private async resolveSenderUsername(senderId: string): Promise<string> {
+  //   // This would typically query the database for user information
+  //   return "Unknown";
+  // }
 
   private async updateChatLastMessage(chatId: string, content: string, timestamp: number): Promise<void> {
     try {
@@ -699,15 +698,15 @@ export const insertMessage = async (message: MessageEntity) => {
 
 export const updateMessageStatus = async (messageId: string, status: string) => {
   try {
-    const messageStatus = status === "sent" ? MessageSendStatus.SENT :
-                        status === "delivered" ? MessageSendStatus.DELIVERED :
-                        status === "read" ? MessageSendStatus.READ :
-                        MessageSendStatus.FAILED;
+    // const messageStatus = status === "sent" ? MessageSendStatus.SENT :
+    //                     status === "delivered" ? MessageSendStatus.DELIVERED :
+    //                     status === "read" ? MessageSendStatus.READ :
+    //                     MessageSendStatus.FAILED;
     
     // Convert MessageSendStatus to boolean for is_sent
-    const isSent = messageStatus === MessageSendStatus.SENT || 
-                  messageStatus === MessageSendStatus.DELIVERED || 
-                  messageStatus === MessageSendStatus.READ;
+    // const isSent = messageStatus === MessageSendStatus.SENT || 
+    //               messageStatus === MessageSendStatus.DELIVERED || 
+    //               messageStatus === MessageSendStatus.READ;
     
     // For now, we can only update by client message ID, not server message ID
     console.warn(`[MessageService] Cannot update status by server message ID: ${messageId}`);
