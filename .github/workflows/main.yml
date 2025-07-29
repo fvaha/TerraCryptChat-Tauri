@@ -49,51 +49,37 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
+            libwebkit2gtk-4.0-dev \
             build-essential \
             libgtk-3-dev \
-            libayatana-appindicator3-dev
+            libayatana-appindicator3-dev \
+            libsoup2.4-dev
 
       - name: Install Windows dependencies
         if: matrix.os == 'windows-latest'
-        run: |
-          choco install -y nodejs-lts --version=18.17.1
-          choco install -y python --version=3.10.11
-          choco install -y vcredist2015
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.10
 
-      - name: Setup macOS environment
+      - name: Setup macOS dependencies
         if: matrix.os == 'macos-latest'
         run: |
-          # Clean Homebrew state and update
-          brew untap homebrew/core || true
-          brew untap homebrew/cask || true
-          brew update-reset || true
           brew update
-          brew upgrade
+          brew install cmake pkg-config gtk+3 libsoup || true
 
-          # Install only absolutely required dependencies
-          brew install cmake pkg-config
-          brew install gtk+3 libsoup
-          
-          # Attempt to install system tray support (optional)
-          if ! brew install libayatana-appindicator; then
-            echo "System tray support might be limited"
-          fi
+      - name: Install Tauri CLI
+        run: npm install @tauri-apps/cli
 
       - name: Install npm dependencies
         run: npm install
 
       - name: Build Tauri app
-        run: npm run tauri build
+        run: npx tauri build
 
       - name: Verify build outputs
         run: |
           echo "Build artifacts:"
-          ls -la src-tauri/target/release/
-          ls -la src-tauri/target/release/bundle/ || true
-          ls -la src-tauri/target/release/bundle/msi/ || true
-          ls -la src-tauri/target/release/bundle/dmg/ || true
-          ls -la src-tauri/target/release/bundle/osx/ || true
+          find src-tauri/target/release/bundle -type f || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -102,9 +88,9 @@ jobs:
           path: |
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/osx/*.pkg
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.pkg
 
       - name: Create Release
         if: success() && startsWith(github.ref, 'refs/tags/')
@@ -118,8 +104,8 @@ jobs:
           files: |
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/osx/*.pkg
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.pkg
           draft: false
           prerelease: false
