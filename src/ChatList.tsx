@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from './AppContext';
-import { useThemedStyles } from './useThemedStyles';
+
+import { useTheme } from './ThemeContext';
 import { chatService } from './chatService';
 import { friendService } from './friendService';
 import { ParticipantService } from './participantService';
 import { invoke } from '@tauri-apps/api/core';
+import { nativeApiService } from './nativeApiService';
 
 interface ChatData {
   chat_id: string;
@@ -19,34 +21,33 @@ interface ChatData {
   group_name?: string;
   last_message_content?: string;
   last_message_timestamp?: number;
-  participants?: any[];
-  last_message?: any;
+  participants?: Array<{ user_id: string; username: string; role: string }>;
+  last_message?: { content: string; timestamp: number; sender_id: string };
   display_name?: string; // Computed display name
 }
 
-
-
-
-
 interface ChatListProps {
   onSelect: (chatId: string) => void;
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
+  onToggleSidebar: () => void;
+  sidebarCollapsed: boolean;
 }
 
-const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleCollapse }) => {
-  const { user, websocketStatus, services } = useAppContext();
-  const styles = useThemedStyles();
+const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarCollapsed }) => {
+  const { user, services } = useAppContext();
+  
+  // Simple cache for chat names to avoid repeated API calls
+  const chatNameCache = useRef<Map<string, string>>(new Map());
+  const { theme } = useTheme();
   const [chats, setChats] = useState<ChatData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedChatId] = useState<string | null>(null);
-  const [isLoadingChats, setIsLoadingChats] = useState(false); // Prevent multiple simultaneous loads
-  const [hasInitialized, setHasInitialized] = useState(false); // Track if we've completed initial load
-  const [searchQuery, setSearchQuery] = useState(''); // Search query state
-  const [showCreateChat, setShowCreateChat] = useState(false); // Show create chat form
-  const [isLoadingFriends, setIsLoadingFriends] = useState(false); // Loading state for friends
-  const [friends, setFriends] = useState<any[]>([]); // List of friends
+
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [showCreateChat, setShowCreateChat] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [friends, setFriends] = useState<Array<{ user_id: string; username: string; name: string; email: string; picture?: string }>>([]);
+  const [filteredFriends, setFilteredFriends] = useState<Array<{ user_id: string; username: string; name: string; email: string; picture?: string }>>([]);
 
   // Load chats function
   const loadChats = async () => {
@@ -54,7 +55,6 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
     if (!token) {
       setChats([]);
       setIsLoading(false);
-      setHasInitialized(true);
       return;
     }
 
@@ -64,52 +64,19 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
       return;
     }
 
+    setIsLoadingChats(true);
     try {
-      setIsLoadingChats(true);
-      setIsLoading(true);
-      setError(null);
-      console.log("📂 Loading chats with caching...");
+      console.log("🔄 Loading chats...");
+      const chatsData = await nativeApiService.getChats();
+      console.log("✅ Chats loaded:", chatsData);
       
-      // Use ChatService to get cached chats for current user
-      const chatsData = await chatService.getCachedChatsForCurrentUser();
-      console.log("✅ Chats loaded with caching:", chatsData);
-      
-      // Validate chatsData before processing
-      if (!Array.isArray(chatsData)) {
-        console.error("❌ Invalid chats data received:", chatsData);
-        setError("Invalid chat data received from server");
-        setHasInitialized(true);
-        return;
-      }
-      
-      // Save chats to database with error handling (simplified)
+      // Save chats to database for caching
       try {
-        for (const chat of chatsData) {
-          if (!chat || !chat.chat_id) {
-            console.warn("⚠️ Skipping invalid chat:", chat);
-            continue;
+        if (chatsData && Array.isArray(chatsData)) {
+          for (const chat of chatsData) {
+            await invoke('db_insert_or_update_chat', { chat });
           }
-          
-          const chatForDb = {
-            chat_id: chat.chat_id,
-            chat_type: chat.is_group ? "group" : "direct",
-            name: chat.name || null,
-            created_at: Math.floor(chat.created_at || Date.now() / 1000),
-            admin_id: null,
-            unread_count: 0,
-            description: null,
-            group_name: chat.is_group ? chat.name : null,
-            last_message_content: null,
-            last_message_timestamp: null,
-            participants: null,
-            is_group: Boolean(chat.is_group),
-            creator_id: chat.creator_id || null
-          };
-          
-          // Save to database
-          await invoke('db_insert_chat', { chat: chatForDb });
         }
-        console.log(`✅ Saved ${chatsData.length} chats to database`);
       } catch (dbError) {
         console.error("❌ Failed to save chats to database:", dbError);
         // Continue even if database save fails
@@ -127,7 +94,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
               console.log(`🔍 Current user ID:`, user?.userId);
               
               // Resolve chat name using Swift pattern
-              let displayName = await resolveChatName(chat, user?.userId);
+              const displayName = await resolveChatName(chat, user?.userId);
               
               // Convert the native API response to the expected format
               const chatData: ChatData = {
@@ -156,34 +123,14 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
       
       console.log("✅ Processed chats:", validChats);
       setChats(validChats);
-      setHasInitialized(true);
     } catch (error) {
       console.error("❌ Failed to load chats:", error);
       setError("Failed to load chats");
-      setHasInitialized(true);
     } finally {
       setIsLoading(false);
       setIsLoadingChats(false);
     }
   };
-
-  // Load chats when component mounts or token changes
-  useEffect(() => {
-    let timeoutId: number;
-    
-    const loadChatsWithDelay = async () => {
-      await loadChats();
-    };
-    
-    // Add a small delay to ensure session manager is ready
-    timeoutId = setTimeout(loadChatsWithDelay, 100);
-    
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
-  }, [services.sessionManager.getToken()]);
 
   const formatTime = (timestamp: string) => {
     try {
@@ -205,10 +152,20 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
   };
 
   // Swift-style resolveChatName function using ParticipantService
-  const resolveChatName = async (chat: any, currentUserId?: string): Promise<string> => {
+  const resolveChatName = async (chat: ChatData, currentUserId?: string): Promise<string> => {
+    // Check cache first
+    const cacheKey = `${chat.chat_id}_${currentUserId}`;
+    if (chatNameCache.current.has(cacheKey)) {
+      const cachedName = chatNameCache.current.get(cacheKey);
+      console.log(`✅ Using cached chat name for ${chat.chat_id}: ${cachedName}`);
+      return cachedName!;
+    }
+    
     // For group chats, use the group name
     if (chat.is_group) {
-      return chat.name || "Unnamed Group";
+      const groupName = chat.name || "Unnamed Group";
+      chatNameCache.current.set(cacheKey, groupName);
+      return groupName;
     }
     
     // For direct chats, try multiple approaches to get the other participant's username
@@ -230,11 +187,12 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
           
           if (membersResponse && Array.isArray(membersResponse)) {
             const otherParticipant = membersResponse.find(
-              (member: any) => member.user && member.user.user_id !== currentUserId
+              (member: { user: { user_id: string; username: string } }) => member.user && member.user.user_id !== currentUserId
             );
             
             if (otherParticipant && otherParticipant.user && otherParticipant.user.username) {
               console.log(`✅ Found other participant via direct API: ${otherParticipant.user.username}`);
+              chatNameCache.current.set(cacheKey, otherParticipant.user.username);
               return otherParticipant.user.username;
             }
           }
@@ -247,13 +205,16 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
           const participants = await ParticipantService.fetchParticipantsAsync(chat.chat_id);
           console.log(`🔍 Participants from ParticipantService for chat ${chat.chat_id}:`, participants);
           
-          const otherParticipant = participants.find(
-            (participant) => participant.userId !== currentUserId
-          );
-          
-          if (otherParticipant && otherParticipant.username) {
-            console.log(`✅ Found other participant via ParticipantService: ${otherParticipant.username}`);
-            return otherParticipant.username;
+          if (participants && Array.isArray(participants)) {
+            const otherParticipant = participants.find(
+              (participant: { user_id: string; username: string }) => participant.user_id !== currentUserId
+            );
+            
+            if (otherParticipant && otherParticipant.username) {
+              console.log(`✅ Found other participant via ParticipantService: ${otherParticipant.username}`);
+              chatNameCache.current.set(cacheKey, otherParticipant.username);
+              return otherParticipant.username;
+            }
           }
         } catch (participantError) {
           console.warn(`⚠️ ParticipantService failed for ${chat.chat_id}:`, participantError);
@@ -265,11 +226,14 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
     }
     
     // Final fallback
+    let finalName = "Unknown";
     if (chat.name) {
-      return chat.name;
+      finalName = chat.name;
     }
     
-    return "Unknown";
+    // Cache the result
+    chatNameCache.current.set(cacheKey, finalName);
+    return finalName;
   };
 
   const getChatName = (chat: ChatData) => {
@@ -283,164 +247,108 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
     return chatName.includes(searchQuery.toLowerCase());
   });
 
-  // const getLastMessagePreview = (chat: ChatData) => {
-  //   if (chat.last_message) {
-  //     const content = chat.last_message.content || "";
-  //     const preview = content.length > 40 ? content.substring(0, 40) + "..." : content;
-  //     return preview || "No message content";
-  //   }
-  //   return "No messages yet";
-  // };
-
-  const handleSelectChat = (chatId: string) => {
+  const handleChatSelect = (chatId: string) => {
+    setSelectedChatId(chatId);
     onSelect(chatId);
   };
 
-  // Function to create a chat with a specific friend
-  const handleCreateChatWithFriend = async (friend: any) => {
-    setShowCreateChat(false);
-    setSearchQuery(''); // Clear search query
-    try {
-      const token = services.sessionManager.getToken();
-      if (!token) {
-        setError("No token available to create chat.");
-        return;
-      }
 
-      // Create chat with the selected friend using the same method as CreateChatForm
-      const members = [
-        { user_id: user?.userId, is_admin: true },
-        { user_id: friend.user_id }
-      ];
 
-      // @ts-ignore
-      await window.__TAURI__.invoke("create_chat", { 
-        token, 
-        members: JSON.stringify(members),
-        is_group: false
-      });
-      
-      console.log("✅ Direct chat created with friend:", friend.username);
-
-      // Reload chats to include the new chat
-      await loadChats();
-    } catch (error) {
-      console.error("❌ Failed to create direct chat:", error);
-      setError("Failed to create direct chat.");
-    }
-  };
-
-  // Load friends
-  const loadFriends = async () => {
-    setIsLoadingFriends(true);
-    try {
-      const token = services.sessionManager.getToken();
-      if (!token) {
-        setFriends([]);
-        setIsLoadingFriends(false);
-        return;
-      }
-      const friendsData = await friendService.getCachedFriendsForCurrentUser();
-      console.log("✅ Friends loaded with caching:", friendsData);
-      setFriends(friendsData);
-    } catch (error) {
-      console.error("❌ Failed to load friends:", error);
-      setError("Failed to load friends.");
-    } finally {
-      setIsLoadingFriends(false);
-    }
-  };
-
-  // Load friends when component mounts or token changes
+  // Load friends for create chat functionality
   useEffect(() => {
-    let timeoutId: number;
-    
-    const loadFriendsWithDelay = async () => {
-      await loadFriends();
-    };
-    
-    // Add a small delay to ensure session manager is ready
-    timeoutId = setTimeout(loadFriendsWithDelay, 100);
-    
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+    const loadFriends = async () => {
+      try {
+        const friendsData = await friendService.getCachedFriendsForCurrentUser();
+        setFriends(friendsData || []);
+        setFilteredFriends(friendsData || []);
+      } catch (error) {
+        console.error("Failed to load friends:", error);
       }
     };
-  }, [services.sessionManager.getToken()]);
+
+    if (showCreateChat) {
+      loadFriends();
+    }
+  }, [showCreateChat]);
 
   // Filter friends based on search query
-  const filteredFriends = friends.filter(friend => {
-    if (!searchQuery.trim()) return true;
-    const friendName = friend.username.toLowerCase();
-    return friendName.includes(searchQuery.toLowerCase());
-  });
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredFriends(friends);
+    } else {
+      const filtered = friends.filter(friend => 
+        friend.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        friend.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredFriends(filtered);
+    }
+  }, [searchQuery, friends]);
 
-  if (isLoading || !hasInitialized) {
+  const handleCreateChatWithFriend = async (friend: { user_id: string; username: string; name: string; email: string; picture?: string }) => {
+    try {
+      console.log("Creating chat with friend:", friend);
+      // TODO: Implement chat creation logic
+      setShowCreateChat(false);
+      await loadChats();
+    } catch (error) {
+      console.error("Failed to create chat:", error);
+    }
+  };
+
+  // Load chats on mount
+  useEffect(() => {
+    loadChats();
+  }, []);
+
+  if (isLoading) {
     return (
-      <div style={{ 
-        width: "100%", 
-        backgroundColor: "#2d2d2d",
-        display: "flex", 
-        flexDirection: "column", 
+      <div style={{
         height: "100%",
-        overflow: "hidden"
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: theme.background
       }}>
         {/* Header */}
-        <div style={{ 
-          padding: "16px", 
-          borderBottom: "1px solid #404040",
-          backgroundColor: "#2d2d2d"
+        <div style={{
+          padding: "16px",
+          borderBottom: `1px solid ${theme.border}`,
+          backgroundColor: theme.sidebar
         }}>
-          <div style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            justifyContent: "space-between", 
-            marginBottom: "12px" 
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center"
           }}>
-            <h1 style={{ 
-              fontSize: "20px", 
-              fontWeight: "600", 
-              color: "#ffffff",
+            <h2 style={{
+              fontSize: "18px",
+              fontWeight: "600",
+              color: theme.text,
               margin: 0
             }}>
               Chats
-            </h1>
-            <div style={{ 
-              width: "8px", 
-              height: "8px", 
-              borderRadius: "50%", 
-              backgroundColor: websocketStatus.is_connected ? "#10b981" : "#6b7280" 
-            }}></div>
-          </div>
-          
-          {/* Search Bar */}
-          <div style={{
-            position: "relative",
-            marginBottom: "8px"
-          }}>
-            <input
-              type="text"
-              placeholder="Search chats..."
+            </h2>
+            <button
+              onClick={() => setShowCreateChat(!showCreateChat)}
               style={{
-                width: "100%",
-                padding: "8px 12px 8px 36px",
-                backgroundColor: "#404040",
-                border: "none",
+                width: "32px",
+                height: "32px",
                 borderRadius: "8px",
-                color: "#ffffff",
-                fontSize: "14px"
+                border: `1px solid ${theme.border}`,
+                backgroundColor: "transparent",
+                color: theme.textSecondary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                fontSize: "16px",
+                transition: "all 0.2s ease"
               }}
-            />
-            <div style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "#9ca3af"
-            }}>
-              🔍
-            </div>
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
           </div>
         </div>
         
@@ -452,27 +360,27 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
               alignItems: "center", 
               padding: "12px", 
               marginBottom: "8px",
-              backgroundColor: "#404040",
+              backgroundColor: theme.surface,
               borderRadius: "8px"
             }}>
               <div style={{ 
                 width: "48px", 
                 height: "48px", 
-                backgroundColor: "#555555", 
+                backgroundColor: theme.border, 
                 borderRadius: "50%",
                 marginRight: "12px"
               }}></div>
               <div style={{ flex: 1 }}>
                 <div style={{ 
                   height: "16px", 
-                  backgroundColor: "#555555", 
+                  backgroundColor: theme.border, 
                   borderRadius: "4px", 
                   marginBottom: "8px",
                   width: "75%"
                 }}></div>
                 <div style={{ 
                   height: "12px", 
-                  backgroundColor: "#555555", 
+                  backgroundColor: theme.border, 
                   borderRadius: "4px",
                   width: "60%"
                 }}></div>
@@ -486,55 +394,50 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
 
   if (error) {
     return (
-      <div style={{ 
-        width: "100%", 
-        ...styles.surface, 
-        borderRight: `1px solid ${styles.theme.border}`, 
-        display: "flex", 
-        flexDirection: "column", 
-        height: "100%" 
-      }}>
-        {/* Header */}
-        <div style={{ padding: "16px", borderBottom: "1px solid #e5e7eb" }}>
-          <h1 style={{ fontSize: "20px", fontWeight: "600", color: "#111827" }}>Chats</h1>
+      <div
+        style={{
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          backgroundColor: theme.background
+        }}
+      >
+        <div style={{
+          padding: "16px",
+          borderBottom: `1px solid ${theme.border}`,
+          backgroundColor: theme.sidebar
+        }}>
+          <h2 style={{
+            fontSize: "18px",
+            fontWeight: "600",
+            color: theme.text,
+            margin: 0
+          }}>
+            Chats
+          </h2>
         </div>
-        
-        {/* Error state */}
-        <div style={{ 
-          flex: 1, 
-          display: "flex", 
-          alignItems: "center", 
-          justifyContent: "center", 
-          padding: "24px" 
+        <div style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px"
         }}>
           <div style={{ textAlign: "center" }}>
-            <div style={{
-              width: "48px",
-              height: "48px",
-              backgroundColor: "#fef2f2",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 12px"
-            }}>
-              <span style={{ color: "#dc2626", fontSize: "20px" }}>⚠</span>
-            </div>
-            <p style={{ fontSize: "14px", color: "#6b7280", marginBottom: "12px" }}>{error}</p>
-            <button 
-              onClick={() => window.location.reload()}
+            <p style={{ color: theme.error, marginBottom: "16px" }}>{error}</p>
+            <button
+              onClick={loadChats}
               style={{
-                fontSize: "14px",
-                backgroundColor: "#3b82f6",
+                padding: "8px 16px",
+                backgroundColor: theme.primary,
                 color: "white",
-                fontWeight: "500",
-                padding: "8px 12px",
-                borderRadius: "8px",
                 border: "none",
-                cursor: "pointer"
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontSize: "14px"
               }}
             >
-              Try again
+              Retry
             </button>
           </div>
         </div>
@@ -542,38 +445,71 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
     );
   }
 
-  console.log("🔍 ChatList render - chats length:", chats.length, "isLoading:", isLoading, "hasInitialized:", hasInitialized, "error:", error);
-  console.log("🔍 Chats array:", chats);
-
-  // Show CreateChatForm when showCreateChat is true
-  if (showCreateChat) {
-    return (
-      <div style={{ 
-        width: "100%", 
-        backgroundColor: "#2d2d2d",
-        display: "flex", 
-        flexDirection: "column", 
-        height: "100%",
-        overflow: "hidden"
+  return (
+    <div style={{
+      height: "100%",
+      display: "flex",
+      flexDirection: "column",
+      backgroundColor: theme.background
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: "16px",
+        borderBottom: `1px solid ${theme.border}`,
+        backgroundColor: theme.sidebar
       }}>
-        {/* Header */}
-        <div style={{ 
-          padding: "16px 24px", 
-          borderBottom: "1px solid #404040", 
-          backgroundColor: "#2d2d2d",
+        <div style={{
           display: "flex",
-          alignItems: "center",
-          gap: "16px"
+          justifyContent: "space-between",
+          alignItems: "center"
         }}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px"
+          }}>
+            <button
+              onClick={onToggleSidebar}
+              style={{
+                width: "32px",
+                height: "32px",
+                borderRadius: "8px",
+                border: `1px solid ${theme.border}`,
+                backgroundColor: "transparent",
+                color: theme.textSecondary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                fontSize: "16px",
+                transition: "all 0.2s ease"
+              }}
+              title="Toggle sidebar"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <h2 style={{
+              fontSize: "18px",
+              fontWeight: "600",
+              color: theme.text,
+              margin: 0
+            }}>
+              Chats
+            </h2>
+          </div>
           <button
-            onClick={() => setShowCreateChat(false)}
+            onClick={() => setShowCreateChat(!showCreateChat)}
             style={{
-              width: "40px",
-              height: "40px",
+              width: "32px",
+              height: "32px",
               borderRadius: "8px",
-              border: "1px solid #404040",
+              border: `1px solid ${theme.border}`,
               backgroundColor: "transparent",
-              color: "#9ca3af",
+              color: theme.textSecondary,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -581,395 +517,168 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
               fontSize: "16px",
               transition: "all 0.2s ease"
             }}
-            onMouseEnter={(e) => {
-              (e.target as HTMLButtonElement).style.backgroundColor = "#404040";
-              (e.target as HTMLButtonElement).style.color = "white";
-            }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLButtonElement).style.backgroundColor = "transparent";
-              (e.target as HTMLButtonElement).style.color = "#9ca3af";
-            }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15,18 9,12 15,6"/>
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </button>
-          <h1 style={{ 
-            fontSize: "20px", 
-            fontWeight: "600", 
-            color: "#ffffff", 
-            margin: 0 
-          }}>
-            New Chat
-          </h1>
         </div>
 
         {/* Search Bar */}
-        <div style={{
-          padding: "16px 24px",
-          backgroundColor: "#2d2d2d",
-          borderBottom: "1px solid #404040"
-        }}>
-          <div style={{ position: "relative" }}>
-            <input
-              type="text"
-              placeholder="Search friends..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px 8px 36px",
-                backgroundColor: "#404040",
-                border: "none",
-                borderRadius: "8px",
-                color: "#ffffff",
-                fontSize: "14px",
-                outline: "none"
-              }}
-            />
-            <div style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "#9ca3af"
-            }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="m21 21-4.35-4.35"/>
-              </svg>
-            </div>
-          </div>
+        <div style={{ marginTop: "12px" }}>
+          <input
+            type="text"
+            placeholder="Search chats..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              borderRadius: "6px",
+              border: `1px solid ${theme.border}`,
+              backgroundColor: theme.inputBackground,
+              color: theme.text,
+              fontSize: "14px"
+            }}
+          />
         </div>
+      </div>
 
-        {/* Friends List */}
-        <div style={{ 
-          flex: 1, 
-          overflowY: "auto", 
-          overflowX: "hidden",
-          backgroundColor: "#2d2d2d"
-        }}>
-          {isLoadingFriends ? (
-            <div style={{ 
-              padding: "32px 16px", 
-              textAlign: "center",
-              color: "#9ca3af"
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+        {showCreateChat ? (
+          <div style={{ padding: "16px" }}>
+            <h3 style={{
+              fontSize: "16px",
+              fontWeight: "600",
+              color: theme.text,
+              marginBottom: "16px"
             }}>
-              <div style={{
-                display: "inline-block",
-                width: "32px",
-                height: "32px",
-                border: "2px solid #404040",
-                borderTop: "2px solid #3b82f6",
-                borderRadius: "50%",
-                animation: "spin 1s linear infinite",
-                marginBottom: "16px"
-              }}></div>
-              <p>Loading friends...</p>
-            </div>
-          ) : filteredFriends.length === 0 ? (
-            <div style={{ 
-              padding: "32px 16px", 
-              textAlign: "center",
-              color: "#9ca3af"
-            }}>
-              <div style={{ 
-                fontSize: "48px", 
-                marginBottom: "16px" 
-              }}>
-                👥
+              Create New Chat
+            </h3>
+            
+            {filteredFriends.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "24px" }}>
+                <p style={{ fontSize: "14px", color: theme.textSecondary }}>
+                  {searchQuery ? "Try a different search term" : "Add friends to start chatting"}
+                </p>
               </div>
+            ) : (
+              filteredFriends.map((friend) => (
+                <div
+                  key={friend.user_id}
+                  onClick={() => handleCreateChatWithFriend(friend)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "12px 16px",
+                    cursor: "pointer",
+                    backgroundColor: "transparent",
+                    borderLeft: "3px solid transparent",
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = theme.hover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                >
+                  {/* Avatar */}
+                  <div style={{ 
+                    width: "48px", 
+                    height: "48px", 
+                    borderRadius: "50%",
+                    backgroundColor: theme.primary,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "white",
+                    fontWeight: "600",
+                    fontSize: "18px",
+                    marginRight: "12px"
+                  }}>
+                    {friend.username.charAt(0).toUpperCase()}
+                  </div>
+                  
+                  {/* Friend Info */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      fontSize: "16px",
+                      fontWeight: "600",
+                      color: theme.text,
+                      marginBottom: "4px"
+                    }}>
+                      {friend.username}
+                    </div>
+                    <div style={{
+                      fontSize: "14px",
+                      color: theme.textSecondary
+                    }}>
+                      {friend.name}
+                    </div>
+                  </div>
+
+                  {/* Chat Icon */}
+                  <div style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "50%",
+                    backgroundColor: theme.primary,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "white",
+                    fontSize: "16px"
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : filteredChats.length === 0 ? (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            padding: "24px"
+          }}>
+            <div style={{ textAlign: "center" }}>
               <h3 style={{ 
                 fontSize: "16px", 
                 fontWeight: "500", 
                 marginBottom: "8px",
-                color: "#ffffff"
+                color: theme.text
               }}>
-                {searchQuery ? "No friends found" : "No friends available"}
+                No chats yet
               </h3>
-              <p style={{ fontSize: "14px" }}>
-                {searchQuery ? "Try a different search term" : "Add friends to start chatting"}
+              <p style={{ fontSize: "14px", color: theme.textSecondary }}>
+                Start a conversation to see your chats here
               </p>
             </div>
-          ) : (
-            filteredFriends.map((friend) => (
-              <div
-                key={friend.user_id}
-                onClick={() => handleCreateChatWithFriend(friend)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "12px 16px",
-                  cursor: "pointer",
-                  backgroundColor: "transparent",
-                  borderLeft: "3px solid transparent",
-                  transition: "all 0.2s ease"
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#404040";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                }}
-              >
-                {/* Avatar */}
-                <div style={{ 
-                  width: "48px", 
-                  height: "48px", 
-                  borderRadius: "50%",
-                  backgroundColor: "#0078d4",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  fontWeight: "600",
-                  fontSize: "18px",
-                  marginRight: "12px"
-                }}>
-                  {friend.username.charAt(0).toUpperCase()}
-                </div>
-                
-                {/* Friend Info */}
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    fontSize: "16px",
-                    fontWeight: "600",
-                    color: "#ffffff",
-                    marginBottom: "4px"
-                  }}>
-                    {friend.username}
-                  </div>
-                  <div style={{
-                    fontSize: "14px",
-                    color: "#9ca3af"
-                  }}>
-                    {friend.name}
-                  </div>
-                </div>
-
-                {/* Chat Icon */}
-                <div style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "50%",
-                  backgroundColor: "#3b82f6",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  fontSize: "16px"
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                  </svg>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ 
-      width: "100%", 
-      backgroundColor: "#2d2d2d",
-      display: "flex", 
-      flexDirection: "column", 
-      height: "100%",
-      overflow: "hidden"
-    }}>
-      {/* Header */}
-      <div style={{ 
-        padding: "16px", 
-        borderBottom: "1px solid #404040",
-        backgroundColor: "#2d2d2d"
-      }}>
-        <div style={{ 
-          display: "flex", 
-          alignItems: "center", 
-          justifyContent: "space-between", 
-          marginBottom: "12px" 
-        }}>
-          <div style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            gap: "12px",
-            transform: isCollapsed ? 'translateX(0)' : 'translateX(0)',
-            transition: 'transform 0.3s ease-in-out'
-          }}>
-            <button
-              onClick={onToggleCollapse}
-              className={`toggle-button ${isCollapsed ? 'slide-in' : 'slide-out'}`}
-              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              ☰
-            </button>
-            <h1 style={{ 
-              fontSize: "20px", 
-              fontWeight: "600", 
-              color: "#ffffff",
-              margin: 0,
-              transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
-              transition: 'transform 0.3s ease-in-out'
-            }}>
-              Chats
-            </h1>
-          </div>
-          <div style={{
-            display: "flex",
-            gap: "8px",
-            alignItems: "center"
-          }}>
-            <button 
-              onClick={() => setShowCreateChat(true)}
-              style={{
-                width: "clamp(32px, 6vw, 40px)",
-                height: "clamp(32px, 6vw, 40px)",
-                borderRadius: "50%",
-                border: "none",
-                backgroundColor: "transparent",
-                color: "#9ca3af",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                fontSize: "clamp(18px, 4vw, 20px)",
-                transition: "all 0.2s ease"
-              }}
-              title="Create new chat"
-              onMouseEnter={(e) => {
-                (e.target as HTMLButtonElement).style.transform = "scale(1.1)";
-                (e.target as HTMLButtonElement).style.color = "#3b82f6";
-              }}
-              onMouseLeave={(e) => {
-                (e.target as HTMLButtonElement).style.transform = "scale(1)";
-                (e.target as HTMLButtonElement).style.color = "#9ca3af";
-              }}
-            >
-              +
-            </button>
-
-          </div>
-        </div>
-        
-        {/* Search Bar */}
-        <div style={{
-          position: "relative",
-          marginBottom: "8px"
-        }}>
-          <input
-            type="text"
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                // Clear search on Enter
-                setSearchQuery('');
-              }
-            }}
-            style={{
-              width: "100%",
-              padding: "8px 12px 8px 36px",
-              backgroundColor: "#404040",
-              border: "none",
-              borderRadius: "8px",
-              color: "#ffffff",
-              fontSize: "14px"
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{
-                position: "absolute",
-                right: "8px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                background: "none",
-                border: "none",
-                color: "#9ca3af",
-                cursor: "pointer",
-                fontSize: "16px",
-                padding: "4px"
-              }}
-            >
-              ✕
-            </button>
-          )}
-          <div style={{
-            position: "absolute",
-            left: "12px",
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "#9ca3af"
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-      
-      {/* Chat List */}
-      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-        {error && (
-          <div style={{ 
-            padding: "16px", 
-            margin: "12px",
-            backgroundColor: "#dc2626",
-            color: "#ffffff",
-            borderRadius: "8px",
-            fontSize: "14px"
-          }}>
-            {error}
-          </div>
-        )}
-        
-        {filteredChats.length === 0 && !isLoading ? (
-          <div style={{ 
-            padding: "32px 16px", 
-            textAlign: "center",
-            color: "#9ca3af"
-          }}>
-            <div style={{ 
-              fontSize: "48px", 
-              marginBottom: "16px" 
-            }}>
-              💬
-            </div>
-            <h3 style={{ 
-              fontSize: "16px", 
-              fontWeight: "500", 
-              marginBottom: "8px",
-              color: "#ffffff"
-            }}>
-              No chats yet
-            </h3>
-            <p style={{ fontSize: "14px" }}>
-              Start a conversation to see your chats here
-            </p>
           </div>
         ) : (
           filteredChats.map((chat) => (
             <div
               key={chat.chat_id}
-              onClick={() => handleSelectChat(chat.chat_id)}
+              onClick={() => handleChatSelect(chat.chat_id)}
               style={{
                 display: "flex",
                 alignItems: "center",
                 padding: "12px 16px",
                 cursor: "pointer",
-                backgroundColor: selectedChatId === chat.chat_id ? "#404040" : "transparent",
-                borderLeft: selectedChatId === chat.chat_id ? "3px solid #0078d4" : "3px solid transparent",
+                backgroundColor: selectedChatId === chat.chat_id ? theme.selected : "transparent",
+                borderLeft: selectedChatId === chat.chat_id ? `3px solid ${theme.primary}` : "3px solid transparent",
                 transition: "all 0.2s ease"
               }}
               onMouseEnter={(e) => {
                 if (selectedChatId !== chat.chat_id) {
-                  e.currentTarget.style.backgroundColor = "#404040";
+                  e.currentTarget.style.backgroundColor = theme.hover;
                 }
               }}
               onMouseLeave={(e) => {
@@ -983,7 +692,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
                 width: "48px", 
                 height: "48px", 
                 borderRadius: "50%",
-                backgroundColor: "#0078d4",
+                backgroundColor: theme.primary,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1007,7 +716,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
                   <h3 style={{ 
                     fontSize: "14px", 
                     fontWeight: "600", 
-                    color: "#ffffff",
+                    color: theme.text,
                     margin: 0,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -1024,7 +733,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
                     {/* Unread Count Badge */}
                     {chat.unread_count && chat.unread_count > 0 && (
                       <div style={{
-                        backgroundColor: "#ef4444",
+                        backgroundColor: theme.error,
                         color: "#ffffff",
                         borderRadius: "50%",
                         minWidth: "20px",
@@ -1041,7 +750,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
                     )}
                     <span style={{ 
                       fontSize: "12px", 
-                      color: "#9ca3af"
+                      color: theme.textSecondary
                     }}>
                       {formatTime(chat.created_at)}
                     </span>
@@ -1050,7 +759,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
                 
                 <p style={{ 
                   fontSize: "13px", 
-                  color: "#9ca3af",
+                  color: theme.textSecondary,
                   margin: 0,
                   overflow: "hidden",
                   textOverflow: "ellipsis",

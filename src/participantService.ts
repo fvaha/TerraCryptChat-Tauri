@@ -29,7 +29,7 @@ export class ParticipantService {
             const chat = await nativeApiService.getChatById(chatId);
             const creatorId = chat?.creator_id;
 
-            const participants = response.data.map((item: any) => {
+            const participants = response.data.map((item: { user: { user_id: string; username: string }; is_admin: boolean; joined_at: string }) => {
                 const userId = item.user.user_id;
                 let role: string;
                 
@@ -69,17 +69,17 @@ export class ParticipantService {
     }
 
     // MARK: - Get Sender Name (matches Swift getSenderName)
-    static getSenderName(senderId: string, chatId: string): string {
+    static async getSenderName(senderId: string, chatId: string): Promise<string> {
         console.log('[ParticipantService] Getting sender name for:', senderId, 'in chat:', chatId);
         
-        return ParticipantManager.getInstance().getUsername(senderId, chatId);
+        return await ParticipantManager.getInstance().getUsername(senderId, chatId);
     }
 
     // MARK: - Fetch Participants (matches Swift fetchParticipants)
-    static fetchParticipants(chatId: string): any[] {
+    static async fetchParticipants(chatId: string): Promise<any[]> {
         console.log('[ParticipantService] Fetching participants for chat:', chatId);
         
-        return ParticipantManager.getInstance().fetchParticipants(chatId);
+        return await ParticipantManager.getInstance().fetchParticipants(chatId);
     }
 
     // MARK: - Add Participant (matches Swift addParticipant)
@@ -143,8 +143,8 @@ export class ParticipantService {
             const token = await ParticipantService.getToken();
             if (!token) return;
 
-            const participants = ParticipantManager.getInstance().fetchParticipants(chatId);
-            const target = participants.find(p => p.userId === participantId);
+            const participants = await ParticipantManager.getInstance().fetchParticipants(chatId);
+            const target = participants.find((p: { userId: string; participantId: string; username: string; joinedAt: string; role: string }) => p.userId === participantId);
             
             if (!target) {
                 console.log('[ParticipantService] Participant not found in memory');
@@ -197,7 +197,7 @@ export class ParticipantService {
     static async ensureParticipantsLoaded(chatId: string, completion?: () => void): Promise<void> {
         console.log('[ParticipantService] Ensuring participants loaded for chat:', chatId);
         
-        const existing = ParticipantService.fetchParticipants(chatId);
+        const existing = await ParticipantService.fetchParticipants(chatId);
         if (existing.length > 0) {
             console.log('[ParticipantService] Participants already loaded');
             completion?.();
@@ -211,17 +211,13 @@ export class ParticipantService {
     static async fetchParticipantsAsync(chatId: string): Promise<any[]> {
         console.log('[ParticipantService] Fetching participants async for chat:', chatId);
         
-        return new Promise((resolve) => {
-            ParticipantService.ensureParticipantsLoaded(chatId, () => {
-                const result = ParticipantService.fetchParticipants(chatId);
-                resolve(result);
-            });
-        });
+        await ParticipantService.ensureParticipantsLoaded(chatId);
+        return await ParticipantService.fetchParticipants(chatId);
     }
 
     // MARK: - Helper Methods
 
-    private static async getToken(): Promise<string | null> {
+    static async getToken(): Promise<string | null> {
         // This would need to be implemented to get the current token
         // For now, return null - this should be implemented based on your session management
         return null;
@@ -264,14 +260,14 @@ export class ParticipantManager {
     }
 
     // MARK: - Fetch Participants (matches Swift fetchParticipants)
-    fetchParticipants(chatId: string): any[] {
+    async fetchParticipants(chatId: string): Promise<any[]> {
         console.log('[ParticipantManager] Fetching participants for chat:', chatId);
         
         try {
-            // This would need to be implemented to fetch from database
-            // For now, return empty array
-            console.log('[ParticipantManager] Participants fetched successfully');
-            return [];
+            // Use the native API service to get participants from database
+            const participants = await nativeApiService.getCachedParticipantsForChat(chatId);
+            console.log('[ParticipantManager] Participants fetched successfully:', participants.length);
+            return participants;
         } catch (error) {
             console.error('[ParticipantManager] Failed to fetch participants:', error);
             return [];
@@ -317,12 +313,34 @@ export class ParticipantManager {
     }
 
     // MARK: - Get Username (matches Swift getUsername)
-    getUsername(userId: string, chatId: string): string {
+    async getUsername(userId: string, chatId: string): Promise<string> {
         console.log('[ParticipantManager] Getting username for user:', userId, 'in chat:', chatId);
         
         try {
-            // This would need to be implemented to get from database
-            // For now, return "Unknown"
+            // First try to get from cached participants
+            const participants = await this.fetchParticipants(chatId);
+            const participant = participants.find((p: any) => p.user_id === userId);
+            
+            if (participant && participant.username) {
+                console.log('[ParticipantManager] Found username in cache:', participant.username);
+                return participant.username;
+            }
+            
+            // If not found in cache, try to fetch from API
+            try {
+                const token = await ParticipantService.getToken();
+                if (token) {
+                    const response = await nativeApiService.getUserById(userId, token);
+                    if (response && response.username) {
+                        console.log('[ParticipantManager] Found username via API:', response.username);
+                        return response.username;
+                    }
+                }
+            } catch (apiError) {
+                console.warn('[ParticipantManager] Failed to get username via API:', apiError);
+            }
+            
+            console.warn('[ParticipantManager] Username not found for user:', userId);
             return 'Unknown';
         } catch (error) {
             console.error('[ParticipantManager] Failed to get username:', error);

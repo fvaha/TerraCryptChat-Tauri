@@ -41,7 +41,7 @@ export default function CreateChatForm({ token, onCreated, onCancel }: Props) {
     try {
       setIsLoadingFriends(true);
       const friendsData = await nativeApiService.getFriends();
-      const processedFriends = (friendsData || []).map((friend: any) => ({
+      const processedFriends = (friendsData || []).map((friend: { user_id: string; username: string; name: string; email: string; picture?: string; status?: string; created_at?: string; is_favorite?: boolean }) => ({
         user_id: friend.user_id,
         username: friend.username,
         name: friend.name,
@@ -92,7 +92,7 @@ export default function CreateChatForm({ token, onCreated, onCancel }: Props) {
         { user_id: selectedFriend.user_id }
       ];
 
-      // @ts-ignore
+      // @ts-expect-error - Tauri invoke method
       await window.__TAURI__.invoke("create_chat", { 
         token, 
         members: JSON.stringify(members),

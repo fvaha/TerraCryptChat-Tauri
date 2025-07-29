@@ -303,6 +303,7 @@ pub async fn get_current_user_with_token(token: String) -> Result<UserData, Stri
             deleted_at: None,
             is_dark_mode: false,
             last_seen: chrono::Utc::now().timestamp(),
+            color_scheme: None,
         };
         
         match database::insert_or_update_user(&db_user) {
@@ -1118,6 +1119,12 @@ pub struct UpdateDarkModeRequest {
     pub is_dark_mode: bool,
 }
 
+#[derive(serde::Deserialize)]
+pub struct UpdateColorSchemeRequest {
+    pub user_id: String,
+    pub color_scheme: String,
+}
+
 #[tauri::command]
 pub async fn db_update_dark_mode(request: UpdateDarkModeRequest) -> Result<(), String> {
     database::update_dark_mode(&request.user_id, request.is_dark_mode)
@@ -1128,6 +1135,18 @@ pub async fn db_update_dark_mode(request: UpdateDarkModeRequest) -> Result<(), S
 pub async fn db_get_dark_mode(user_id: String) -> Result<bool, String> {
     database::get_dark_mode(&user_id)
         .map_err(|e| format!("Failed to get dark mode: {}", e))
+}
+
+#[tauri::command]
+pub async fn db_update_color_scheme(request: UpdateColorSchemeRequest) -> Result<(), String> {
+    database::update_color_scheme(&request.user_id, &request.color_scheme)
+        .map_err(|e| format!("Failed to update color scheme: {}", e))
+}
+
+#[tauri::command]
+pub async fn db_get_color_scheme(user_id: String) -> Result<String, String> {
+    database::get_color_scheme(&user_id)
+        .map_err(|e| format!("Failed to get color scheme: {}", e))
 }
 
 // Clear all data

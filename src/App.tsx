@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from './AppContext';
+import { useTheme } from './ThemeContext';
 import LoginScreen from './LoginScreen';
 import RegisterForm from './RegisterForm';
 import ChatList from './ChatList';
@@ -9,6 +10,7 @@ import SettingsScreen from './SettingsScreen';
 import ErrorBoundary from './ErrorBoundary';
 import Sidebar from './components/Sidebar';
 import MenuBar from './components/MenuBar';
+
 import './App.css';
 import { ThemeProvider } from './ThemeContext';
 import SettingsContent from './components/SettingsContent';
@@ -16,16 +18,15 @@ import { nativeApiService } from './nativeApiService';
 import { DatabaseFixUtil } from './utils/databaseFix';
 
 const ChatApp: React.FC = () => {
-  const { user, token, isLoading, error } = useAppContext();
+  const { user, token } = useAppContext();
+  const { theme, isLoading: themeLoading } = useTheme();
   const [activeTab, setActiveTab] = useState<'chats' | 'friends' | 'settings'>('chats');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-  const [chats, setChats] = useState<any[]>([]);
+  const [chats, setChats] = useState<Array<{ chat_id: string; name?: string; is_group: boolean; created_at: number; creator_id: string; participants?: string[]; unread_count: number }>>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedSettingsCategory, setSelectedSettingsCategory] = useState<string>('general');
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showRegister, setShowRegister] = useState(false);
-
-
 
   // Auto-resize window based on content
   useEffect(() => {
@@ -44,20 +45,20 @@ const ChatApp: React.FC = () => {
               console.error('Failed to resize window:', error);
             }
           }
-                  } else {
-            // Login screen - auto-adjust based on content
-            const loginCard = document.querySelector('[data-screen="login"]');
-            if (loginCard) {
-              const cardHeight = loginCard.getBoundingClientRect().height;
-              const windowHeight = Math.max(650, cardHeight + 120); // Increased minimum height and padding
-              const windowWidth = 500; // Increased width for login
-              try {
-                await nativeApiService.resizeWindow(windowWidth, windowHeight);
-              } catch (error) {
-                console.error('Failed to resize window:', error);
-              }
+        } else {
+          // Login screen - auto-adjust based on content
+          const loginCard = document.querySelector('[data-screen="login"]');
+          if (loginCard) {
+            const cardHeight = loginCard.getBoundingClientRect().height;
+            const windowHeight = Math.max(650, cardHeight + 120); // Increased minimum height and padding
+            const windowWidth = 500; // Increased width for login
+            try {
+              await nativeApiService.resizeWindow(windowWidth, windowHeight);
+            } catch (error) {
+              console.error('Failed to resize window:', error);
             }
           }
+        }
       } else {
         // Main app - 800x600 size
         try {
@@ -101,212 +102,174 @@ const ChatApp: React.FC = () => {
 
   const loadChats = async () => {
     try {
-      console.log('Loading chats for user:', user?.username);
-      const chatsData = await nativeApiService.getCachedChatsForCurrentUser();
-      console.log('Loaded chats:', chatsData);
-      console.log('Chats array length:', chatsData?.length || 0);
-      if (chatsData && Array.isArray(chatsData)) {
-        setChats(chatsData);
-        console.log('✅ Chats set in state:', chatsData.length);
-      } else {
-        console.warn('Invalid chats data received:', chatsData);
-        setChats([]);
-      }
+      console.log('🔄 Loading chats...');
+      const chatsData = await nativeApiService.getChats();
+      console.log('✅ Chats loaded:', chatsData);
+      setChats(Array.isArray(chatsData) ? chatsData : []);
     } catch (error) {
-      console.error('Failed to load chats:', error);
-      setChats([]);
+      console.error('❌ Failed to load chats:', error);
     }
   };
 
-  // Function to find chat with a specific friend
   const findChatWithFriend = (friendId: string) => {
-    // Look for a direct chat (non-group) that includes this friend
-    // This is a simplified version - in a real implementation, you'd need to check participants
-    const directChat = chats.find(chat => 
+    return chats.find(chat => 
       !chat.is_group && 
-      (chat.creator_id === friendId || chat.participants?.includes(friendId))
-    );
-    return directChat?.chat_id || null;
+      chat.participants?.some((p: any) => p.user?.user_id === friendId)
+    )?.chat_id;
   };
-
-  // Update zoom level in CSS custom property
-  useEffect(() => {
-    document.documentElement.style.setProperty('--app-zoom', zoomLevel.toString());
-  }, [zoomLevel]);
 
   const handleZoomChange = (newZoom: number) => {
     setZoomLevel(newZoom);
+    // Apply zoom to document
+    document.body.style.zoom = newZoom.toString();
   };
 
-
-
-  // Add database fix utility to window object for debugging
-  useEffect(() => {
-    (window as any).fixDatabase = async () => {
-      try {
-        console.log('🔧 Manual database fix triggered from console');
-        await DatabaseFixUtil.fixDatabaseSchema();
-        console.log('✅ Database fix completed successfully');
-        // Reload chats after fix
-        await loadChats();
-      } catch (error) {
-        console.error('❌ Database fix failed:', error);
-      }
-    };
-    
-    (window as any).checkDatabaseHealth = async () => {
-      try {
-        const health = await DatabaseFixUtil.checkDatabaseHealth();
-        console.log('🏥 Database health check result:', health);
-        return health;
-      } catch (error) {
-        console.error('❌ Database health check failed:', error);
-        throw error;
-      }
-    };
-    
-    (window as any).autoFixDatabase = async () => {
-      try {
-        const wasFixed = await DatabaseFixUtil.autoFixIfNeeded();
-        if (wasFixed) {
-          console.log('✅ Database was automatically fixed');
-          // Reload chats after fix
-          await loadChats();
-        } else {
-          console.log('ℹ️ Database is healthy, no fix needed');
-        }
-        return wasFixed;
-      } catch (error) {
-        console.error('❌ Auto-fix failed:', error);
-        throw error;
-      }
-    };
-    
-    (window as any).forceResetDatabase = async () => {
-      try {
-        console.log('🚨 Force resetting database...');
-        await DatabaseFixUtil.forceResetDatabase();
-        console.log('✅ Database force reset completed');
-        // Reload chats after reset
-        await loadChats();
-      } catch (error) {
-        console.error('❌ Force reset failed:', error);
-        throw error;
-      }
-    };
-  }, []);
-
-  console.log("🎯 ChatApp render - token:", !!token, "isLoading:", isLoading, "error:", error);
-
-  if (isLoading) {
+  // Show loading screen while theme is loading
+  if (themeLoading) {
     return (
       <div style={{
-        width: '100vw',
         height: '100vh',
+        width: '100vw',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#1a1a1a',
-        color: '#ffffff'
+        backgroundColor: theme.background,
+        color: theme.text,
+        fontFamily: 'Inter, system-ui, sans-serif'
       }}>
-        <div style={{ textAlign: 'center' }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '16px'
+        }}>
           <div style={{
-            width: '40px',
-            height: '40px',
-            border: '3px solid #ffffff',
-            borderTop: '3px solid transparent',
+            width: '32px',
+            height: '32px',
+            border: `3px solid ${theme.border}`,
+            borderTop: `3px solid ${theme.primary}`,
             borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 16px'
-          }}></div>
-          <div>Loading TerraCrypt...</div>
+            animation: 'spin 1s linear infinite'
+          }} />
+          <span style={{ fontSize: '14px', color: theme.textSecondary }}>
+            Loading theme...
+          </span>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  // Show login/register screens
+  if (!token || !user) {
     return (
       <div style={{
-        width: '100vw',
         height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#1a1a1a',
-        color: '#ffffff',
-        padding: '20px'
+        width: '100vw',
+        backgroundColor: theme.background,
+        color: theme.text,
+        fontFamily: 'Inter, system-ui, sans-serif'
       }}>
-        <div style={{ textAlign: 'center', maxWidth: '400px' }}>
-          <h2>Error</h2>
-          <p>{error}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: '#0078d4',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px'
+        {showRegister ? (
+          <RegisterForm
+            onSuccess={() => {
+              console.log('Registration successful');
+              setShowRegister(false);
             }}
-          >
-            Reload App
-          </button>
-        </div>
+            onBackToLogin={() => setShowRegister(false)}
+          />
+        ) : (
+          <LoginScreen
+            onSuccess={() => {
+              console.log('Login successful');
+            }}
+            onShowRegister={() => setShowRegister(true)}
+          />
+        )}
       </div>
     );
   }
 
-  if (!token || !user) {
-    if (showRegister) {
-      return <RegisterForm onSuccess={() => setShowRegister(false)} onBackToLogin={() => setShowRegister(false)} />;
-    }
-    return <LoginScreen onSuccess={() => {}} onShowRegister={() => setShowRegister(true)} />;
-  }
-
-  // Signal-like layout with proper sidebar navigation
+  // Show main app
   return (
-    <div className="app-container">
+    <div style={{
+      height: '100vh',
+      width: '100vw',
+      display: 'flex',
+      flexDirection: 'column',
+      backgroundColor: theme.background,
+      color: theme.text,
+      fontFamily: 'Inter, system-ui, sans-serif',
+      overflow: 'hidden'
+    }}>
       {/* Menu Bar */}
-      <MenuBar />
-      
+      <MenuBar 
+        onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onShowFriends={() => setActiveTab('friends')}
+        onShowSettings={() => setActiveTab('settings')}
+        onZoomIn={() => handleZoomChange(zoomLevel + 0.1)}
+        onZoomOut={() => handleZoomChange(zoomLevel - 0.1)}
+        onResetZoom={() => handleZoomChange(1)}
+      />
+
       {/* Main Content */}
-      <div className="main-content">
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        overflow: 'hidden'
+      }}>
         {/* Sidebar */}
-        <Sidebar 
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          isCollapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        />
-        
+        <div style={{
+          width: sidebarCollapsed ? '0px' : '72px',
+          backgroundColor: theme.sidebar,
+          borderRight: `1px solid ${theme.sidebarBorder}`,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: '16px 0',
+          flexShrink: 0,
+          transition: 'width 0.3s ease-in-out',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          <Sidebar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
+        </div>
+
         {/* Content Area */}
-        <div className="chat-screen-area">
-          {activeTab === 'chats' ? (
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          overflow: 'hidden',
+          position: 'relative'
+        }}>
+
+          {activeTab === 'chats' && (
             <>
               {/* Chat List Panel */}
               <div style={{
                 width: '350px',
-                backgroundColor: '#2d2d2d',
-                borderRight: '1px solid #404040',
+                backgroundColor: theme.sidebar,
+                borderRight: `1px solid ${theme.sidebarBorder}`,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
                 position: 'relative'
               }}>
-                <ChatList 
+                <ChatList
                   onSelect={setSelectedChatId}
-                  isCollapsed={sidebarCollapsed}
-                  onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  sidebarCollapsed={sidebarCollapsed}
                 />
               </div>
 
               {/* Chat Screen Panel */}
               <div style={{
                 flex: 1,
-                backgroundColor: '#333333',
+                backgroundColor: theme.background,
                 overflow: 'hidden',
                 position: 'relative'
               }}>
@@ -318,7 +281,7 @@ const ChatApp: React.FC = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     height: '100%',
-                    color: '#ffffff',
+                    color: theme.textSecondary,
                     fontSize: '16px'
                   }}>
                     Select a chat to start messaging
@@ -326,20 +289,21 @@ const ChatApp: React.FC = () => {
                 )}
               </div>
             </>
-          ) : activeTab === 'friends' ? (
+          )}
+
+          {activeTab === 'friends' && (
             <>
-              {/* Friends List Panel */}
+              {/* Friends Sidebar */}
               <div style={{
                 width: '350px',
-                backgroundColor: '#2d2d2d',
-                borderRight: '1px solid #404040',
+                backgroundColor: theme.sidebar,
+                borderRight: `1px solid ${theme.sidebarBorder}`,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
                 position: 'relative'
               }}>
                 <FriendsScreen
-                  onBack={() => setActiveTab('chats')}
                   onOpenChat={(friendId: string, friendName: string) => {
                     console.log("Open chat with friend:", friendId, friendName);
                     // Find existing chat with this friend or create new one
@@ -354,15 +318,15 @@ const ChatApp: React.FC = () => {
                       setSelectedChatId(friendId); // This will be the chat ID once we implement proper logic
                     }
                   }}
-                  isCollapsed={sidebarCollapsed}
-                  onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  sidebarCollapsed={sidebarCollapsed}
                 />
               </div>
 
               {/* Friend Chat Screen Panel */}
               <div style={{
                 flex: 1,
-                backgroundColor: '#333333',
+                backgroundColor: theme.background,
                 overflow: 'hidden',
                 position: 'relative'
               }}>
@@ -374,7 +338,7 @@ const ChatApp: React.FC = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     height: '100%',
-                    color: '#ffffff',
+                    color: theme.textSecondary,
                     fontSize: '16px'
                   }}>
                     Select a friend to start messaging
@@ -382,13 +346,15 @@ const ChatApp: React.FC = () => {
                 )}
               </div>
             </>
-          ) : (
+          )}
+
+          {activeTab === 'settings' && (
             <>
               {/* Settings Sidebar */}
               <div style={{
                 width: '250px',
-                backgroundColor: '#2d2d2d',
-                borderRight: '1px solid #404040',
+                backgroundColor: theme.sidebar,
+                borderRight: `1px solid ${theme.sidebarBorder}`,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
@@ -396,9 +362,9 @@ const ChatApp: React.FC = () => {
               }}>
                 <SettingsScreen 
                   onBack={() => setActiveTab('chats')} 
-                  isCollapsed={sidebarCollapsed}
-                  onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
                   onCategoryChange={setSelectedSettingsCategory}
+                  onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  sidebarCollapsed={sidebarCollapsed}
                 />
               </div>
               
@@ -412,9 +378,6 @@ const ChatApp: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* Create Chat Modal */}
-      {/* Removed Create Chat Modal */}
     </div>
   );
 };

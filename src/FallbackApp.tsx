@@ -1,11 +1,14 @@
 import React from 'react';
+import { useTheme } from './ThemeContext';
 
 const FallbackApp: React.FC = () => {
+  const { theme } = useTheme();
+
   return (
     <div style={{
       minHeight: '100vh',
-      backgroundColor: '#242424',
-      color: 'white',
+      backgroundColor: theme.background,
+      color: theme.text,
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'center',
@@ -20,7 +23,7 @@ const FallbackApp: React.FC = () => {
         <h1 style={{ 
           fontSize: '2.5rem', 
           marginBottom: '1rem',
-          color: '#646cff'
+          color: theme.primary
         }}>
           🚀 Terracrypt Chat
         </h1>
@@ -28,44 +31,52 @@ const FallbackApp: React.FC = () => {
         <p style={{ 
           fontSize: '1.2rem', 
           marginBottom: '2rem',
-          color: 'rgba(255, 255, 255, 0.87)'
+          color: theme.textSecondary
         }}>
           Secure messaging application
         </p>
         
         <div style={{
-          backgroundColor: '#1a1a1a',
+          backgroundColor: theme.surface,
           padding: '2rem',
           borderRadius: '8px',
-          marginBottom: '2rem'
+          marginBottom: '2rem',
+          border: `1px solid ${theme.border}`
         }}>
-          <h3 style={{ marginBottom: '1rem' }}>Application Status</h3>
+          <h3 style={{ marginBottom: '1rem', color: theme.text }}>Application Status</h3>
           <ul style={{ 
             listStyle: 'none', 
             padding: 0,
             textAlign: 'left'
           }}>
-            <li style={{ marginBottom: '0.5rem' }}>✅ React Framework: Loaded</li>
-            <li style={{ marginBottom: '0.5rem' }}>✅ TypeScript: Working</li>
-            <li style={{ marginBottom: '0.5rem' }}>✅ Tauri Backend: Connected</li>
-            <li style={{ marginBottom: '0.5rem' }}>🔄 Authentication: Initializing...</li>
+            <li style={{ marginBottom: '0.5rem', color: theme.text }}>✅ React Framework: Loaded</li>
+            <li style={{ marginBottom: '0.5rem', color: theme.text }}>✅ TypeScript: Working</li>
+            <li style={{ marginBottom: '0.5rem', color: theme.text }}>✅ Tauri Backend: Connected</li>
+            <li style={{ marginBottom: '0.5rem', color: theme.text }}>🔄 Authentication: Initializing...</li>
           </ul>
         </div>
         
         <button 
           onClick={() => window.location.reload()}
           style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: '#007bff',
+            backgroundColor: theme.primary,
             color: 'white',
             border: 'none',
-            borderRadius: '4px',
+            padding: '12px 24px',
+            borderRadius: '6px',
+            fontSize: '16px',
             cursor: 'pointer',
-            fontSize: '1rem',
-            fontWeight: '500'
+            fontWeight: '500',
+            transition: 'background-color 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = theme.primaryHover;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = theme.primary;
           }}
         >
-          Refresh Application
+          Reload Application
         </button>
       </div>
     </div>

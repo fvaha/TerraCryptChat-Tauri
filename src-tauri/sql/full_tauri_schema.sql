@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS user (
     updated_at INTEGER,
     deleted_at INTEGER,
     is_dark_mode INTEGER DEFAULT 0,
-    last_seen INTEGER
+    last_seen INTEGER,
+    color_scheme TEXT DEFAULT 'blue'
 );
 
 -- CHATS

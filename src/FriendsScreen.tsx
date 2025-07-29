@@ -1,430 +1,297 @@
-import React, { useState, useEffect, ChangeEvent, MouseEvent } from "react";
-import { useAppContext } from "./AppContext";
-import FriendRequestsModal from "./FriendRequestsModal";
-import { nativeApiService } from "./nativeApiService";
+import React, { useState, useEffect } from 'react';
 
-interface Friend {
-  user_id: string;
-  username: string;
-  name: string;
-  email: string;
-  picture?: string;
-  status?: string;
-  created_at?: string;
-  is_favorite?: boolean;
-}
-
-interface FriendRequest {
-  request_id: string;
-  receiver_id: string;
-  status: string;
-  created_at?: string;
-  sender: {
-    user_id: string;
-    username: string;
-    name: string;
-    email: string;
-  };
-}
-
-interface UserSearchResult {
-  user_id: string;
-  username: string;
-  name: string;
-  email: string;
-  picture?: string;
-  verified: boolean;
-  created_at?: string;
-}
+import { useTheme } from './ThemeContext';
+import { friendService } from './friendService';
+import { Friend } from './models';
 
 interface FriendsScreenProps {
-  onBack: () => void;
   onOpenChat: (friendId: string, friendName: string) => void;
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
+  onToggleSidebar: () => void;
+  sidebarCollapsed: boolean;
 }
 
-const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, onToggleCollapse }) => {
-  const { user, services } = useAppContext();
+const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSidebar, sidebarCollapsed }) => {
+
+  const { theme } = useTheme();
   const [friends, setFriends] = useState<Friend[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showAddFriend, setShowAddFriend] = useState(false);
-  const [showRequestsModal, setShowRequestsModal] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [newFriendUsername, setNewFriendUsername] = useState('');
+  const [isAddingFriend, setIsAddingFriend] = useState(false);
 
-  // Load friends and pending requests
-  useEffect(() => {
-    if (user) {
-      loadFriendsData();
-    }
-  }, [user]);
-
-  const loadFriendsData = async () => {
-    const token = services.sessionManager.getToken();
-    if (!token) {
-      console.log('No token available for loading friends');
-      return;
-    }
-
+  // Load friends
+  const loadFriends = async () => {
     try {
       setIsLoading(true);
-
-      // Token should already be set in native API service by session manager
-      // Just ensure it's set
-      nativeApiService.setToken(token);
-
-      // Load friends list using cached native API with delta updates
-      const friendsData = await nativeApiService.getCachedFriendsOnly();
-      console.log("📋 Friends loaded via cached native API:", friendsData);
-      console.log("🔍 Friends array length:", friendsData?.length || 0);
-      console.log("🔍 First friend:", friendsData?.[0]);
+      setError(null);
+      console.log("🔄 Loading friends...");
       
-      // Process friends data to ensure correct structure
-      const processedFriends = (friendsData || []).map((friend: any) => ({
-        user_id: friend.user_id,
-        username: friend.username,
-        name: friend.name,
-        email: friend.email,
-        picture: friend.picture,
-        status: friend.status || "active",
-        created_at: friend.created_at,
-        is_favorite: friend.is_favorite || false
-      }));
+      const friendsData = await friendService.getCachedFriendsForCurrentUser();
+      console.log("✅ Friends loaded:", friendsData);
       
-      setFriends(processedFriends);
-      console.log('✅ Friends set in state:', processedFriends.length);
-
-      // Load friend requests using native API
-      try {
-        const requestsData = await nativeApiService.getFriendRequests();
-        console.log("📋 Friend requests loaded via native API:", requestsData);
-        
-        // Filter for pending requests only
-        const pendingRequestsData = (requestsData || []).filter((request: any) => 
-          request.status === 'pending'
-        );
-        
-        setPendingRequests(pendingRequestsData);
-        setPendingCount(pendingRequestsData.length);
-        console.log("🔍 Pending requests count:", pendingRequestsData.length);
-      } catch (requestsError) {
-        console.error("❌ Failed to load friend requests:", requestsError);
-        setPendingRequests([]);
-        setPendingCount(0);
+      if (Array.isArray(friendsData)) {
+        setFriends(friendsData);
+      } else {
+        console.warn("⚠️ Invalid friends data received:", friendsData);
+        setFriends([]);
       }
-      
     } catch (error) {
-      console.error("❌ Failed to load friends data:", error);
+      console.error("❌ Failed to load friends:", error);
+      setError("Failed to load friends");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const searchUsers = async (query: string) => {
-    if (!query.trim() || !user?.tokenHash) {
-      setSearchResults([]);
-      return;
-    }
+  // Add friend function
+  const handleAddFriend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFriendUsername.trim()) return;
 
     try {
-      setIsSearching(true);
+      setIsAddingFriend(true);
+      console.log("🔄 Adding friend:", newFriendUsername);
       
-      // Token should already be set in native API service by session manager
-      // Just ensure it's set
-      nativeApiService.setToken(user.tokenHash);
+      await friendService.sendFriendRequest(newFriendUsername);
+      console.log("✅ Friend request sent successfully");
       
-      // Use native API to search users
-      const searchResults = await nativeApiService.searchUsers(query);
-      console.log("🔍 Search results via native API:", searchResults);
-      setSearchResults(searchResults || []);
+      setNewFriendUsername('');
+      setShowAddFriend(false);
+      
+      // Reload friends to show the new request
+      await loadFriends();
     } catch (error) {
-      console.error("❌ Search error:", error);
-      setSearchResults([]);
+      console.error("❌ Failed to add friend:", error);
+      setError("Failed to add friend");
     } finally {
-      setIsSearching(false);
+      setIsAddingFriend(false);
     }
   };
 
-  const sendFriendRequest = async (userId: string) => {
-    if (!user?.tokenHash || !user?.userId) return;
+  // Filter friends based on search query
+  const filteredFriends = friends.filter(friend => {
+    if (!searchQuery.trim()) return true;
+    const friendName = (friend.username || '').toLowerCase();
+    const friendDisplayName = (friend.name || '').toLowerCase();
+    return friendName.includes(searchQuery.toLowerCase()) || 
+           friendDisplayName.includes(searchQuery.toLowerCase());
+  });
 
-    try {
-      const response = await fetch("https://dev.v1.terracrypt.cc/api/v1/friends/request", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${user.tokenHash}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          receiver_id: userId
-        })
-      });
+  // Load friends on mount
+  useEffect(() => {
+    loadFriends();
+  }, []);
 
-      if (response.ok) {
-        console.log("✅ Friend request sent successfully");
-        // Refresh friends list
-        await loadFriendsData();
-      } else {
-        console.error("❌ Failed to send friend request:", response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error("❌ Error sending friend request:", error);
-    }
-  };
-
-  const handleFriendRequest = async (requestId: string, status: "accepted" | "rejected") => {
-    if (!user?.tokenHash) return;
-
-    try {
-      const response = await fetch(`https://dev.v1.terracrypt.cc/api/v1/friends/request/${requestId}`, {
-        method: "PUT",
-        headers: {
-          "Authorization": `Bearer ${user.tokenHash}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ status })
-      });
-
-      if (response.ok) {
-        console.log(`✅ Friend request ${status} successfully`);
-        // Refresh friends list and requests
-        await loadFriendsData();
-      } else {
-        console.error(`❌ Failed to ${status} friend request:`, response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error(`❌ Error ${status}ing friend request:`, error);
-    }
-  };
-
-  const getUserInitials = (name: string, username: string) => {
-    if (name && name.trim()) {
-      return name.split(' ').map(n => n.charAt(0)).join('').toUpperCase();
-    }
-    return username ? username.charAt(0).toUpperCase() : "?";
-  };
-
-  // Filter search results to exclude current user and existing friends
-  const filteredSearchResults = searchResults.filter((result: UserSearchResult) => 
-    result.user_id !== user?.userId && 
-    !friends.some((friend: Friend) => friend.user_id === result.user_id)
-  );
-
-  if (showAddFriend) {
+  if (isLoading) {
     return (
-      <div style={{ 
-        flex: 1, 
-        display: "flex", 
-        flexDirection: "column", 
-        backgroundColor: "#333333"
+      <div style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: theme.background
       }}>
         {/* Header */}
-        <div style={{ 
-          padding: "16px 24px", 
-          borderBottom: "1px solid #404040", 
-          backgroundColor: "#333333",
-          display: "flex",
-          alignItems: "center",
-          gap: "16px"
+        <div style={{
+          padding: "16px",
+          borderBottom: `1px solid ${theme.border}`,
+          backgroundColor: theme.sidebar
         }}>
-          <button
-            onClick={() => setShowAddFriend(false)}
-            style={{
-              width: "40px",
-              height: "40px",
-              borderRadius: "8px",
-              border: "1px solid #404040",
-              backgroundColor: "transparent",
-              color: "#9ca3af",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              fontSize: "16px",
-              transition: "all 0.2s ease"
-            }}
-            onMouseEnter={(e) => {
-              (e.target as HTMLButtonElement).style.backgroundColor = "#404040";
-              (e.target as HTMLButtonElement).style.color = "white";
-            }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLButtonElement).style.backgroundColor = "transparent";
-              (e.target as HTMLButtonElement).style.color = "#9ca3af";
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15,18 9,12 15,6"/>
-            </svg>
-          </button>
-          <h1 style={{ fontSize: "20px", fontWeight: "600", color: "#ffffff", margin: 0 }}>
-            Add Friend
-          </h1>
-        </div>
-
-        {/* Search */}
-        <div style={{ padding: "16px 24px", backgroundColor: "#333333", borderBottom: "1px solid #404040" }}>
-          <div style={{ position: "relative" }}>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                setSearchQuery(e.target.value);
-                searchUsers(e.target.value);
-              }}
-              placeholder="Search by username or email..."
-              style={{
-                width: "100%",
-                paddingLeft: "40px",
-                paddingRight: "16px",
-                paddingTop: "12px",
-                paddingBottom: "12px",
-                border: "1px solid #404040",
-                borderRadius: "8px",
-                fontSize: "14px",
-                outline: "none",
-                backgroundColor: "#404040",
-                color: "#ffffff"
-              }}
-            />
-            <span style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "#6b7280",
-              fontSize: "16px"
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center"
+          }}>
+            <h2 style={{
+              fontSize: "18px",
+              fontWeight: "600",
+              color: theme.text,
+              margin: 0
             }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="m21 21-4.35-4.35"/>
-              </svg>
-            </span>
-          </div>
-        </div>
-
-        {/* Search Results */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px" }}>
-          {isSearching ? (
-            <div style={{ textAlign: "center", padding: "32px" }}>
-              <div style={{
-                display: "inline-block",
+              Friends
+            </h2>
+            <button
+              onClick={() => setShowAddFriend(!showAddFriend)}
+              style={{
                 width: "32px",
                 height: "32px",
-                border: "2px solid #404040",
-                borderTop: "2px solid #3b82f6",
+                borderRadius: "8px",
+                border: `1px solid ${theme.border}`,
+                backgroundColor: "transparent",
+                color: theme.textSecondary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                fontSize: "16px",
+                transition: "all 0.2s ease"
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        {/* Loading skeleton */}
+        <div style={{ flex: 1, padding: "12px", overflowY: "auto", overflowX: "hidden" }}>
+          {[...Array(6)].map((_, i) => (
+            <div key={i} style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              padding: "12px", 
+              marginBottom: "8px",
+              backgroundColor: theme.surface,
+              borderRadius: "8px"
+            }}>
+              <div style={{ 
+                width: "48px", 
+                height: "48px", 
+                backgroundColor: theme.border, 
                 borderRadius: "50%",
-                animation: "spin 1s linear infinite",
-                marginBottom: "16px"
+                marginRight: "12px"
               }}></div>
-              <p style={{ color: "#9ca3af" }}>Searching...</p>
+              <div style={{ flex: 1 }}>
+                <div style={{ 
+                  height: "16px", 
+                  backgroundColor: theme.border, 
+                  borderRadius: "4px", 
+                  marginBottom: "8px",
+                  width: "75%"
+                }}></div>
+                <div style={{ 
+                  height: "12px", 
+                  backgroundColor: theme.border, 
+                  borderRadius: "4px",
+                  width: "60%"
+                }}></div>
+              </div>
             </div>
-          ) : filteredSearchResults.length === 0 && searchQuery ? (
-            <div style={{ textAlign: "center", padding: "32px" }}>
-              <p style={{ color: "#9ca3af" }}>No users found</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {filteredSearchResults.map((result: UserSearchResult) => (
-                <div
-                  key={result.user_id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "12px",
-                    backgroundColor: "#404040",
-                    borderRadius: "8px",
-                    border: "1px solid #404040"
-                  }}
-                >
-                  <div style={{
-                    width: "48px",
-                    height: "48px",
-                    background: "linear-gradient(135deg, #10b981, #059669)",
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "white",
-                    fontWeight: "500",
-                    fontSize: "14px",
-                    marginRight: "12px"
-                  }}>
-                    {getUserInitials(result.name, result.username)}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: "14px", fontWeight: "500", color: "#ffffff", margin: "0 0 2px 0" }}>
-                      {result.name || result.username}
-                    </h3>
-                    <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>
-                      @{result.username}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => sendFriendRequest(result.user_id)}
-                    style={{
-                      padding: "8px 16px",
-                      border: "none",
-                      borderRadius: "6px",
-                      backgroundColor: "#3b82f6",
-                      color: "white",
-                      fontSize: "12px",
-                      fontWeight: "500",
-                      cursor: "pointer"
-                    }}
-                  >
-                    Add Friend
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          ))}
         </div>
       </div>
     );
   }
 
-  console.log("🔍 FriendsScreen render - friends length:", friends.length, "isLoading:", isLoading);
+  if (error) {
+    return (
+      <div style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: theme.background
+      }}>
+        <div style={{
+          padding: "16px",
+          borderBottom: `1px solid ${theme.border}`,
+          backgroundColor: theme.sidebar
+        }}>
+          <h2 style={{
+            fontSize: "18px",
+            fontWeight: "600",
+            color: theme.text,
+            margin: 0
+          }}>
+            Friends
+          </h2>
+        </div>
+        <div style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px"
+        }}>
+          <div style={{ textAlign: "center" }}>
+            <p style={{ color: theme.error, marginBottom: "16px" }}>{error}</p>
+            <button
+              onClick={loadFriends}
+              style={{
+                padding: "8px 16px",
+                backgroundColor: theme.primary,
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontSize: "14px"
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
-      height: '100%',
-      backgroundColor: '#2d2d2d',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden'
+      height: "100%",
+      display: "flex",
+      flexDirection: "column",
+      backgroundColor: theme.background
     }}>
       {/* Header */}
-      <div style={{ 
-        padding: "16px 24px", 
-        borderBottom: "1px solid #404040", 
-        backgroundColor: "#2d2d2d",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-
+      <div style={{
+        padding: "16px",
+        borderBottom: `1px solid ${theme.border}`,
+        backgroundColor: theme.sidebar
       }}>
-        <div style={{ 
-          display: "flex", 
-          alignItems: "center", 
-          gap: "12px",
-          transform: isCollapsed ? 'translateX(0)' : 'translateX(0)',
-          transition: 'transform 0.3s ease-in-out'
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
         }}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px"
+          }}>
+            <button
+              onClick={onToggleSidebar}
+              style={{
+                width: "32px",
+                height: "32px",
+                borderRadius: "8px",
+                border: `1px solid ${theme.border}`,
+                backgroundColor: "transparent",
+                color: theme.textSecondary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                fontSize: "16px",
+                transition: "all 0.2s ease"
+              }}
+              title="Toggle sidebar"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <h2 style={{
+              fontSize: "18px",
+              fontWeight: "600",
+              color: theme.text,
+              margin: 0
+            }}>
+              Friends
+            </h2>
+          </div>
           <button
-            onClick={onToggleCollapse}
-            className={`toggle-button ${isCollapsed ? 'slide-in' : 'slide-out'}`}
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() => setShowAddFriend(!showAddFriend)}
             style={{
-              width: "40px",
-              height: "40px",
+              width: "32px",
+              height: "32px",
               borderRadius: "8px",
-              border: "1px solid #404040",
+              border: `1px solid ${theme.border}`,
               backgroundColor: "transparent",
-              color: "#9ca3af",
+              color: theme.textSecondary,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -434,170 +301,132 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="3" y1="6" x2="21" y2="6"/>
-              <line x1="3" y1="12" x2="21" y2="12"/>
-              <line x1="3" y1="18" x2="21" y2="18"/>
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </button>
-          <h1 style={{ 
-            fontSize: "20px", 
-            fontWeight: "600", 
-            color: "#ffffff", 
-            margin: 0,
-            transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
-            transition: 'transform 0.3s ease-in-out'
-          }}>
-            Friends
-          </h1>
         </div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          {pendingCount > 0 && (
-            <button
-              onClick={() => setShowRequestsModal(true)}
-              style={{
-                width: "40px",
-                height: "40px",
-                borderRadius: "50%",
-                border: "none",
-                backgroundColor: "#f59e0b",
-                color: "white",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                fontSize: "12px",
-                fontWeight: "600",
-                position: "relative"
-              }}
-              title={`${pendingCount} friend requests`}
-            >
-              {pendingCount}
-            </button>
-          )}
-          <button
-            onClick={() => setShowAddFriend(true)}
-            style={{
-              width: "40px",
-              height: "40px",
-              borderRadius: "50%",
-              border: "none",
-              backgroundColor: "transparent",
-              color: "#9ca3af",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              fontSize: "20px",
-              transition: "all 0.2s ease"
-            }}
-            onMouseEnter={(e) => {
-              (e.target as HTMLButtonElement).style.transform = "scale(1.1)";
-              (e.target as HTMLButtonElement).style.color = "#3b82f6";
-            }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLButtonElement).style.transform = "scale(1)";
-              (e.target as HTMLButtonElement).style.color = "#9ca3af";
-            }}
-          >
-            +
-          </button>
 
+        {/* Search Bar */}
+        <div style={{ marginTop: "12px" }}>
+          <input
+            type="text"
+            placeholder="Search friends..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              borderRadius: "6px",
+              border: `1px solid ${theme.border}`,
+              backgroundColor: theme.inputBackground,
+              color: theme.text,
+              fontSize: "14px"
+            }}
+          />
         </div>
       </div>
 
-
-
-      {/* Friends List */}
-      <div style={{ 
-        flex: 1, 
-        overflowY: 'auto', 
-        padding: '16px',
-        backgroundColor: '#2d2d2d'
-      }}>
-        {isLoading ? (
-          <div style={{ padding: "24px" }}>
-            {[...Array(5)].map((_, i) => (
-              <div key={i} style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                padding: "12px 0", 
-                marginBottom: "8px" 
-              }}>
-                <div style={{ 
-                  width: "48px", 
-                  height: "48px", 
-                  backgroundColor: "#404040", 
-                  borderRadius: "50%",
-                  marginRight: "12px"
-                }}></div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ 
-                    height: "16px", 
-                    backgroundColor: "#404040", 
-                    borderRadius: "4px", 
-                    marginBottom: "4px",
-                    width: "60%"
-                  }}></div>
-                  <div style={{ 
-                    height: "12px", 
-                    backgroundColor: "#404040", 
-                    borderRadius: "4px",
-                    width: "40%"
-                  }}></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : friends.length === 0 ? (
-          <div style={{ 
-            display: "flex", 
-            flexDirection: "column", 
-            alignItems: "center", 
-            justifyContent: "center", 
-            padding: "64px 24px",
-            textAlign: "center"
-          }}>
-            <div style={{
-              width: "80px",
-              height: "80px",
-              backgroundColor: "#404040",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+        {showAddFriend ? (
+          <div style={{ padding: "16px" }}>
+            <h3 style={{
+              fontSize: "16px",
+              fontWeight: "600",
+              color: theme.text,
               marginBottom: "16px"
             }}>
-              <span style={{ fontSize: "32px" }}>👥</span>
-            </div>
-            <h3 style={{ fontSize: "18px", fontWeight: "600", color: "#ffffff", margin: "0 0 8px 0" }}>
-              No friends yet
+              Add Friend
             </h3>
-            <p style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "24px" }}>
-              Add friends to start secure conversations
-            </p>
-            <button
-              onClick={() => setShowAddFriend(true)}
-              style={{
-                padding: "12px 24px",
-                border: "none",
-                borderRadius: "8px",
-                backgroundColor: "#3b82f6",
-                color: "white",
-                fontSize: "14px",
-                fontWeight: "500",
-                cursor: "pointer"
-              }}
-            >
-              Add Your First Friend
-            </button>
+            
+            <form onSubmit={handleAddFriend}>
+              <div style={{ marginBottom: "16px" }}>
+                <input
+                  type="text"
+                  placeholder="Enter username"
+                  value={newFriendUsername}
+                  onChange={(e) => setNewFriendUsername(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: `1px solid ${theme.border}`,
+                    backgroundColor: theme.inputBackground,
+                    color: theme.text,
+                    fontSize: "14px"
+                  }}
+                />
+              </div>
+              
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="submit"
+                  disabled={isAddingFriend || !newFriendUsername.trim()}
+                  style={{
+                    padding: "8px 16px",
+                    backgroundColor: theme.primary,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: isAddingFriend ? "not-allowed" : "pointer",
+                    fontSize: "14px",
+                    opacity: isAddingFriend ? 0.6 : 1
+                  }}
+                >
+                  {isAddingFriend ? "Adding..." : "Add Friend"}
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddFriend(false);
+                    setNewFriendUsername('');
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    backgroundColor: "transparent",
+                    color: theme.text,
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontSize: "14px"
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : filteredFriends.length === 0 ? (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            padding: "24px"
+          }}>
+            <div style={{ textAlign: "center" }}>
+              <h3 style={{ 
+                fontSize: "16px", 
+                fontWeight: "500", 
+                marginBottom: "8px",
+                color: theme.text
+              }}>
+                {searchQuery ? "No friends found" : "No friends yet"}
+              </h3>
+              <p style={{ fontSize: "14px", color: theme.textSecondary }}>
+                {searchQuery ? "Try a different search term" : "Add friends to start chatting"}
+              </p>
+            </div>
           </div>
         ) : (
-          friends.map((friend: Friend) => (
+          filteredFriends.map((friend) => (
             <div
               key={friend.user_id}
               style={{
-                backgroundColor: "#404040",
-                border: "1px solid #404040",
+                backgroundColor: theme.surface,
+                border: `1px solid ${theme.border}`,
                 borderRadius: "12px",
                 padding: "16px",
                 marginBottom: "12px",
@@ -613,7 +442,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
                     width: "40px",
                     height: "40px",
                     borderRadius: "50%",
-                    backgroundColor: "#0078d4",
+                    backgroundColor: theme.primary,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -626,10 +455,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
                   {friend.username ? friend.username.charAt(0).toUpperCase() : "?"}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <h3 style={{ color: "#ffffff", margin: "0 0 4px 0", fontSize: "16px", fontWeight: "500" }}>
+                  <h3 style={{ color: theme.text, margin: "0 0 4px 0", fontSize: "16px", fontWeight: "500" }}>
                     {friend.username}
                   </h3>
-                  <p style={{ color: "#9ca3af", margin: 0, fontSize: "14px" }}>
+                  <p style={{ color: theme.textSecondary, margin: 0, fontSize: "14px" }}>
                     @{friend.username}
                   </p>
                 </div>
@@ -638,73 +467,23 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
                 <button
                   onClick={() => onOpenChat(friend.user_id, friend.username)}
                   style={{
-                    width: "36px",
-                    height: "36px",
-                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    backgroundColor: theme.primary,
+                    color: "white",
                     border: "none",
-                    backgroundColor: "#0078d4",
-                    color: "#ffffff",
+                    borderRadius: "6px",
                     cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "16px",
-                    transition: "all 0.2s ease"
+                    fontSize: "12px",
+                    fontWeight: "500"
                   }}
-                  onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => {
-                    e.currentTarget.style.backgroundColor = "#106ebe";
-                  }}
-                  onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => {
-                    e.currentTarget.style.backgroundColor = "#0078d4";
-                  }}
-                  title="Start chat"
                 >
-                  💬
-                </button>
-                <button
-                  onClick={() => {
-                    // TODO: Implement remove friend functionality
-                    console.log("Remove friend:", friend.user_id);
-                  }}
-                  style={{
-                    width: "36px",
-                    height: "36px",
-                    borderRadius: "8px",
-                    border: "none",
-                    backgroundColor: "#dc2626",
-                    color: "#ffffff",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "16px",
-                    transition: "all 0.2s ease"
-                  }}
-                  onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => {
-                    e.currentTarget.style.backgroundColor = "#b91c1c";
-                  }}
-                  onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => {
-                    e.currentTarget.style.backgroundColor = "#dc2626";
-                  }}
-                  title="Remove friend"
-                >
-                  🗑️
+                  Message
                 </button>
               </div>
             </div>
           ))
         )}
       </div>
-
-      {/* Friend Requests Modal */}
-      <FriendRequestsModal
-        isOpen={showRequestsModal}
-        onClose={() => setShowRequestsModal(false)}
-        requests={pendingRequests}
-        onAccept={(requestId: string) => handleFriendRequest(requestId, "accepted")}
-        onDecline={(requestId: string) => handleFriendRequest(requestId, "rejected")}
-        isLoading={isLoading}
-      />
     </div>
   );
 };

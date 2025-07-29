@@ -24,6 +24,7 @@ pub struct User {
     pub deleted_at: Option<i64>,
     pub is_dark_mode: bool,
     pub last_seen: i64,
+    pub color_scheme: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -204,8 +205,8 @@ pub fn insert_or_update_user(user: &User) -> Result<()> {
         "INSERT OR REPLACE INTO user (
             user_id, username, email, name, password, picture,
             role, token_hash, verified, created_at, updated_at,
-            deleted_at, is_dark_mode, last_seen
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            deleted_at, is_dark_mode, last_seen, color_scheme
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             user.user_id,
             user.username,
@@ -220,7 +221,8 @@ pub fn insert_or_update_user(user: &User) -> Result<()> {
             user.updated_at,
             user.deleted_at,
             user.is_dark_mode,
-            user.last_seen
+            user.last_seen,
+            user.color_scheme
         ]
     )?;
     Ok(())
@@ -245,6 +247,7 @@ pub fn get_user_by_id(user_id: &str) -> Result<Option<User>> {
             deleted_at: row.get(11)?,
             is_dark_mode: row.get(12)?,
             last_seen: row.get(13)?,
+            color_scheme: row.get(14)?,
         })
     })?;
 
@@ -273,6 +276,7 @@ pub fn get_user_by_token(token: &str) -> Result<Option<User>> {
             deleted_at: row.get(11)?,
             is_dark_mode: row.get(12)?,
             last_seen: row.get(13)?,
+            color_scheme: row.get(14)?,
         })
     })?;
 
@@ -306,6 +310,21 @@ pub fn get_dark_mode(user_id: &str) -> Result<bool> {
     Ok(result)
 }
 
+pub fn update_color_scheme(user_id: &str, color_scheme: &str) -> Result<()> {
+    let conn = get_connection()?;
+    conn.execute(
+        "UPDATE user SET color_scheme = ? WHERE user_id = ?",
+        params![color_scheme, user_id]
+    )?;
+    Ok(())
+}
+
+pub fn get_color_scheme(user_id: &str) -> Result<String> {
+    let conn = get_connection()?;
+    let result = conn.query_row("SELECT color_scheme FROM user WHERE user_id = ?", params![user_id], |row| row.get(0))?;
+    Ok(result)
+}
+
 pub fn get_most_recent_user() -> Result<Option<User>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare("SELECT * FROM user WHERE token_hash IS NOT NULL ORDER BY updated_at DESC LIMIT 1")?;
@@ -325,6 +344,7 @@ pub fn get_most_recent_user() -> Result<Option<User>> {
             deleted_at: row.get(11)?,
             is_dark_mode: row.get(12)?,
             last_seen: row.get(13)?,
+            color_scheme: row.get(14)?,
         })
     })?;
 

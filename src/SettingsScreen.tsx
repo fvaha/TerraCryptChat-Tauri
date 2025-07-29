@@ -1,15 +1,17 @@
 import React from 'react';
 import { useAppContext } from './AppContext';
+import { useTheme } from './ThemeContext';
 
 interface SettingsScreenProps {
   onBack: () => void;
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
   onCategoryChange: (category: string) => void;
+  onToggleSidebar: () => void;
+  sidebarCollapsed: boolean;
 }
 
-const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCollapse, onCategoryChange }) => {
+const SettingsScreen: React.FC<SettingsScreenProps> = ({ onCategoryChange, onToggleSidebar, sidebarCollapsed }) => {
   const { user } = useAppContext();
+  const { theme } = useTheme();
 
   const getUserInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -45,13 +47,13 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
       flex: 1, 
       display: "flex", 
       flexDirection: "column", 
-      backgroundColor: "#2d2d2d" 
+      backgroundColor: theme.background 
     }}>
       {/* Header */}
       <div style={{ 
         padding: "16px 24px", 
-        borderBottom: "1px solid #404040", 
-        backgroundColor: "#2d2d2d",
+        borderBottom: `1px solid ${theme.border}`, 
+        backgroundColor: theme.sidebar,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between"
@@ -59,21 +61,17 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
         <div style={{ 
           display: "flex", 
           alignItems: "center", 
-          gap: "12px",
-          transform: isCollapsed ? 'translateX(0)' : 'translateX(0)',
-          transition: 'transform 0.3s ease-in-out'
+          gap: "12px"
         }}>
           <button
-            onClick={onToggleCollapse}
-            className={`toggle-button ${isCollapsed ? 'slide-in' : 'slide-out'}`}
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={onToggleSidebar}
             style={{
-              width: "40px",
-              height: "40px",
+              width: "32px",
+              height: "32px",
               borderRadius: "8px",
-              border: "1px solid #404040",
+              border: `1px solid ${theme.border}`,
               backgroundColor: "transparent",
-              color: "#9ca3af",
+              color: theme.textSecondary,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -81,6 +79,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
               fontSize: "16px",
               transition: "all 0.2s ease"
             }}
+            title="Toggle sidebar"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="3" y1="6" x2="21" y2="6"/>
@@ -91,10 +90,8 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
           <h1 style={{ 
             fontSize: "20px", 
             fontWeight: "600", 
-            color: "#ffffff", 
-            margin: 0,
-            transform: isCollapsed ? 'translateX(0)' : 'translateX(-48px)',
-            transition: 'transform 0.3s ease-in-out'
+            color: theme.text, 
+            margin: 0
           }}>
             Settings
           </h1>
@@ -104,8 +101,8 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
       {/* User Profile Section */}
       <div style={{ 
         padding: "16px 24px", 
-        borderBottom: "1px solid #404040",
-        backgroundColor: "#2d2d2d"
+        borderBottom: `1px solid ${theme.border}`,
+        backgroundColor: theme.sidebar
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
           <div style={{
@@ -123,10 +120,10 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
             {user ? getUserInitials(user.name || user.username) : "U"}
           </div>
           <div style={{ flex: 1 }}>
-            <h3 style={{ fontSize: "16px", fontWeight: "600", color: "#ffffff", margin: "0 0 4px 0" }}>
+            <h3 style={{ fontSize: "16px", fontWeight: "600", color: theme.text, margin: "0 0 4px 0" }}>
               {user?.name || user?.username || "Unknown User"}
             </h3>
-            <p style={{ fontSize: "14px", color: "#9ca3af", margin: 0 }}>
+            <p style={{ fontSize: "14px", color: theme.textSecondary, margin: 0 }}>
               {user?.email || "No email"}
             </p>
           </div>
@@ -136,9 +133,9 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
               width: "32px",
               height: "32px",
               borderRadius: "8px",
-              border: "1px solid #404040",
+              border: `1px solid ${theme.border}`,
               backgroundColor: "transparent",
-              color: "#9ca3af",
+              color: theme.textSecondary,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -148,12 +145,12 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
             }}
             title="Edit Profile"
             onMouseEnter={(e) => {
-              (e.target as HTMLButtonElement).style.backgroundColor = "#404040";
-              (e.target as HTMLButtonElement).style.color = "white";
+              (e.target as HTMLButtonElement).style.backgroundColor = theme.hover;
+              (e.target as HTMLButtonElement).style.color = theme.text;
             }}
             onMouseLeave={(e) => {
               (e.target as HTMLButtonElement).style.backgroundColor = "transparent";
-              (e.target as HTMLButtonElement).style.color = "#9ca3af";
+              (e.target as HTMLButtonElement).style.color = theme.textSecondary;
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -165,7 +162,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
       </div>
 
       {/* Settings Categories */}
-      <div style={{ flex: 1, overflowY: "auto", backgroundColor: "#2d2d2d" }}>
+      <div style={{ flex: 1, overflowY: "auto", backgroundColor: theme.background }}>
         {settingsCategories.map((category) => (
           <button
             key={category.id}
@@ -174,8 +171,8 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
               width: "100%",
               padding: "12px 24px",
               border: "none",
-              backgroundColor: "#404040",
-              color: "#ffffff",
+              backgroundColor: theme.surface,
+              color: theme.text,
               display: "flex",
               alignItems: "center",
               gap: "12px",
@@ -183,6 +180,12 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ isCollapsed, onToggleCo
               fontSize: "14px",
               textAlign: "left",
               transition: "all 0.2s ease"
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = theme.hover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = theme.surface;
             }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" 

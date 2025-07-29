@@ -1,6 +1,24 @@
 import React, { useState } from 'react';
+import { useTheme } from '../ThemeContext';
 
-const MenuBar: React.FC = () => {
+interface MenuBarProps {
+  onToggleSidebar?: () => void;
+  onShowFriends?: () => void;
+  onShowSettings?: () => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onResetZoom?: () => void;
+}
+
+const MenuBar: React.FC<MenuBarProps> = ({ 
+  onToggleSidebar, 
+  onShowFriends, 
+  onShowSettings,
+  onZoomIn,
+  onZoomOut,
+  onResetZoom
+}) => {
+  const { theme } = useTheme();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   const menuItems = {
@@ -20,13 +38,13 @@ const MenuBar: React.FC = () => {
       { label: 'Paste', action: () => console.log('Paste') }
     ],
     View: [
-      { label: 'Toggle Sidebar', action: () => console.log('Toggle Sidebar') },
-      { label: 'Show Friends', action: () => console.log('Show Friends') },
-      { label: 'Show Settings', action: () => console.log('Show Settings') },
+      { label: 'Toggle Sidebar', action: onToggleSidebar || (() => console.log('Toggle Sidebar')) },
+      { label: 'Show Friends', action: onShowFriends || (() => console.log('Show Friends')) },
+      { label: 'Show Settings', action: onShowSettings || (() => console.log('Show Settings')) },
       { label: '---' },
-      { label: 'Zoom In', action: () => console.log('Zoom In') },
-      { label: 'Zoom Out', action: () => console.log('Zoom Out') },
-      { label: 'Reset Zoom', action: () => console.log('Reset Zoom') }
+      { label: 'Zoom In', action: onZoomIn || (() => console.log('Zoom In')) },
+      { label: 'Zoom Out', action: onZoomOut || (() => console.log('Zoom Out')) },
+      { label: 'Reset Zoom', action: onResetZoom || (() => console.log('Reset Zoom')) }
     ],
     Window: [
       { label: 'Minimize', action: () => console.log('Minimize') },
@@ -40,8 +58,8 @@ const MenuBar: React.FC = () => {
   return (
     <div style={{
       height: '24px',
-      backgroundColor: '#2d2d2d',
-      borderBottom: '1px solid #404040',
+      backgroundColor: theme.sidebar,
+      borderBottom: `1px solid ${theme.sidebarBorder}`,
       display: 'flex',
       alignItems: 'center',
       padding: '0 8px',
@@ -59,11 +77,16 @@ const MenuBar: React.FC = () => {
               padding: '4px 8px',
               cursor: 'pointer',
               fontSize: '12px',
-              color: '#ffffff',
+              color: theme.text,
               borderRadius: '2px',
               transition: 'background-color 0.1s'
             }}
             onMouseEnter={() => setActiveMenu(menuName)}
+            onMouseLeave={(e) => {
+              if (activeMenu !== menuName) {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
           >
             {menuName}
           </button>
@@ -74,10 +97,10 @@ const MenuBar: React.FC = () => {
                 position: 'absolute',
                 top: '100%',
                 left: '0',
-                backgroundColor: '#404040',
-                border: '1px solid #555555',
+                backgroundColor: theme.surface,
+                border: `1px solid ${theme.border}`,
                 borderRadius: '4px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                boxShadow: theme.shadow,
                 zIndex: 1000,
                 minWidth: '150px',
                 padding: '4px 0'
@@ -87,11 +110,11 @@ const MenuBar: React.FC = () => {
               {items.map((item, index) => (
                 <div key={index}>
                   {item.label === '---' ? (
-                                         <div style={{
-                       height: '1px',
-                       backgroundColor: '#555555',
-                       margin: '2px 8px'
-                     }} />
+                    <div style={{
+                      height: '1px',
+                      backgroundColor: theme.border,
+                      margin: '2px 8px'
+                    }} />
                   ) : (
                     <button
                       onClick={() => {
@@ -100,23 +123,23 @@ const MenuBar: React.FC = () => {
                         }
                         setActiveMenu(null);
                       }}
-                                           style={{
-                       width: '100%',
-                       background: 'none',
-                       border: 'none',
-                       padding: '4px 12px',
-                       textAlign: 'left',
-                       cursor: 'pointer',
-                       fontSize: '12px',
-                       color: '#ffffff',
-                       transition: 'background-color 0.1s'
-                     }}
-                                             onMouseEnter={(e) => {
-                         e.currentTarget.style.backgroundColor = '#555555';
-                       }}
-                       onMouseLeave={(e) => {
-                         e.currentTarget.style.backgroundColor = 'transparent';
-                       }}
+                      style={{
+                        width: '100%',
+                        background: 'none',
+                        border: 'none',
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        color: theme.text,
+                        textAlign: 'left',
+                        transition: 'background-color 0.1s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = theme.hover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
                     >
                       {item.label}
                     </button>
