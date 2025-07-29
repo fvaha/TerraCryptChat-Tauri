@@ -1,6 +1,7 @@
 
 import { messageService } from "./messageService";
 import { databaseService } from "./databaseService";
+import { MessageSendStatus } from "./models";
 
 export class DeltaUpdateService {
   private static instance: DeltaUpdateService;
@@ -81,19 +82,16 @@ export class DeltaUpdateService {
     for (const chat of chats) {
       try {
         const chatEntity = {
-          chatId: chat.chat_id,
-          chatType: chat.is_group ? "group" : "direct",
-          chatName: chat.chat_name,
-          createdAt: chat.created_at,
-          adminId: chat.creator_id,
-          unreadCount: chat.unread_count,
+          chat_id: chat.chat_id,
+          chat_name: chat.chat_name,
+          creator_id: chat.creator_id,
+          is_group: chat.is_group,
           description: chat.description,
-          groupName: chat.group_name,
-          lastMessageContent: chat.last_message_content,
-          lastMessageTimestamp: chat.last_message_timestamp,
-          participants: "",
-          isGroup: chat.is_group,
-          creatorId: chat.creator_id
+          group_name: chat.group_name,
+          last_message_content: chat.last_message_content,
+          last_message_timestamp: chat.last_message_timestamp,
+          unread_count: chat.unread_count,
+          created_at: chat.created_at
         };
 
         await databaseService.insertChat(chatEntity);
@@ -179,18 +177,18 @@ export class DeltaUpdateService {
     for (const message of messages) {
       try {
         const messageEntity = {
-          messageId: message.message_id,
-          clientMessageId: message.client_message_id || message.message_id,
-          chatId: message.chat_id,
-          senderId: message.sender_id,
+          message_id: message.message_id,
+          client_message_id: message.client_message_id || message.message_id,
+          chat_id: message.chat_id,
+          sender_id: message.sender_id,
           content: message.content,
           timestamp: new Date(message.sent_at).getTime(),
-          isRead: message.is_read || false,
-          isSent: true,
-          isDelivered: message.is_delivered || false,
-          isFailed: false,
-          senderUsername: message.sender_username || "Unknown",
-          replyToMessageId: message.reply_to_message_id
+          is_read: message.is_read || false,
+          is_sent: true,
+          is_delivered: message.is_delivered || false,
+          is_failed: false,
+          sender_username: message.sender_username || "Unknown",
+          reply_to_message_id: message.reply_to_message_id
         };
 
         await databaseService.insertMessage(messageEntity);
@@ -208,13 +206,13 @@ export class DeltaUpdateService {
       try {
         switch (update.status) {
           case "sent":
-            await messageService.updateMessageStatus(update.message_id, update.client_message_id, "sent");
+            await messageService.updateMessageStatus(update.message_id, update.client_message_id, MessageSendStatus.SENT);
             break;
           case "delivered":
-            await messageService.updateMessageStatus(update.message_id, undefined, "delivered");
+            await messageService.updateMessageStatus(update.message_id, undefined, MessageSendStatus.DELIVERED);
             break;
           case "read":
-            await messageService.updateMessageStatus(update.message_id, undefined, "read");
+            await messageService.updateMessageStatus(update.message_id, undefined, MessageSendStatus.READ);
             break;
         }
         console.log(`[DeltaUpdateService] Updated message status: ${update.message_id} -> ${update.status}`);
@@ -272,15 +270,13 @@ export class DeltaUpdateService {
     for (const friend of friends) {
       try {
         const friendEntity = {
-          friendId: friend.user_id,
+          friend_id: friend.user_id,
           username: friend.username,
-          email: friend.email,
           name: friend.name,
+          email: friend.email,
           picture: friend.picture,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
           status: friend.status || "active",
-          isFavorite: friend.is_favorite || false
+          is_favorite: friend.is_favorite || false
         };
 
         await databaseService.insertFriend(friendEntity);

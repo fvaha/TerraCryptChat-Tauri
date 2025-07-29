@@ -3,8 +3,6 @@ import { MessageEntity, IncomingWSMessage, MessageStatusMessage, ChatMessageWrap
 import { encryptionService } from "./encryptionService";
 import { websocketService } from "./websocketService";
 import { messageLinkingManager } from "./messageLinkingManager";
-import { sessionManager } from "./sessionManager";
-import { chatService } from "./chatService";
 import { databaseService } from "./databaseService";
 
 // Generate UUID function
@@ -334,7 +332,7 @@ export class MessageService {
     const clientId = generateUUID();
     console.log("Generated client ID:", clientId);
 
-    // Save message locally first (like iOS implementation) - PLAIN TEXT
+    // Save message locally first (PLAIN TEXT) - this shows immediately in UI
     console.log("Saving outgoing message locally (plain text)...");
     await this.saveOutgoingMessage(clientId, chatId, content, currentUser.user_id, replyToMessageId);
     console.log("Outgoing message saved locally");
@@ -342,10 +340,10 @@ export class MessageService {
     // Update chat last message
     await this.updateChatLastMessage(chatId, content, Date.now());
 
-    // Send message via WebSocket
-    console.log("Sending message via WebSocket...");
+    // Send message via WebSocket (ENCRYPTED)
+    console.log("Sending encrypted message via WebSocket...");
     await this.actuallySendMessage(clientId, content, chatId, currentUser.user_id);
-    console.log("Message sent via WebSocket");
+    console.log("Encrypted message sent via WebSocket");
 
     return clientId;
   }
@@ -362,9 +360,11 @@ export class MessageService {
       return;
     }
 
+    // Encrypt the message content before sending
     const encryptedContent = encryptionService.encryptMessage(content);
+    console.log("[MessageService] Message encrypted successfully");
 
-    // Prepare the payload for sending the message
+    // Prepare the payload for sending the message (JSON format)
     // Based on Swift implementation - client_message_id should be at root level
     const payload = {
       type: "chat",
@@ -379,7 +379,7 @@ export class MessageService {
     try {
       console.log("[MessageService] About to send WebSocket message with payload:", JSON.stringify(payload, null, 2));
       
-      // Send as text message to match iOS WebSocketEngine behavior
+      // Send as JSON text message to match iOS WebSocketEngine behavior
       await websocketService.sendMessage(payload);
       console.log("[MessageService] WebSocket message sent successfully with client_message_id:", clientId);
       
@@ -639,11 +639,6 @@ export class MessageService {
 
   // MARK: - Utility Methods
 
-  private async resolveSenderUsername(senderId: string): Promise<string> {
-    // This would typically query the database for user information
-    return "Unknown";
-  }
-
   private async updateChatLastMessage(chatId: string, content: string, timestamp: number): Promise<void> {
     try {
       // Update chat last message in database
@@ -699,16 +694,6 @@ export const insertMessage = async (message: MessageEntity) => {
 
 export const updateMessageStatus = async (messageId: string, status: string) => {
   try {
-    const messageStatus = status === "sent" ? MessageSendStatus.SENT :
-                        status === "delivered" ? MessageSendStatus.DELIVERED :
-                        status === "read" ? MessageSendStatus.READ :
-                        MessageSendStatus.FAILED;
-    
-    // Convert MessageSendStatus to boolean for is_sent
-    const isSent = messageStatus === MessageSendStatus.SENT || 
-                  messageStatus === MessageSendStatus.DELIVERED || 
-                  messageStatus === MessageSendStatus.READ;
-    
     // For now, we can only update by client message ID, not server message ID
     console.warn(`[MessageService] Cannot update status by server message ID: ${messageId}`);
     

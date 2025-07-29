@@ -3,9 +3,8 @@ import { useAppContext } from './AppContext';
 import { useThemedStyles } from './useThemedStyles';
 import { chatService } from './chatService';
 import { friendService } from './friendService';
-import { participantService, ParticipantService } from './participantService';
+import { ParticipantService } from './participantService';
 import { invoke } from '@tauri-apps/api/core';
-import { nativeApiService } from './nativeApiService';
 
 interface ChatData {
   chat_id: string;
@@ -41,7 +40,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
   const [chats, setChats] = useState<ChatData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedChatId] = useState<string | null>(null);
   const [isLoadingChats, setIsLoadingChats] = useState(false); // Prevent multiple simultaneous loads
   const [hasInitialized, setHasInitialized] = useState(false); // Track if we've completed initial load
   const [searchQuery, setSearchQuery] = useState(''); // Search query state
@@ -293,15 +292,8 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
   //   return "No messages yet";
   // };
 
-  const handleChatSelect = (chatId: string) => {
-    setSelectedChatId(chatId);
+  const handleSelectChat = (chatId: string) => {
     onSelect(chatId);
-  };
-
-  const handleCreateChat = async () => {
-    setShowCreateChat(false);
-    // Reload chats after creation
-    await loadChats();
   };
 
   // Function to create a chat with a specific friend
@@ -965,7 +957,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, isCollapsed, onToggleColl
           filteredChats.map((chat) => (
             <div
               key={chat.chat_id}
-              onClick={() => handleChatSelect(chat.chat_id)}
+              onClick={() => handleSelectChat(chat.chat_id)}
               style={{
                 display: "flex",
                 alignItems: "center",

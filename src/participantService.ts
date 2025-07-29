@@ -1,5 +1,4 @@
 import { nativeApiService } from './nativeApiService';
-import { ChatMember } from './models';
 
 export class ParticipantService {
     private static instance: ParticipantService;
@@ -91,11 +90,11 @@ export class ParticipantService {
             const token = await ParticipantService.getToken();
             if (!token) return;
 
-            const endpoint = `/chats/${chatId}/members`;
-            const body = {
-                user_id: userId,
-                is_admin: isAdmin
-            };
+            // const endpoint = `/chats/${chatId}/members`;
+            // const body = {
+            //     user_id: userId,
+            //     is_admin: isAdmin
+            // };
 
             await nativeApiService.addChatMember(chatId, userId, isAdmin, token);
 
@@ -156,12 +155,12 @@ export class ParticipantService {
             await ParticipantService.removeParticipant(participantId, chatId);
             
             const isAdmin = newRole === 'admin' || newRole === 'creator';
-            const body = {
-                members: [{
-                    user_id: participantId,
-                    is_admin: isAdmin
-                }]
-            };
+            // const body = {
+            //     members: [{
+            //         user_id: participantId,
+            //         is_admin: isAdmin
+            //     }]
+            // };
 
             await nativeApiService.addChatMember(chatId, participantId, isAdmin, token);
 

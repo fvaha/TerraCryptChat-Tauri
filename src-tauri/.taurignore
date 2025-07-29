@@ -1,0 +1,6 @@
+# Ignore database files to prevent infinite rebuild loops
+**/chat.db
+**/chat.db-*
+**/*.db
+**/*.db-*
+**/terracrypt-chat/ 

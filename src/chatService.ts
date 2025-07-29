@@ -1,6 +1,20 @@
 import { nativeApiService } from './nativeApiService';
 import { Chat, ChatMember } from './models';
 
+// Helper function to convert NativeChat to Chat
+const convertNativeChatToChat = (nativeChat: any): Chat => ({
+  chat_id: nativeChat.chat_id,
+  name: nativeChat.chat_name || nativeChat.name || '', // Map chat_name to name, provide fallback
+  creator_id: nativeChat.creator_id,
+  is_group: nativeChat.is_group,
+  description: nativeChat.description,
+  group_name: nativeChat.group_name,
+  last_message_content: nativeChat.last_message_content,
+  last_message_timestamp: nativeChat.last_message_timestamp,
+  unread_count: nativeChat.unread_count,
+  created_at: nativeChat.created_at
+});
+
 export class ChatService {
     private static instance: ChatService;
     private isLoadingChats: boolean = false;
@@ -24,9 +38,10 @@ export class ChatService {
         try {
             const chats = await nativeApiService.fetchAllChatsAndSave(token);
             
-            // Filter localDeletes
-            const serverChatIds = new Set(chats.map(chat => chat.chat_id));
-            const filteredChats = chats.filter(chat => !this.localDeletes.has(chat.chat_id));
+            // Convert and filter chats
+            const convertedChats = chats.map(convertNativeChatToChat);
+            const serverChatIds = new Set(convertedChats.map(chat => chat.chat_id));
+            const filteredChats = convertedChats.filter(chat => !this.localDeletes.has(chat.chat_id));
             
             // Clean up localDeletes for chats not present on the server
             this.localDeletes = new Set(
@@ -53,9 +68,10 @@ export class ChatService {
         try {
             const chats = await nativeApiService.chatsDeltaUpdate(token);
             
-            // Filter localDeletes
-            const serverChatIds = new Set(chats.map(chat => chat.chat_id));
-            const filteredChats = chats.filter(chat => !this.localDeletes.has(chat.chat_id));
+            // Convert and filter chats
+            const convertedChats = chats.map(convertNativeChatToChat);
+            const serverChatIds = new Set(convertedChats.map(chat => chat.chat_id));
+            const filteredChats = convertedChats.filter(chat => !this.localDeletes.has(chat.chat_id));
             
             // Clean up localDeletes for chats not present on the server
             this.localDeletes = new Set(
@@ -80,8 +96,9 @@ export class ChatService {
         try {
             const chats = await nativeApiService.getCachedChatsForCurrentUser();
             
-            // Filter localDeletes
-            const filteredChats = chats.filter(chat => !this.localDeletes.has(chat.chat_id));
+            // Convert and filter chats
+            const convertedChats = chats.map(convertNativeChatToChat);
+            const filteredChats = convertedChats.filter(chat => !this.localDeletes.has(chat.chat_id));
             
             console.log('[ChatService] Retrieved cached chats:', filteredChats.length);
             return filteredChats;
@@ -182,7 +199,7 @@ export class ChatService {
 
     // MARK: - Get Last Message Content
     getLastMessageContent(forUsername: string, chats: Chat[]): string | undefined {
-        return chats.find(chat => !chat.is_group && chat.chat_name === forUsername)?.last_message_content;
+        return chats.find(chat => !chat.is_group && chat.name === forUsername)?.last_message_content;
     }
 
     // MARK: - Getters

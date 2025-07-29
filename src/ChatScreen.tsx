@@ -6,6 +6,7 @@ import { ParticipantService } from './participantService';
 import { MessageEntity } from './models';
 import { useAppContext } from './AppContext';
 import { useWebSocketHandler } from './useWebSocketHandler';
+import { websocketService } from './websocketService';
 import './ChatScreen.css';
 
 interface ChatScreenProps {
@@ -38,29 +39,70 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
     isGroupChat: false,
     receiverId: ''
   });
+  const [wsConnected, setWsConnected] = useState<boolean>(false);
 
-  // Component mount effect
+  // Monitor WebSocket connection status
   useEffect(() => {
-    console.log("🚀 ChatScreen: Component mounted");
+    console.log("🚀 ChatScreen: Setting up WebSocket status monitoring");
+    
+    const checkConnection = () => {
+      const connected = websocketService.isConnectedToServer();
+      console.log("🚀 ChatScreen: checkConnection() called, result:", connected);
+      setWsConnected(connected);
+      console.log("🚀 ChatScreen: WebSocket connection status:", connected);
+    };
+    
+    // Check immediately
+    console.log("🚀 ChatScreen: Checking connection immediately");
+    checkConnection();
+    
+    // Set up WebSocket status change listener
+    const handleStatusChange = (status: any) => {
+      console.log("🚀 ChatScreen: WebSocket status changed:", status);
+      const connected = status.connection_state === 'connected' || status.is_connected;
+      console.log("🚀 ChatScreen: Setting wsConnected to:", connected);
+      setWsConnected(connected);
+    };
+    
+    // Listen for WebSocket status changes
+    console.log("🚀 ChatScreen: Registering status change handler");
+    websocketService.onStatusChange(handleStatusChange);
+    
+    // Set up periodic checking as backup
+    console.log("🚀 ChatScreen: Setting up periodic connection check");
+    const interval = setInterval(checkConnection, 5000);
+    
     return () => {
       console.log("🚀 ChatScreen: Component unmounting");
+      websocketService.offStatusChange(handleStatusChange);
+      clearInterval(interval);
     };
   }, []);
 
   // Function to load messages from database
   const loadMessagesFromDatabase = useCallback(async () => {
     try {
+      setIsLoading(true);
+      setError(null);
       console.log(`📨 Loading messages from database for chat ${chatId}`);
       const messageEntities = await messageService.fetchMessages(chatId, 50);
       console.log(`📨 Loaded ${messageEntities.length} messages from database:`, messageEntities);
       
-      // Sort messages by timestamp (newest first for display)
-      const sortedMessages = messageEntities.sort((a, b) => b.timestamp - a.timestamp);
+      // Sort messages by timestamp (oldest first for display - proper chat flow)
+      const sortedMessages = messageEntities.sort((a, b) => a.timestamp - b.timestamp);
       console.log(`📨 Setting ${sortedMessages.length} sorted messages to state`);
       setMessages(sortedMessages);
       console.log(`📨 Messages state updated successfully`);
+      
+      // Scroll to bottom after loading messages
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
     } catch (error) {
       console.error('Failed to load messages from database:', error);
+      setError('Failed to load messages. Please try refreshing the page.');
+    } finally {
+      setIsLoading(false);
     }
   }, [chatId]);
 
@@ -68,32 +110,67 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
   useWebSocketHandler((message: MessageEntity) => {
     if (message.chatId === chatId) {
       console.log(`Received new message for chat ${chatId}:`, message);
-      // Instead of directly updating state, refresh from database
-      loadMessagesFromDatabase();
+      // Add the new message to the current state
+      setMessages(prevMessages => {
+        const updatedMessages = [...prevMessages, message];
+        // Sort by timestamp to maintain chronological order
+        return updatedMessages.sort((a, b) => a.timestamp - b.timestamp);
+      });
+      // Scroll to bottom after adding new message
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
     }
   });
 
-  // Set up message flow for outgoing messages
+  // Set up message flow callback
   useEffect(() => {
-    console.log("Setting up message flow for chat:", chatId);
-    messageService.setMessageFlow((message: MessageEntity) => {
-      console.log(`[ChatScreen] Message flow callback triggered with message:`, message);
+    console.log("🚀 ChatScreen: Setting up message flow callback");
+    
+    const handleNewMessage = (message: MessageEntity) => {
+      console.log("🚀 ChatScreen: New message received:", message);
+      console.log("🚀 ChatScreen: Message chat ID:", message.chatId);
+      console.log("🚀 ChatScreen: Current chat ID:", chatId);
+      
+      // Only add messages for the current chat
       if (message.chatId === chatId) {
-        console.log(`[ChatScreen] Received outgoing message for chat ${chatId}:`, message);
-        // Instead of directly updating state, refresh from database
-        console.log(`[ChatScreen] Calling loadMessagesFromDatabase...`);
-        loadMessagesFromDatabase();
+        console.log("🚀 ChatScreen: Adding message to current chat");
+        setMessages(prevMessages => {
+          // Check if message already exists (by client message ID or server message ID)
+          const exists = prevMessages.some(m => 
+            m.clientMessageId === message.clientMessageId || 
+            (message.messageId && m.messageId === message.messageId)
+          );
+          
+          if (exists) {
+            console.log("🚀 ChatScreen: Message already exists, updating instead");
+            return prevMessages.map(m => 
+              (m.clientMessageId === message.clientMessageId || 
+               (message.messageId && m.messageId === message.messageId)) 
+                ? message 
+                : m
+            ).sort((a, b) => a.timestamp - b.timestamp);
+          } else {
+            console.log("🚀 ChatScreen: Adding new message to list");
+            const updatedMessages = [...prevMessages, message];
+            return updatedMessages.sort((a, b) => a.timestamp - b.timestamp);
+          }
+        });
+        
+        // Scroll to bottom after a short delay to ensure the message is rendered
+        setTimeout(() => { scrollToBottom(); }, 100);
       } else {
-        console.log(`[ChatScreen] Message is for different chat: ${message.chatId} vs ${chatId}`);
+        console.log("🚀 ChatScreen: Message is for different chat, ignoring");
       }
-    });
+    };
 
-    // Cleanup function
+    messageService.setMessageFlow(handleNewMessage);
+    
     return () => {
-      console.log("Cleaning up message flow for chat:", chatId);
+      console.log("🚀 ChatScreen: Cleaning up message flow callback");
       messageService.setMessageFlow(undefined as any);
     };
-  }, [chatId, loadMessagesFromDatabase]);
+  }, [chatId]);
 
   // Load messages on component mount
   useEffect(() => {
@@ -240,6 +317,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
     
     if (!token) {
       console.log("ChatScreen: Cannot send message - no token");
+      setError('No authentication token available');
+      return;
+    }
+
+    // Re-enable WebSocket connection check
+    if (!wsConnected) {
+      console.log("ChatScreen: Cannot send message - WebSocket not connected");
+      setError('Not connected to server. Please check your connection.');
       return;
     }
 
@@ -249,14 +334,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
       
       console.log(`ChatScreen: Sending message: "${messageText}" to chat ${chatId}`);
 
+      // Clear input immediately for better UX
+      setNewMessage('');
+      setReplyTo(null);
+      
       // Send message via message service (it will handle UI updates through message flow)
       console.log("Calling messageService.sendMessage...");
       const result = await messageService.sendMessage(messageText, chatId);
       console.log("messageService.sendMessage result:", result);
-      
-      // Clear input immediately
-      setNewMessage('');
-      setReplyTo(null);
       
       // Focus back to input
       setTimeout(() => {
@@ -271,6 +356,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
       console.error('ChatScreen: Failed to send message:', error);
       console.error('Error details:', error);
       console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      
+      // Restore the message text if sending failed
+      setNewMessage(newMessage);
+      setError('Failed to send message. Please try again.');
     }
   };
 
@@ -328,11 +417,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
       .sort(([a], [b]) => {
         const dateA = a === 'Today' ? today : a === 'Yesterday' ? yesterday : new Date(a);
         const dateB = b === 'Today' ? today : b === 'Yesterday' ? yesterday : new Date(b);
-        return dateB.getTime() - dateA.getTime();
+        return dateA.getTime() - dateB.getTime(); // Sort chronologically (oldest first)
       })
       .map(([date, msgs]) => ({
         date,
-        messages: msgs.sort((a, b) => b.timestamp - a.timestamp)
+        messages: msgs.sort((a, b) => a.timestamp - b.timestamp) // Sort messages chronologically within each group
       }));
   };
 
@@ -385,9 +474,29 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
         <div className="chat-header">
           <div className="chat-title">{chatData.chatName}</div>
         </div>
-        <div className="error">
-          {error}
-          <button onClick={() => window.location.reload()}>Retry</button>
+        <div className="error" style={{
+          padding: '20px',
+          textAlign: 'center',
+          color: '#ef4444'
+        }}>
+          <div style={{ marginBottom: '10px' }}>{error}</div>
+          <button 
+            onClick={() => {
+              setError(null);
+              loadMessagesFromDatabase();
+            }}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: '1px solid #404040',
+              backgroundColor: '#007bff',
+              color: '#ffffff',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -406,6 +515,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
               {participantNames.join(', ')}
             </div>
           )}
+          <div className="connection-status" style={{
+            fontSize: '12px',
+            color: wsConnected ? '#4ade80' : '#ef4444',
+            marginTop: '4px'
+          }}>
+            {wsConnected ? '🟢 Connected' : '🔴 Disconnected'}
+          </div>
         </div>
         <button 
           onClick={() => setIsSearching(!isSearching)} 
@@ -446,6 +562,20 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
           />
         </div>
       )}
+
+      {/* Debug Info */}
+      <div style={{
+        padding: '8px',
+        fontSize: '12px',
+        backgroundColor: '#1a1a1a',
+        borderTop: '1px solid #333',
+        color: '#888'
+      }}>
+        <div>Messages: {messages.length}</div>
+        <div>WS Connected: {wsConnected ? 'Yes' : 'No'}</div>
+        <div>Current User: {currentUserId}</div>
+        <div>Chat ID: {chatId}</div>
+      </div>
 
       {/* Messages Container */}
       <div 

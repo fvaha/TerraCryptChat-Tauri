@@ -27,6 +27,7 @@ pub struct WebSocketState {
     pub max_reconnect_attempts: u32,
     pub reconnect_delay: Duration,
     pub heartbeat_interval: Duration,
+    pub auth_token: Option<String>, // Store the auth token for reconnection
 }
 
 impl Default for WebSocketState {
@@ -38,6 +39,7 @@ impl Default for WebSocketState {
             max_reconnect_attempts: 5,
             reconnect_delay: Duration::from_secs(2),
             heartbeat_interval: Duration::from_secs(30),
+            auth_token: None,
         }
     }
 }
@@ -57,6 +59,7 @@ pub async fn connect_socket(
     }
     
     ws_state_guard.connection_state = ConnectionState::Connecting;
+    ws_state_guard.auth_token = Some(token.clone()); // Store the token
     drop(ws_state_guard);
 
             println!("[WebSocket] Attempting WebSocket connection to wss://dev.v1.terracrypt.cc/api/v1/ws");
@@ -91,7 +94,22 @@ pub async fn connect_socket(
             .map_err(|e| format!("Failed to parse Origin header: {}", e))?
     );
     
+    // Add User-Agent header
+    request.headers_mut().insert(
+        "User-Agent",
+        "TerraCryptChat-Tauri/1.0".parse()
+            .map_err(|e| format!("Failed to parse User-Agent header: {}", e))?
+    );
+    
+    // Add Sec-WebSocket-Protocol header if needed
+    request.headers_mut().insert(
+        "Sec-WebSocket-Protocol",
+        "chat".parse()
+            .map_err(|e| format!("Failed to parse Sec-WebSocket-Protocol header: {}", e))?
+    );
+    
     println!("[WebSocket] Request built with custom headers");
+    println!("[WebSocket] Request headers: {:?}", request.headers());
     
     // Use connect_async_with_config with default config
     let (ws_stream, _response) = match connect_async_with_config(request, None, false).await {
@@ -143,36 +161,84 @@ pub async fn connect_socket(
     let ws_state_clone = Arc::clone(&ws_state.inner());
     tokio::spawn(async move {
         println!("[WebSocket] Message reader task started, waiting for messages...");
+        let mut message_count = 0;
         while let Some(msg_result) = read.next().await {
+            message_count += 1;
+            println!("[WebSocket] Message #{} received", message_count);
+            
             match msg_result {
                 Ok(msg) => {
-                    if let Ok(text) = msg.to_text() {
-                        // Skip empty messages but don't break the connection
-                        if text.trim().is_empty() {
-                            println!("[WebSocket] Received empty message, skipping...");
-                            continue;
+                    println!("[WebSocket] Message type: {:?}", msg);
+                    match msg {
+                        Message::Text(text) => {
+                            // Handle text messages
+                            if text.trim().is_empty() {
+                                println!("[WebSocket] Received empty text message, skipping...");
+                                continue;
+                            }
+                            
+                            println!("[WebSocket] Received text message: {}", text);
+                            
+                            // Check if it's a chat message and log it prominently
+                            if text.contains("\"type\":\"chat\"") {
+                                println!("[WebSocket] 🎯 CHAT MESSAGE RECEIVED: {}", text);
+                            }
+                            
+                            // Update heartbeat timestamp
+                            let mut ws_state_guard = ws_state_clone.lock().await;
+                            ws_state_guard.last_heartbeat = Instant::now();
+                            drop(ws_state_guard);
+                            
+                            // Emit message to frontend
+                            app_clone.emit("message", text).ok();
                         }
-                        
-                        println!("[WebSocket] Received message: {}", text);
-                        // Update heartbeat timestamp
-                        let mut ws_state_guard = ws_state_clone.lock().await;
-                        ws_state_guard.last_heartbeat = Instant::now();
-                        drop(ws_state_guard);
-                        
-                        // Emit message to frontend
-                        app_clone.emit("message", text.to_string()).ok();
-                    } else {
-                        // Handle non-text messages (binary, ping, pong, etc.)
-                        println!("[WebSocket] Received non-text message: {:?}", msg);
-                        
-                        // Update heartbeat timestamp for any message
-                        let mut ws_state_guard = ws_state_clone.lock().await;
-                        ws_state_guard.last_heartbeat = Instant::now();
-                        drop(ws_state_guard);
+                        Message::Close(close_frame) => {
+                            // Handle close frames properly
+                            println!("[WebSocket] Received close frame: {:?}", close_frame);
+                            println!("[WebSocket] Close frame code: {:?}", close_frame.as_ref().map(|f| f.code));
+                            if let Some(frame) = close_frame.as_ref() {
+                                println!("[WebSocket] Close frame reason: {:?}", frame.reason);
+                            }
+                            println!("[WebSocket] Server is closing the connection");
+                            break;
+                        }
+                        Message::Ping(data) => {
+                            // Handle ping frames
+                            println!("[WebSocket] Received ping frame with data: {:?}", data);
+                            // Update heartbeat timestamp
+                            let mut ws_state_guard = ws_state_clone.lock().await;
+                            ws_state_guard.last_heartbeat = Instant::now();
+                            drop(ws_state_guard);
+                        }
+                        Message::Pong(data) => {
+                            // Handle pong frames
+                            println!("[WebSocket] Received pong frame with data: {:?}", data);
+                            // Update heartbeat timestamp
+                            let mut ws_state_guard = ws_state_clone.lock().await;
+                            ws_state_guard.last_heartbeat = Instant::now();
+                            drop(ws_state_guard);
+                        }
+                        Message::Binary(data) => {
+                            // Handle binary messages
+                            println!("[WebSocket] Received binary message with {} bytes", data.len());
+                            // Update heartbeat timestamp
+                            let mut ws_state_guard = ws_state_clone.lock().await;
+                            ws_state_guard.last_heartbeat = Instant::now();
+                            drop(ws_state_guard);
+                        }
+                        Message::Frame(frame) => {
+                            // Handle raw frames
+                            println!("[WebSocket] Received raw frame: {:?}", frame);
+                            // Update heartbeat timestamp
+                            let mut ws_state_guard = ws_state_clone.lock().await;
+                            ws_state_guard.last_heartbeat = Instant::now();
+                            drop(ws_state_guard);
+                        }
                     }
                 }
                 Err(e) => {
                     println!("[WebSocket] Read error: {}", e);
+                    println!("[WebSocket] Read error type: {:?}", e);
                     break;
                 }
             }
@@ -180,8 +246,11 @@ pub async fn connect_socket(
         
         // Connection closed
         println!("[WebSocket] Message reader task ending - connection closed");
+        println!("[WebSocket] Total messages received: {}", message_count);
+        println!("[WebSocket] This could be due to server closing connection or network issue");
         let mut ws_state_guard = ws_state_clone.lock().await;
         ws_state_guard.connection_state = ConnectionState::Disconnected;
+        ws_state_guard.auth_token = None; // Clear the token on disconnect
         drop(ws_state_guard);
         
         app_clone.emit("websocket-status", json!({
@@ -192,6 +261,9 @@ pub async fn connect_socket(
             }
         })).ok();
         println!("[WebSocket] Disconnected status emitted to frontend");
+        
+        // Note: Automatic reconnection removed due to type complexity
+        // The frontend can handle reconnection through the UI
     });
 
     // Task to handle outgoing messages
@@ -301,6 +373,7 @@ pub async fn disconnect_socket(
     println!("[WebSocket] Disconnecting WebSocket...");
     let mut ws_state_guard = ws_state.lock().await;
     ws_state_guard.connection_state = ConnectionState::Disconnected;
+    ws_state_guard.auth_token = None; // Clear the token on disconnect
     drop(ws_state_guard);
     
     *state.0.lock().await = None;

@@ -70,6 +70,15 @@ export function useWebSocketHandler(
                   return;
                 }
 
+                // Decrypt the message content first
+                const decrypted = decryptMessage(msg.content, msg.sender_id);
+                if (!decrypted) {
+                  console.warn("[WebSocketHandler] Failed to decrypt message content");
+                  return;
+                }
+
+                console.log("[WebSocketHandler] Message decrypted successfully:", decrypted);
+
                 // Link the local pending message if needed (like Swift implementation)
                 if (msg.message_id && wrapper.client_message_id) {
                   try {
@@ -80,21 +89,13 @@ export function useWebSocketHandler(
                   }
                 }
 
-                const decrypted = decryptMessage(msg.content, msg.sender_id);
-                if (!decrypted) {
-                  console.warn("[WebSocketHandler] Failed to decrypt message content");
-                  return;
-                }
-
-                console.log("[WebSocketHandler] Message decrypted successfully:", decrypted);
-
                 // Create a MessageEntity object
                 const entity: MessageEntity = {
                   messageId: msg.message_id || `temp_${Date.now()}`,
                   clientMessageId: wrapper.client_message_id || msg.message_id || `temp_${Date.now()}`,
                   chatId: msg.chat_id,
                   senderId: msg.sender_id,
-                  content: decrypted,
+                  content: decrypted, // Use decrypted content
                   timestamp: msg.sent_at ? new Date(msg.sent_at).getTime() : Date.now(),
                   isRead: false,
                   isSent: true, // Incoming messages are always sent
@@ -108,6 +109,7 @@ export function useWebSocketHandler(
                   await insertMessage(entity);
                   console.log("[WebSocketHandler] Message saved to database successfully");
                   onNewMessage(entity);
+                  console.log("[WebSocketHandler] Message passed to UI callback");
                 } catch (dbError) {
                   console.error("[WebSocketHandler] Failed to save message to database:", dbError);
                   // Still pass the message to UI even if database save fails
