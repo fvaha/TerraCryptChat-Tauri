@@ -83,7 +83,7 @@ export class DeltaUpdateService {
       try {
         const chatEntity = {
           chat_id: chat.chat_id,
-          name: chat.chat_name,
+          chat_name: chat.chat_name,
           creator_id: chat.creator_id,
           is_group: chat.is_group,
           description: chat.description,

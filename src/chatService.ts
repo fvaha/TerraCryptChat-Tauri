@@ -4,7 +4,7 @@ import { Chat, ChatMember } from './models';
 // Helper function to convert NativeChat to Chat
 const convertNativeChatToChat = (nativeChat: any): Chat => ({
   chat_id: nativeChat.chat_id,
-  name: nativeChat.chat_name || nativeChat.name, // Map chat_name to name
+  name: nativeChat.chat_name || nativeChat.name || '', // Map chat_name to name, provide fallback
   creator_id: nativeChat.creator_id,
   is_group: nativeChat.is_group,
   description: nativeChat.description,
