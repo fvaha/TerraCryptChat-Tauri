@@ -1,10 +1,10 @@
-name: Tauri Cross-Platform Build2
+name: Tauri Cross-Platform Build
 
 on:
   push:
     tags:
       - "v*.*.*"
-  workflow_dispatch:   # <-- manual trigger support
+  workflow_dispatch:
 
 jobs:
   build:
@@ -57,36 +57,17 @@ jobs:
       - name: Install Windows dependencies
         if: matrix.os == 'windows-latest'
         run: |
-          choco install -y nodejs python --version=3.11.5
-
-      - name: Prepare macOS environment
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew update || true
-          brew upgrade || true
-          brew doctor || true
+          choco install -y nodejs-lts --version=18.17.1
+          choco install -y python --version=3.10.11
+          choco install -y vcredist2015
 
       - name: Install macOS dependencies
         if: matrix.os == 'macos-latest'
         run: |
-          brew install cmake pkg-config || true
-          brew install gtk+3 webkitgtk libsoup || true
-          brew install libayatana-appindicator || true
-          brew link --overwrite libayatana-appindicator || true
-          brew upgrade cmake gtk+3 webkitgtk libsoup libayatana-appindicator || true
-
-      - name: Verify macOS environment
-        if: matrix.os == 'macos-latest'
-        run: |
-          echo "Checking installed versions:"
-          pkg-config --modversion gtk+-3.0 || echo "GTK not found"
-          pkg-config --modversion webkitgtk-4.0 || echo "WebKitGTK not found"
-          pkg-config --modversion libayatana-appindicator-3.0 || echo "AppIndicator not found"
-          
-          echo "Library paths:"
-          ls -la /opt/homebrew/lib/pkgconfig/ | grep gtk || true
-          ls -la /opt/homebrew/lib/pkgconfig/ | grep webkit || true
-          ls -la /opt/homebrew/lib/pkgconfig/ | grep ayatana || true
+          brew update
+          brew install cmake pkg-config gtk+3 webkitgtk libsoup
+          brew install libayatana-appindicator
+          brew link --overwrite libayatana-appindicator
 
       - name: Install npm dependencies
         run: npm install
@@ -94,13 +75,40 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri build
 
-      - name: Upload artifacts
+      - name: Find built artifacts
+        run: |
+          # List all potential build outputs
+          ls -la src-tauri/target/release/
+          ls -la src-tauri/target/release/bundle/ || true
+          ls -la src-tauri/target/release/bundle/msi/ || true
+          ls -la src-tauri/target/release/bundle/dmg/ || true
+          ls -la src-tauri/target/release/bundle/osx/ || true
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tauri-${{ matrix.os }}-build
           path: |
-            src-tauri/target/release/*.deb
-            src-tauri/target/release/*.AppImage
-            src-tauri/target/release/*.msi
-            src-tauri/target/release/*.dmg
-            src-tauri/target/release/*.pkg
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/osx/*.pkg
+
+      - name: Create GitHub Release
+        if: success() && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          body: |
+            ### Release ${{ github.ref_name }}
+            - Built for Windows, macOS, and Linux
+            - See commit history for changes
+          files: |
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/osx/*.pkg
+          draft: false
+          prerelease: false
