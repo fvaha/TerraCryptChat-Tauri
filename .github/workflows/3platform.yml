@@ -1,9 +1,10 @@
-name: Tauri Cross-Platform Build
+name: Tauri Cross-Platform Build3
 
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:   # <-- manual trigger support
 
 jobs:
   build:
@@ -61,27 +62,18 @@ jobs:
       - name: Prepare macOS environment
         if: matrix.os == 'macos-latest'
         run: |
-          # Reset Homebrew to clean state
-          brew update-reset || true
-          brew update
-          brew upgrade
+          brew update || true
+          brew upgrade || true
           brew doctor || true
 
       - name: Install macOS dependencies
         if: matrix.os == 'macos-latest'
         run: |
-          # Install essential build tools
-          brew install cmake pkg-config
-          
-          # Install GTK and WebKit dependencies
-          brew install gtk+3 webkitgtk libsoup
-          
-          # Install system tray dependencies
-          brew install libayatana-appindicator
-          brew link --overwrite libayatana-appindicator
-          
-          # Upgrade any outdated dependencies
-          brew upgrade cmake gtk+3 webkitgtk libsoup libayatana-appindicator
+          brew install cmake pkg-config || true
+          brew install gtk+3 webkitgtk libsoup || true
+          brew install libayatana-appindicator || true
+          brew link --overwrite libayatana-appindicator || true
+          brew upgrade cmake gtk+3 webkitgtk libsoup libayatana-appindicator || true
 
       - name: Verify macOS environment
         if: matrix.os == 'macos-latest'
@@ -92,9 +84,9 @@ jobs:
           pkg-config --modversion libayatana-appindicator-3.0 || echo "AppIndicator not found"
           
           echo "Library paths:"
-          ls -la /opt/homebrew/lib/pkgconfig/ | grep gtk
-          ls -la /opt/homebrew/lib/pkgconfig/ | grep webkit
-          ls -la /opt/homebrew/lib/pkgconfig/ | grep ayatan
+          ls -la /opt/homebrew/lib/pkgconfig/ | grep gtk || true
+          ls -la /opt/homebrew/lib/pkgconfig/ | grep webkit || true
+          ls -la /opt/homebrew/lib/pkgconfig/ | grep ayatana || true
 
       - name: Install npm dependencies
         run: npm install
