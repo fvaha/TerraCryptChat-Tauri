@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from './AppContext';
 import LoginScreen from './LoginScreen';
+import RegisterForm from './RegisterForm';
 import ChatList from './ChatList';
 import ChatScreen from './ChatScreen';
 import FriendsScreen from './FriendsScreen';
@@ -12,6 +13,7 @@ import './App.css';
 import { ThemeProvider } from './ThemeContext';
 import SettingsContent from './components/SettingsContent';
 import { nativeApiService } from './nativeApiService';
+import { DatabaseFixUtil } from './utils/databaseFix';
 
 const ChatApp: React.FC = () => {
   const { user, token, isLoading, error } = useAppContext();
@@ -21,24 +23,98 @@ const ChatApp: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedSettingsCategory, setSelectedSettingsCategory] = useState<string>('general');
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [showRegister, setShowRegister] = useState(false);
 
-  // Load chats when component mounts
+
+
+  // Auto-resize window based on content
   useEffect(() => {
-    loadChats();
-  }, []);
+    const resizeWindow = async () => {
+      if (!token || !user) {
+        if (showRegister) {
+          // Registration screen - auto-adjust based on content
+          const registrationCard = document.querySelector('[data-screen="registration"]');
+          if (registrationCard) {
+            const cardHeight = registrationCard.getBoundingClientRect().height;
+            const windowHeight = Math.max(700, cardHeight + 100); // Minimum 700px, add padding
+            const windowWidth = 500; // Fixed width for registration
+            try {
+              await nativeApiService.resizeWindow(windowWidth, windowHeight);
+            } catch (error) {
+              console.error('Failed to resize window:', error);
+            }
+          }
+                  } else {
+            // Login screen - auto-adjust based on content
+            const loginCard = document.querySelector('[data-screen="login"]');
+            if (loginCard) {
+              const cardHeight = loginCard.getBoundingClientRect().height;
+              const windowHeight = Math.max(650, cardHeight + 120); // Increased minimum height and padding
+              const windowWidth = 500; // Increased width for login
+              try {
+                await nativeApiService.resizeWindow(windowWidth, windowHeight);
+              } catch (error) {
+                console.error('Failed to resize window:', error);
+              }
+            }
+          }
+      } else {
+        // Main app - 800x600 size
+        try {
+          await nativeApiService.resizeWindow(800, 600);
+        } catch (error) {
+          console.error('Failed to resize window:', error);
+        }
+      }
+    };
+
+    // Resize after a short delay to ensure DOM is ready
+    const timeoutId = setTimeout(resizeWindow, 100);
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [showRegister, token, user]);
+
+  // Load chats when user is logged in
+  useEffect(() => {
+    console.log('🔄 App useEffect - user:', user?.username, 'token:', token ? 'present' : 'missing');
+    if (user && token) {
+      console.log('✅ User and token available, loading chats...');
+      
+      // Check database health and auto-fix if needed
+      const checkAndFixDatabase = async () => {
+        try {
+          await DatabaseFixUtil.autoFixIfNeeded();
+        } catch (error) {
+          console.error('❌ Database health check failed:', error);
+        }
+      };
+      
+      checkAndFixDatabase().then(() => {
+        loadChats();
+      });
+    } else {
+      console.log('❌ User or token missing, not loading chats');
+    }
+  }, [user, token]);
 
   const loadChats = async () => {
     try {
-      const chatsData = await nativeApiService.getChats();
+      console.log('Loading chats for user:', user?.username);
+      const chatsData = await nativeApiService.getCachedChatsForCurrentUser();
       console.log('Loaded chats:', chatsData);
-      // Handle different response formats
-      if (chatsData) {
-        const chatsArray = Array.isArray(chatsData) ? chatsData : 
-                          (chatsData as any).data ? (chatsData as any).data : [];
-        setChats(chatsArray);
+      console.log('Chats array length:', chatsData?.length || 0);
+      if (chatsData && Array.isArray(chatsData)) {
+        setChats(chatsData);
+        console.log('✅ Chats set in state:', chatsData.length);
+      } else {
+        console.warn('Invalid chats data received:', chatsData);
+        setChats([]);
       }
     } catch (error) {
       console.error('Failed to load chats:', error);
+      setChats([]);
     }
   };
 
@@ -61,6 +137,67 @@ const ChatApp: React.FC = () => {
   const handleZoomChange = (newZoom: number) => {
     setZoomLevel(newZoom);
   };
+
+  const handleCreateChat = async () => {
+    // Reload chats after creation
+    await loadChats();
+  };
+
+  // Add database fix utility to window object for debugging
+  useEffect(() => {
+    (window as any).fixDatabase = async () => {
+      try {
+        console.log('🔧 Manual database fix triggered from console');
+        await DatabaseFixUtil.fixDatabaseSchema();
+        console.log('✅ Database fix completed successfully');
+        // Reload chats after fix
+        await loadChats();
+      } catch (error) {
+        console.error('❌ Database fix failed:', error);
+      }
+    };
+    
+    (window as any).checkDatabaseHealth = async () => {
+      try {
+        const health = await DatabaseFixUtil.checkDatabaseHealth();
+        console.log('🏥 Database health check result:', health);
+        return health;
+      } catch (error) {
+        console.error('❌ Database health check failed:', error);
+        throw error;
+      }
+    };
+    
+    (window as any).autoFixDatabase = async () => {
+      try {
+        const wasFixed = await DatabaseFixUtil.autoFixIfNeeded();
+        if (wasFixed) {
+          console.log('✅ Database was automatically fixed');
+          // Reload chats after fix
+          await loadChats();
+        } else {
+          console.log('ℹ️ Database is healthy, no fix needed');
+        }
+        return wasFixed;
+      } catch (error) {
+        console.error('❌ Auto-fix failed:', error);
+        throw error;
+      }
+    };
+    
+    (window as any).forceResetDatabase = async () => {
+      try {
+        console.log('🚨 Force resetting database...');
+        await DatabaseFixUtil.forceResetDatabase();
+        console.log('✅ Database force reset completed');
+        // Reload chats after reset
+        await loadChats();
+      } catch (error) {
+        console.error('❌ Force reset failed:', error);
+        throw error;
+      }
+    };
+  }, []);
 
   console.log("🎯 ChatApp render - token:", !!token, "isLoading:", isLoading, "error:", error);
 
@@ -126,7 +263,10 @@ const ChatApp: React.FC = () => {
   }
 
   if (!token || !user) {
-    return <LoginScreen onSuccess={() => {}} onShowRegister={() => {}} />;
+    if (showRegister) {
+      return <RegisterForm onSuccess={() => setShowRegister(false)} onBackToLogin={() => setShowRegister(false)} />;
+    }
+    return <LoginScreen onSuccess={() => {}} onShowRegister={() => setShowRegister(true)} />;
   }
 
   // Signal-like layout with proper sidebar navigation
@@ -275,6 +415,9 @@ const ChatApp: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Create Chat Modal */}
+      {/* Removed Create Chat Modal */}
     </div>
   );
 };

@@ -1,13 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { apiService } from "./apiService";
-// import { MessageEntity } from "./models";
+
+export enum ConnectionState {
+  Connected = "connected",
+  Disconnected = "disconnected",
+  Connecting = "connecting",
+}
 
 export interface WebSocketStatus {
+  connection_state: ConnectionState;
   is_connected: boolean;
   is_connecting: boolean;
   reconnect_attempts: number;
   last_heartbeat: number;
+  max_reconnect_attempts: number;
+  heartbeat_interval: number;
 }
 
 export interface WebSocketMessage {
@@ -46,107 +54,97 @@ export interface ConnectionStatusMessage {
 }
 
 class WebSocketService {
-  private isConnected = false;
-  private isConnecting = false;
+  private connectionState: ConnectionState = ConnectionState.Disconnected;
   private reconnectAttempts = 0;
   private lastHeartbeat = 0;
-  private messageHandlers: Map<string, ((data: any) => void)[]> = new Map();
+  private maxReconnectAttempts = 5;
+  private heartbeatInterval = 30;
   private statusHandlers: ((status: WebSocketStatus) => void)[] = [];
 
   constructor() {
     this.setupEventListeners();
   }
 
-  // Method to set up message flow callback (called after messageService is initialized)
-  // setMessageFlowCallback(callback: (message: MessageEntity) => void) {
-  //   this.messageFlowCallback = callback;
-  // }
-
-  // private messageFlowCallback: ((message: MessageEntity) => void) | null = null;
-
   private setupEventListeners() {
-    // Listen for WebSocket messages from Tauri
-    listen<string>("message", (event) => {
-      try {
-        // Emit raw message for messageService to handle
-        this.emit("raw-message", event.payload);
-      } catch (error) {
-        console.error("Failed to parse WebSocket message:", error);
-      }
-    }).catch(error => {
-      console.error("Failed to set up message listener:", error);
-    });
-
-    // Listen for WebSocket status updates
+    // Listen for WebSocket status updates only
+    // Message handling is done in useWebSocketHandler.ts to avoid conflicts
     listen<ConnectionStatusMessage>("websocket-status", (event) => {
       const status = event.payload;
+      console.log("[WebSocketService] Received status update:", status);
       this.updateConnectionStatus(status.message.status);
     }).catch(error => {
-      console.error("Failed to set up status listener:", error);
+      console.error("[WebSocketService] Failed to set up status listener:", error);
     });
   }
 
   private updateConnectionStatus(status: string) {
+    console.log("[WebSocketService] Updating connection status:", status);
+    console.log("[WebSocketService] Previous state:", this.connectionState);
+    
     switch (status) {
       case "connected":
-        this.isConnected = true;
-        this.isConnecting = false;
+        this.connectionState = ConnectionState.Connected;
         this.reconnectAttempts = 0;
         this.lastHeartbeat = Date.now();
+        console.log("[WebSocketService] Connection established - State updated to Connected");
         break;
       case "disconnected":
-        this.isConnected = false;
-        this.isConnecting = false;
+        this.connectionState = ConnectionState.Disconnected;
+        console.log("[WebSocketService] Connection disconnected - State updated to Disconnected");
         break;
       case "heartbeat_timeout":
-        this.isConnected = false;
-        this.isConnecting = false;
+        this.connectionState = ConnectionState.Disconnected;
+        console.log("[WebSocketService] Connection timed out - State updated to Disconnected");
         break;
+      default:
+        console.log("[WebSocketService] Unknown status:", status);
     }
 
+    console.log("[WebSocketService] New state:", this.connectionState);
     this.emitStatus();
   }
 
   private emitStatus() {
     const status: WebSocketStatus = {
-      is_connected: this.isConnected,
-      is_connecting: this.isConnecting,
+      connection_state: this.connectionState,
+      is_connected: this.connectionState === ConnectionState.Connected,
+      is_connecting: this.connectionState === ConnectionState.Connecting,
       reconnect_attempts: this.reconnectAttempts,
       last_heartbeat: this.lastHeartbeat,
+      max_reconnect_attempts: this.maxReconnectAttempts,
+      heartbeat_interval: this.heartbeatInterval,
     };
 
     this.statusHandlers.forEach(handler => handler(status));
   }
 
-  private emit(event: string, data: any) {
-    const handlers = this.messageHandlers.get(event);
-    if (handlers) {
-      handlers.forEach(handler => handler(data));
-    }
-  }
-
   // Public methods
   async connect(token: string): Promise<void> {
-    if (this.isConnected || this.isConnecting) {
-      console.log("WebSocket already connected or connecting");
+    if (this.connectionState !== ConnectionState.Disconnected) {
+      console.log("[WebSocketService] WebSocket already connected or connecting");
       return;
     }
 
     try {
-      this.isConnecting = true;
+      this.connectionState = ConnectionState.Connecting;
       this.emitStatus();
 
-      console.log("Connecting to WebSocket with Bearer token...");
-      console.log("Token (first 16 chars):", token.substring(0, 16) + "...");
+      console.log("[WebSocketService] Connecting to WebSocket with Bearer token...");
+      console.log("[WebSocketService] Token (first 16 chars):", token.substring(0, 16) + "...");
+      console.log("[WebSocketService] WebSocket URL: wss://dev.v1.terracrypt.cc/api/v1/ws");
+      
       await invoke("connect_socket", { token });
       
       // Set the token in the API service
       apiService.setToken(token);
       
-      console.log("WebSocket connected successfully");
+      console.log("[WebSocketService] WebSocket connection initiated successfully");
+      
+      // Note: Connection status will be updated via the websocket-status event
+      // when the Rust side emits the 'connected' status
     } catch (error) {
-      console.error("Failed to connect WebSocket:", error);
-      this.isConnecting = false;
+      console.error("[WebSocketService] Failed to connect WebSocket:", error);
+      this.connectionState = ConnectionState.Disconnected;
       this.emitStatus();
       throw error;
     }
@@ -154,27 +152,32 @@ class WebSocketService {
 
   async disconnect(): Promise<void> {
     try {
+      console.log("[WebSocketService] Disconnecting WebSocket...");
       await invoke("disconnect_socket");
-      this.isConnected = false;
-      this.isConnecting = false;
+      this.connectionState = ConnectionState.Disconnected;
       this.emitStatus();
-      console.log("WebSocket disconnected");
+      console.log("[WebSocketService] WebSocket disconnect initiated");
     } catch (error) {
-      console.error("Failed to disconnect WebSocket:", error);
+      console.error("[WebSocketService] Failed to disconnect WebSocket:", error);
     }
   }
 
   async sendMessage(message: any): Promise<void> {
-    if (!this.isConnected) {
+    console.log("[WebSocketService] sendMessage called with:", message);
+    console.log("[WebSocketService] Current connection state:", this.connectionState);
+    
+    if (this.connectionState !== ConnectionState.Connected) {
+      console.error("[WebSocketService] WebSocket not connected, current state:", this.connectionState);
       throw new Error("WebSocket not connected");
     }
 
     try {
       const messageStr = JSON.stringify(message);
+      console.log("[WebSocketService] Sending WebSocket message:", messageStr);
       await invoke("send_socket_message", { message: messageStr });
-      console.log("Sent WebSocket message:", message);
+      console.log("[WebSocketService] WebSocket message sent successfully");
     } catch (error) {
-      console.error("Failed to send WebSocket message:", error);
+      console.error("[WebSocketService] Failed to send WebSocket message:", error);
       throw error;
     }
   }
@@ -186,6 +189,17 @@ class WebSocketService {
       content: content,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  async reconnect(token: string): Promise<void> {
+    console.log("[WebSocketService] Attempting to reconnect...");
+    try {
+      await invoke("reconnect_socket", { token });
+      console.log("[WebSocketService] Reconnection initiated");
+    } catch (error) {
+      console.error("[WebSocketService] Failed to reconnect:", error);
+      throw error;
+    }
   }
 
   async sendTypingIndicator(chatId: string, isTyping: boolean): Promise<void> {
@@ -211,32 +225,18 @@ class WebSocketService {
     } catch (error) {
       console.error("Failed to get WebSocket status:", error);
       return {
+        connection_state: ConnectionState.Disconnected,
         is_connected: false,
         is_connecting: false,
         reconnect_attempts: 0,
         last_heartbeat: 0,
+        max_reconnect_attempts: this.maxReconnectAttempts,
+        heartbeat_interval: this.heartbeatInterval,
       };
     }
   }
 
   // Event handling
-  on(event: string, handler: (data: any) => void): void {
-    if (!this.messageHandlers.has(event)) {
-      this.messageHandlers.set(event, []);
-    }
-    this.messageHandlers.get(event)!.push(handler);
-  }
-
-  off(event: string, handler: (data: any) => void): void {
-    const handlers = this.messageHandlers.get(event);
-    if (handlers) {
-      const index = handlers.indexOf(handler);
-      if (index > -1) {
-        handlers.splice(index, 1);
-      }
-    }
-  }
-
   onStatusChange(handler: (status: WebSocketStatus) => void): void {
     this.statusHandlers.push(handler);
   }
@@ -250,15 +250,20 @@ class WebSocketService {
 
   // Utility methods
   isConnectedToServer(): boolean {
-    return this.isConnected;
+    const connected = this.connectionState === ConnectionState.Connected;
+    console.log("[WebSocketService] isConnectedToServer() called - State:", this.connectionState, "Result:", connected);
+    return connected;
   }
 
   getConnectionInfo() {
     return {
-      isConnected: this.isConnected,
-      isConnecting: this.isConnecting,
+      connectionState: this.connectionState,
+      isConnected: this.connectionState === ConnectionState.Connected,
+      isConnecting: this.connectionState === ConnectionState.Connecting,
       reconnectAttempts: this.reconnectAttempts,
       lastHeartbeat: this.lastHeartbeat,
+      maxReconnectAttempts: this.maxReconnectAttempts,
+      heartbeatInterval: this.heartbeatInterval,
     };
   }
 }

@@ -19,18 +19,16 @@ CREATE TABLE IF NOT EXISTS user (
 -- CHATS
 CREATE TABLE IF NOT EXISTS chat (
     chat_id TEXT PRIMARY KEY,
-    chat_type TEXT,
-    chat_name TEXT,
+    name TEXT,
     created_at INTEGER NOT NULL,
-    admin_id TEXT,
-    unread_count INTEGER DEFAULT 0,
-    description TEXT,
+    creator_id TEXT,
+    is_group INTEGER NOT NULL DEFAULT 0,
     group_name TEXT,
+    description TEXT,
+    unread_count INTEGER DEFAULT 0,
     last_message_content TEXT,
     last_message_timestamp INTEGER,
-    participants TEXT,
-    is_group INTEGER NOT NULL DEFAULT 0,
-    creator_id TEXT
+    participants TEXT
 );
 
 -- MESSAGES
@@ -68,7 +66,7 @@ CREATE TABLE IF NOT EXISTS participant (
 
 -- FRIENDS
 CREATE TABLE IF NOT EXISTS friend (
-    friend_id TEXT PRIMARY KEY,
+    user_id TEXT PRIMARY KEY,
     username TEXT,
     email TEXT,
     name TEXT,

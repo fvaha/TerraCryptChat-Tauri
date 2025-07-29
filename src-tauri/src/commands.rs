@@ -1,6 +1,6 @@
 use reqwest;
 use serde_json;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Manager};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use crate::database::{self, User, Chat as DbChat, Message as DbMessage, Friend as DbFriend, Participant};
@@ -285,7 +285,31 @@ pub async fn get_current_user_with_token(token: String) -> Result<UserData, Stri
         let user_data: UserData = serde_json::from_str(&text)
             .map_err(|e| format!("Invalid JSON response: {e}"))?;
         
-        println!("Get user successful");
+        println!("Get user successful, saving to database...");
+        
+        // Save user to database
+        let db_user = database::User {
+            user_id: user_data.user_id.clone(),
+            username: user_data.username.clone(),
+            email: Some(user_data.email.clone()),
+            name: Some(user_data.name.clone()),
+            password: None, // We don't store passwords
+            picture: user_data.picture.clone(),
+            role: Some("user".to_string()),
+            token_hash: Some(token.clone()),
+            verified: user_data.verified,
+            created_at: chrono::Utc::now().timestamp(),
+            updated_at: chrono::Utc::now().timestamp(),
+            deleted_at: None,
+            is_dark_mode: false,
+            last_seen: chrono::Utc::now().timestamp(),
+        };
+        
+        match database::insert_or_update_user(&db_user) {
+            Ok(_) => println!("User saved to database successfully"),
+            Err(e) => println!("Failed to save user to database: {}", e),
+        }
+        
         Ok(user_data)
     } else {
         println!("Get user failed with status: {}", status);
@@ -293,7 +317,7 @@ pub async fn get_current_user_with_token(token: String) -> Result<UserData, Stri
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Friend {
     pub user_id: String,
     pub username: String,
@@ -301,6 +325,7 @@ pub struct Friend {
     pub email: String,
     pub picture: Option<String>,
     pub status: Option<String>,
+    pub is_favorite: Option<bool>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -351,10 +376,13 @@ pub async fn get_friends(state: State<'_, TokenStore>) -> Result<Vec<Friend>, St
             let friends: Vec<Friend> = serde_json::from_str(&text)
                 .map_err(|e| format!("Invalid JSON response: {e}"))?;
             
-            // Process friends to ensure status field is set
+            // Process friends to ensure status and is_favorite fields are set
             let processed_friends: Vec<Friend> = friends.into_iter().map(|mut friend| {
                 if friend.status.is_none() {
                     friend.status = Some("active".to_string());
+                }
+                if friend.is_favorite.is_none() {
+                    friend.is_favorite = Some(false);
                 }
                 friend
             }).collect();
@@ -424,7 +452,25 @@ pub async fn get_chat_members_with_token(token: String, chat_id: String) -> Resu
         let members_response: ChatMemberResponse = serde_json::from_str(&text)
             .map_err(|e| format!("Invalid JSON response: {e}"))?;
         
-        println!("Get chat members successful, found {} members", members_response.data.len());
+        println!("Get chat members successful, found {} members, saving to database...", members_response.data.len());
+        
+        // Save participants to database
+        for chat_member in &members_response.data {
+            let participant = database::Participant {
+                participant_id: format!("{}_{}", chat_id, chat_member.user.user_id),
+                user_id: chat_member.user.user_id.clone(),
+                username: chat_member.user.username.clone(),
+                joined_at: chrono::Utc::now().timestamp(), // Use current time if not available
+                role: if chat_member.is_admin { "admin".to_string() } else { "member".to_string() },
+                chat_id: chat_id.clone(),
+            };
+            
+            match database::insert_or_update_participant(&participant) {
+                Ok(_) => println!("Participant {} saved to database for chat {}", chat_member.user.username, chat_id),
+                Err(e) => println!("Failed to save participant {} to database: {}", chat_member.user.username, e),
+            }
+        }
+        
         Ok(members_response)
     } else {
         println!("Get chat members failed with status: {}", status);
@@ -454,10 +500,13 @@ pub async fn get_friends_with_token(token: String) -> Result<Vec<Friend>, String
             let friends: Vec<Friend> = serde_json::from_str(&text)
                 .map_err(|e| format!("Invalid JSON response: {e}"))?;
             
-            // Process friends to ensure status field is set
+            // Process friends to ensure status and is_favorite fields are set
             let processed_friends: Vec<Friend> = friends.into_iter().map(|mut friend| {
                 if friend.status.is_none() {
                     friend.status = Some("active".to_string());
+                }
+                if friend.is_favorite.is_none() {
+                    friend.is_favorite = Some(false);
                 }
                 friend
             }).collect();
@@ -470,14 +519,15 @@ pub async fn get_friends_with_token(token: String) -> Result<Vec<Friend>, String
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Chat {
     pub chat_id: String,
-    pub chat_name: String,
+    pub name: String,
     pub created_at: i64,
     pub creator_id: String,
     pub is_group: bool,
     pub participants: Vec<String>,
+    pub unread_count: i32,
 }
 
 // Struct for deserializing API response which might have optional fields
@@ -490,7 +540,6 @@ struct ChatListResponse {
 struct ApiChat {
     pub chat_id: String,
     pub name: Option<String>,
-    pub chat_name: Option<String>,
     pub created_at: Option<String>,
     pub creator_id: Option<String>,
     pub is_group: Option<bool>,
@@ -546,18 +595,18 @@ pub async fn get_chats(state: State<'_, TokenStore>) -> Result<Vec<Chat>, String
                             })
                             .unwrap_or(0);
                         
-                        // Use name field if available, fallback to chat_name, then generate default
-                        let chat_name = api_chat.name
-                            .or(api_chat.chat_name)
+                        // Use name field if available, otherwise generate default
+                        let name = api_chat.name
                             .unwrap_or_else(|| format!("Chat {}", chat_id));
                         
                         Some(Chat {
                             chat_id: api_chat.chat_id,
-                            chat_name,
+                            name,
                             created_at: created_at.max(0),
                             creator_id: api_chat.creator_id.unwrap_or_default(),
                             is_group: api_chat.is_group.unwrap_or(false),
                             participants: api_chat.participants.unwrap_or_default(),
+                            unread_count: 0, // API doesn't provide unread count, will be updated from database
                         })
                     }
                 })
@@ -620,18 +669,18 @@ pub async fn get_chats_with_token(token: String) -> Result<Vec<Chat>, String> {
                         })
                         .unwrap_or(0);
                     
-                    // Use name field if available, fallback to chat_name, then generate default
-                    let chat_name = api_chat.name
-                        .or(api_chat.chat_name)
-                        .unwrap_or_else(|| format!("Chat {}", chat_id));
-                    
-                    Some(Chat {
-                        chat_id: api_chat.chat_id,
-                        chat_name,
+                                            // Use name field if available, otherwise generate default
+                        let name = api_chat.name
+                            .unwrap_or_else(|| format!("Chat {}", chat_id));
+                        
+                        Some(Chat {
+                            chat_id: api_chat.chat_id,
+                            name,
                         created_at: created_at.max(0),
                         creator_id: api_chat.creator_id.unwrap_or_default(),
                         is_group: api_chat.is_group.unwrap_or(false),
                         participants: api_chat.participants.unwrap_or_default(),
+                        unread_count: 0, // API doesn't provide unread count, will be updated from database
                     })
                 }
             })
@@ -952,6 +1001,48 @@ pub async fn db_update_message_id_by_client(client_message_id: String, server_id
 }
 
 #[tauri::command]
+pub async fn db_message_exists(client_message_id: String, server_message_id: String) -> Result<bool, String> {
+    database::message_exists(&client_message_id, &server_message_id)
+        .map_err(|e| format!("Failed to check message existence: {}", e))
+}
+
+#[tauri::command]
+pub async fn db_get_chat_id_for_message(message_id: String) -> Result<Option<String>, String> {
+    database::get_chat_id_for_message(&message_id)
+        .map_err(|e| format!("Failed to get chat id for message: {}", e))
+}
+
+#[tauri::command]
+pub async fn db_reset_unread_count(chat_id: String) -> Result<(), String> {
+    database::reset_unread_count(&chat_id)
+        .map_err(|e| format!("Failed to reset unread count: {}", e))
+}
+
+#[tauri::command]
+pub async fn db_increment_unread_count(chat_id: String) -> Result<(), String> {
+    database::increment_unread_count(&chat_id)
+        .map_err(|e| format!("Failed to increment unread count: {}", e))
+}
+
+#[tauri::command]
+pub async fn db_get_unread_count(chat_id: String) -> Result<i32, String> {
+    database::get_unread_count(&chat_id)
+        .map_err(|e| format!("Failed to get unread count: {}", e))
+}
+
+#[tauri::command]
+pub async fn db_mark_messages_as_read_by_ids(message_ids: Vec<String>) -> Result<(), String> {
+    database::mark_messages_as_read_by_ids(&message_ids)
+        .map_err(|e| format!("Failed to mark messages as read by ids: {}", e))
+}
+
+#[tauri::command]
+pub async fn db_clear_messages(chat_id: String) -> Result<(), String> {
+    database::clear_messages(&chat_id)
+        .map_err(|e| format!("Failed to clear messages: {}", e))
+}
+
+#[tauri::command]
 pub async fn db_delete_message_by_id(message_id: String) -> Result<(), String> {
     database::delete_message_by_id(&message_id)
         .map_err(|e| format!("Failed to delete message by id: {}", e))
@@ -1046,6 +1137,35 @@ pub async fn db_clear_all_data() -> Result<(), String> {
         .map_err(|e| format!("Failed to clear all data: {}", e))
 }
 
+#[tauri::command]
+pub async fn db_reset_database() -> Result<(), String> {
+    println!("Resetting database...");
+    
+    // Get database path
+    let db_path = database::get_db_path();
+    println!("Database path: {:?}", db_path);
+    
+    // Close any existing connections
+    {
+        let mut db_guard = database::DB_CONNECTION.lock().unwrap();
+        *db_guard = None;
+    }
+    
+    // Delete the database file completely
+    if db_path.exists() {
+        std::fs::remove_file(&db_path)
+            .map_err(|e| format!("Failed to delete database file: {}", e))?;
+        println!("Deleted existing database file");
+    }
+    
+    // Reinitialize database with new schema
+    database::initialize_database()
+        .map_err(|e| format!("Failed to reinitialize database: {}", e))?;
+    
+    println!("Database reset and reinitialized successfully");
+    Ok(())
+}
+
 // Friend request actions
 #[tauri::command]
 pub async fn send_friend_request(token: String, receiver_id: String) -> Result<(), String> {
@@ -1131,5 +1251,619 @@ pub async fn decline_friend_request(token: String, request_id: String) -> Result
     } else {
         println!("Decline friend request failed with status: {}", status);
         Err(format!("Decline friend request failed: {} - {}", status, text))
+    }
+}
+
+// ======== WINDOW MANAGEMENT ========
+
+#[tauri::command]
+pub async fn resize_window(app_handle: AppHandle, width: f64, height: f64) -> Result<(), String> {
+    println!("Resizing window to {}x{}", width, height);
+    
+    let window = app_handle.get_window("main").ok_or("Main window not found")?;
+    
+    window.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }))
+        .map_err(|e| format!("Failed to resize window: {}", e))?;
+    
+    println!("Window resized successfully");
+    Ok(())
+}
+
+// ========== CACHED DATA COMMANDS ==========
+
+#[tauri::command]
+pub async fn get_cached_chats_with_delta(state: State<'_, TokenStore>) -> Result<Vec<Chat>, String> {
+    let token = state.lock().map_err(|e| format!("Lock error: {}", e))?.get("accessToken").cloned();
+    
+    if let Some(token) = token {
+        println!("Getting cached chats with delta updates...");
+        
+        // First, get cached chats from database
+        let cached_chats = match database::get_all_chats() {
+            Ok(chats) => chats,
+            Err(e) => {
+                println!("Failed to get cached chats: {}", e);
+                vec![]
+            }
+        };
+        
+        // Get fresh data from API
+        let fresh_chats = match get_chats_with_token(token).await {
+            Ok(chats) => chats,
+            Err(e) => {
+                println!("Failed to get fresh chats from API: {}", e);
+                // Convert cached database chats to command chats
+                let converted_chats: Vec<Chat> = cached_chats.into_iter().map(|db_chat| {
+                    let chat_id = db_chat.chat_id.clone();
+                    Chat {
+                        chat_id: db_chat.chat_id,
+                        name: db_chat.name.unwrap_or_else(move || format!("Chat {}", chat_id)),
+                        created_at: db_chat.created_at,
+                        creator_id: db_chat.creator_id.unwrap_or_default(),
+                        is_group: db_chat.is_group,
+                        participants: vec![],
+                        unread_count: db_chat.unread_count,
+                    }
+                }).collect();
+                return Ok(converted_chats);
+            }
+        };
+        
+        // Compare and update database with delta changes
+        let mut updated_chats = Vec::new();
+        let mut has_changes = false;
+        
+        // Clone fresh_chats to avoid borrow checker issues
+        let fresh_chats_clone = fresh_chats.clone();
+        
+        for fresh_chat in fresh_chats {
+            let cached_chat = cached_chats.iter().find(|c| c.chat_id == fresh_chat.chat_id);
+            
+                            let needs_update = match cached_chat {
+                    Some(cached) => {
+                        // Check if any fields have changed
+                        cached.name != Some(fresh_chat.name.clone()) ||
+                        cached.created_at != fresh_chat.created_at ||
+                        cached.creator_id != Some(fresh_chat.creator_id.clone()) ||
+                        cached.is_group != fresh_chat.is_group
+                    },
+                None => {
+                    // New chat
+                    true
+                }
+            };
+            
+            if needs_update {
+                has_changes = true;
+                let db_chat = database::Chat {
+                    chat_id: fresh_chat.chat_id.clone(),
+                    name: Some(fresh_chat.name.clone()),
+                    created_at: fresh_chat.created_at,
+                    creator_id: Some(fresh_chat.creator_id.clone()),
+                    is_group: fresh_chat.is_group,
+                    group_name: None,
+                    description: None,
+                    unread_count: 0,
+                    last_message_content: None,
+                    last_message_timestamp: None,
+                    participants: None,
+                };
+                
+                if let Err(e) = database::insert_or_update_chat(&db_chat) {
+                    println!("Failed to update chat in database: {}", e);
+                }
+            }
+            
+            updated_chats.push(fresh_chat);
+        }
+        
+        // Remove chats that no longer exist in API response
+        for cached_chat in &cached_chats {
+            if !fresh_chats_clone.iter().any(|f| f.chat_id == cached_chat.chat_id) {
+                has_changes = true;
+                if let Err(e) = database::delete_chat_by_id(&cached_chat.chat_id) {
+                    println!("Failed to delete chat from database: {}", e);
+                }
+            }
+        }
+        
+        if has_changes {
+            println!("Chat cache updated with delta changes");
+        } else {
+            println!("No changes detected in chats, using cached data");
+        }
+        
+        Ok(updated_chats)
+    } else {
+        Err("No token available".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn get_cached_friends_with_delta(state: State<'_, TokenStore>) -> Result<Vec<Friend>, String> {
+    let token = state.lock().map_err(|e| format!("Lock error: {}", e))?.get("accessToken").cloned();
+    
+    if let Some(token) = token {
+        println!("Getting cached friends with delta updates...");
+        
+        // First, get cached friends from database
+        let cached_friends = match database::get_all_friends() {
+            Ok(friends) => {
+                println!("Retrieved {} cached friends from database", friends.len());
+                friends
+            },
+            Err(e) => {
+                println!("Failed to get cached friends from database: {}", e);
+                vec![]
+            }
+        };
+        
+        // Get fresh data from API
+        let fresh_friends = match get_friends_with_token(token).await {
+            Ok(friends) => {
+                println!("Retrieved {} fresh friends from API", friends.len());
+                friends
+            },
+            Err(e) => {
+                println!("Failed to get fresh friends from API: {}", e);
+                // Convert cached database friends to command friends
+                let converted_friends: Vec<Friend> = cached_friends.into_iter().map(|db_friend| Friend {
+                    user_id: db_friend.user_id,
+                    username: db_friend.username,
+                    name: db_friend.name,
+                    email: db_friend.email,
+                    picture: db_friend.picture,
+                    status: db_friend.status,
+                    is_favorite: Some(db_friend.is_favorite),
+                }).collect();
+                println!("Returning {} cached friends due to API failure", converted_friends.len());
+                return Ok(converted_friends);
+            }
+        };
+        
+        // Compare and update database with delta changes
+        let mut updated_friends = Vec::new();
+        let mut has_changes = false;
+        
+        // Clone fresh_friends to avoid borrow checker issues
+        let fresh_friends_clone = fresh_friends.clone();
+        
+        for fresh_friend in fresh_friends {
+            let cached_friend = cached_friends.iter().find(|c| c.user_id == fresh_friend.user_id);
+            
+            let needs_update = match cached_friend {
+                Some(cached) => {
+                    // Check if any fields have changed
+                    cached.username != fresh_friend.username ||
+                    cached.email != fresh_friend.email ||
+                    cached.name != fresh_friend.name ||
+                    cached.picture != fresh_friend.picture ||
+                    cached.status != fresh_friend.status
+                },
+                None => {
+                    // New friend
+                    true
+                }
+            };
+            
+            if needs_update {
+                has_changes = true;
+                let db_friend = database::Friend {
+                    user_id: fresh_friend.user_id.clone(),
+                    username: fresh_friend.username.clone(),
+                    email: fresh_friend.email.clone(),
+                    name: fresh_friend.name.clone(),
+                    picture: fresh_friend.picture.clone(),
+                    created_at: None,
+                    updated_at: Some(chrono::Utc::now().timestamp()),
+                    status: fresh_friend.status.clone(),
+                    is_favorite: false,
+                };
+                
+                if let Err(e) = database::insert_or_update_friend(&db_friend) {
+                    println!("Failed to update friend in database: {}", e);
+                }
+            }
+            
+            // Add is_favorite field to fresh_friend
+            let friend_with_favorite = Friend {
+                user_id: fresh_friend.user_id,
+                username: fresh_friend.username,
+                name: fresh_friend.name,
+                email: fresh_friend.email,
+                picture: fresh_friend.picture,
+                status: fresh_friend.status,
+                is_favorite: Some(false), // Default to false
+            };
+            updated_friends.push(friend_with_favorite);
+        }
+        
+        // Remove friends that no longer exist in API response
+        for cached_friend in &cached_friends {
+            if !fresh_friends_clone.iter().any(|f| f.user_id == cached_friend.user_id) {
+                has_changes = true;
+                // Note: We don't have a delete_friend function, so we'll just mark as inactive
+                let db_friend = database::Friend {
+                    user_id: cached_friend.user_id.clone(),
+                    username: cached_friend.username.clone(),
+                    email: cached_friend.email.clone(),
+                    name: cached_friend.name.clone(),
+                    picture: cached_friend.picture.clone(),
+                    created_at: cached_friend.created_at,
+                    updated_at: Some(chrono::Utc::now().timestamp()),
+                    status: Some("inactive".to_string()),
+                    is_favorite: cached_friend.is_favorite,
+                };
+                
+                if let Err(e) = database::insert_or_update_friend(&db_friend) {
+                    println!("Failed to update friend status in database: {}", e);
+                }
+            }
+        }
+        
+        if has_changes {
+            println!("Friends cache updated with delta changes");
+        } else {
+            println!("No changes detected in friends, using cached data");
+        }
+        
+        Ok(updated_friends)
+    } else {
+        Err("No token available".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn get_cached_chats_only() -> Result<Vec<Chat>, String> {
+    println!("Getting cached chats only...");
+    
+    match database::get_all_chats() {
+        Ok(chats) => {
+            println!("Retrieved {} cached chats", chats.len());
+            let converted_chats: Vec<Chat> = chats.into_iter().map(|db_chat| {
+                let chat_id = db_chat.chat_id.clone();
+                Chat {
+                    chat_id: db_chat.chat_id,
+                    name: db_chat.name.unwrap_or_else(move || format!("Chat {}", chat_id)),
+                    created_at: db_chat.created_at,
+                    creator_id: db_chat.creator_id.unwrap_or_default(),
+                    is_group: db_chat.is_group,
+                    participants: vec![],
+                    unread_count: db_chat.unread_count,
+                }
+            }).collect();
+            Ok(converted_chats)
+        },
+        Err(e) => {
+            println!("Failed to get cached chats: {}", e);
+            Err(format!("Database error: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_cached_friends_only() -> Result<Vec<Friend>, String> {
+    println!("Getting cached friends only...");
+    
+    match database::get_all_friends() {
+        Ok(friends) => {
+            println!("Retrieved {} cached friends", friends.len());
+            let converted_friends: Vec<Friend> = friends.into_iter().map(|db_friend| Friend {
+                user_id: db_friend.user_id,
+                username: db_friend.username,
+                name: db_friend.name,
+                email: db_friend.email,
+                picture: db_friend.picture,
+                status: db_friend.status,
+                is_favorite: Some(db_friend.is_favorite),
+            }).collect();
+            Ok(converted_friends)
+        },
+        Err(e) => {
+            println!("Failed to get cached friends: {}", e);
+            Err(format!("Database error: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_cached_messages_for_chat(chat_id: String) -> Result<Vec<Message>, String> {
+    println!("Getting cached messages for chat: {}", chat_id);
+    
+    match database::get_messages_for_chat(&chat_id) {
+        Ok(messages) => {
+            println!("Retrieved {} cached messages for chat {}", messages.len(), chat_id);
+            let converted_messages: Vec<Message> = messages.into_iter().map(|db_message| Message {
+                message_id: db_message.message_id.unwrap_or_default(),
+                chat_id: db_message.chat_id,
+                sender_id: db_message.sender_id,
+                content: db_message.content,
+                timestamp: db_message.timestamp,
+                is_read: db_message.is_read,
+                is_sent: db_message.is_sent,
+                is_delivered: db_message.is_delivered,
+                sender_username: db_message.sender_username,
+                reply_to_message_id: db_message.reply_to_message_id,
+            }).collect();
+            Ok(converted_messages)
+        },
+        Err(e) => {
+            println!("Failed to get cached messages for chat {}: {}", chat_id, e);
+            Err(format!("Database error: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_cached_participants_for_chat(chat_id: String) -> Result<Vec<ChatMember>, String> {
+    println!("Getting cached participants for chat: {}", chat_id);
+    
+    match database::get_participants_for_chat(&chat_id) {
+        Ok(participants) => {
+            println!("Retrieved {} cached participants for chat {}", participants.len(), chat_id);
+            let converted_participants: Vec<ChatMember> = participants.into_iter().map(|db_participant| {
+                // Create a Friend struct from participant data
+                let username = db_participant.username.clone();
+                let friend = Friend {
+                    user_id: db_participant.user_id,
+                    username: username.clone(),
+                    name: username, // Use username as name if not available
+                    email: "".to_string(), // Not available in participant data
+                    picture: None,
+                    status: None,
+                    is_favorite: None,
+                };
+                
+                ChatMember {
+                    user: friend,
+                    is_admin: db_participant.role == "admin",
+                    joined_at: db_participant.joined_at.to_string(),
+                }
+            }).collect();
+            Ok(converted_participants)
+        },
+        Err(e) => {
+            println!("Failed to get cached participants for chat {}: {}", chat_id, e);
+            Err(format!("Database error: {}", e))
+        }
+    }
+}
+
+// New commands for database-first approach
+#[tauri::command]
+pub async fn fetch_all_chats_and_save(token: String) -> Result<Vec<Chat>, String> {
+    println!("[ChatService] Fetching all chats from API and saving to database...");
+    
+    // First, get cached chats from database
+    let cached_chats = match database::get_all_chats() {
+        Ok(chats) => {
+            println!("[ChatService] Found {} cached chats in database", chats.len());
+            chats
+        },
+        Err(e) => {
+            println!("[ChatService] Failed to get cached chats: {}", e);
+            vec![]
+        }
+    };
+
+    // Fetch fresh chats from API
+    let fresh_chats = match get_chats_with_token(token).await {
+        Ok(chats) => {
+            println!("[ChatService] Fetched {} chats from API", chats.len());
+            chats
+        },
+        Err(e) => {
+            println!("[ChatService] Failed to fetch chats from API: {}", e);
+            return Err(format!("API error: {}", e));
+        }
+    };
+
+    // Save all fresh chats to database
+    for chat in &fresh_chats {
+        let db_chat = database::Chat {
+            chat_id: chat.chat_id.clone(),
+            name: Some(chat.name.clone()),
+            created_at: chat.created_at,
+            creator_id: Some(chat.creator_id.clone()),
+            is_group: chat.is_group,
+            group_name: None,
+            description: None,
+            unread_count: 0,
+            last_message_content: None,
+            last_message_timestamp: None,
+            participants: Some(chat.participants.join(",")),
+        };
+        
+        match database::insert_or_update_chat(&db_chat) {
+            Ok(_) => println!("[ChatService] Saved/updated chat {} to database", chat.chat_id),
+            Err(e) => println!("[ChatService] Failed to save chat {}: {}", chat.chat_id, e),
+        }
+    }
+
+    // Remove chats that are no longer on the server
+    let server_chat_ids: std::collections::HashSet<String> = fresh_chats.iter()
+        .map(|c| c.chat_id.clone())
+        .collect();
+    
+    for cached_chat in &cached_chats {
+        if !server_chat_ids.contains(&cached_chat.chat_id) {
+            match database::delete_chat(&cached_chat.chat_id) {
+                Ok(_) => println!("[ChatService] Removed outdated chat {} from database", cached_chat.chat_id),
+                Err(e) => println!("[ChatService] Failed to remove chat {}: {}", cached_chat.chat_id, e),
+            }
+        }
+    }
+
+    // Return the fresh chats
+    Ok(fresh_chats)
+}
+
+#[tauri::command]
+pub async fn fetch_all_friends_and_save(token: String) -> Result<Vec<Friend>, String> {
+    println!("[FriendService] Fetching all friends from API and saving to database...");
+    
+    // First, get cached friends from database
+    let cached_friends = match database::get_all_friends() {
+        Ok(friends) => {
+            println!("[FriendService] Found {} cached friends in database", friends.len());
+            friends
+        },
+        Err(e) => {
+            println!("[FriendService] Failed to get cached friends: {}", e);
+            vec![]
+        }
+    };
+
+    // Fetch fresh friends from API
+    let fresh_friends = match get_friends_with_token(token).await {
+        Ok(friends) => {
+            println!("[FriendService] Fetched {} friends from API", friends.len());
+            friends
+        },
+        Err(e) => {
+            println!("[FriendService] Failed to fetch friends from API: {}", e);
+            return Err(format!("API error: {}", e));
+        }
+    };
+
+    // Save all fresh friends to database
+    for friend in &fresh_friends {
+        let db_friend = database::Friend {
+            user_id: friend.user_id.clone(),
+            username: friend.username.clone(),
+            name: friend.name.clone(),
+            email: friend.email.clone(),
+            picture: friend.picture.clone(),
+            status: friend.status.clone(),
+            created_at: Some(chrono::Utc::now().timestamp()),
+            updated_at: Some(chrono::Utc::now().timestamp()),
+            is_favorite: false,
+        };
+        
+        match database::insert_or_update_friend(&db_friend) {
+            Ok(_) => println!("[FriendService] Saved/updated friend {} to database", friend.username),
+            Err(e) => println!("[FriendService] Failed to save friend {}: {}", friend.username, e),
+        }
+    }
+
+    // Remove friends that are no longer on the server
+    let server_friend_ids: std::collections::HashSet<String> = fresh_friends.iter()
+        .map(|f| f.user_id.clone())
+        .collect();
+    
+    for cached_friend in &cached_friends {
+        if !server_friend_ids.contains(&cached_friend.user_id) {
+            match database::delete_friend(&cached_friend.user_id) {
+                Ok(_) => println!("[FriendService] Removed outdated friend {} from database", cached_friend.username),
+                Err(e) => println!("[FriendService] Failed to remove friend {}: {}", cached_friend.username, e),
+            }
+        }
+    }
+
+    // Return the fresh friends
+    Ok(fresh_friends)
+}
+
+#[tauri::command]
+pub async fn chats_delta_update(token: String) -> Result<Vec<Chat>, String> {
+    println!("[ChatService] Performing delta update for chats...");
+    
+    // This is similar to fetch_all_chats_and_save but optimized for delta updates
+    // In a real implementation, you might want to use timestamps or version numbers
+    // For now, we'll do a full sync but mark it as a delta update
+    fetch_all_chats_and_save(token).await
+}
+
+#[tauri::command]
+pub async fn friends_delta_update(token: String) -> Result<Vec<Friend>, String> {
+    println!("[FriendService] Performing delta update for friends...");
+    
+    // This is similar to fetch_all_friends_and_save but optimized for delta updates
+    // In a real implementation, you might want to use timestamps or version numbers
+    // For now, we'll do a full sync but mark it as a delta update
+    fetch_all_friends_and_save(token).await
+}
+
+#[tauri::command]
+pub async fn get_cached_chats_for_current_user() -> Result<Vec<Chat>, String> {
+    println!("[ChatService] Getting cached chats for current user...");
+    
+    match database::get_all_chats() {
+        Ok(db_chats) => {
+            println!("[ChatService] Retrieved {} cached chats", db_chats.len());
+            let converted_chats: Vec<Chat> = db_chats.into_iter().map(|db_chat| Chat {
+                chat_id: db_chat.chat_id,
+                name: db_chat.name.unwrap_or_default(),
+                creator_id: db_chat.creator_id.unwrap_or_default(),
+                is_group: db_chat.is_group,
+                participants: db_chat.participants
+                    .map(|p| p.split(',').map(|s| s.to_string()).collect())
+                    .unwrap_or_default(),
+                created_at: db_chat.created_at,
+                unread_count: db_chat.unread_count,
+            }).collect();
+            Ok(converted_chats)
+        },
+        Err(e) => {
+            println!("[ChatService] Failed to get cached chats: {}", e);
+            Err(format!("Database error: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_cached_friends_for_current_user() -> Result<Vec<Friend>, String> {
+    println!("[FriendService] Getting cached friends for current user...");
+    
+    match database::get_all_friends() {
+        Ok(db_friends) => {
+            println!("[FriendService] Retrieved {} cached friends", db_friends.len());
+            let converted_friends: Vec<Friend> = db_friends.into_iter().map(|db_friend| Friend {
+                user_id: db_friend.user_id,
+                username: db_friend.username,
+                name: db_friend.name,
+                email: db_friend.email,
+                picture: db_friend.picture,
+                status: db_friend.status,
+                is_favorite: Some(db_friend.is_favorite),
+            }).collect();
+            Ok(converted_friends)
+        },
+        Err(e) => {
+            println!("[FriendService] Failed to get cached friends: {}", e);
+            Err(format!("Database error: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn delete_chat_from_database(chat_id: String) -> Result<(), String> {
+    println!("[ChatService] Deleting chat {} from database...", chat_id);
+    
+    match database::delete_chat(&chat_id) {
+        Ok(_) => {
+            println!("[ChatService] Successfully deleted chat {} from database", chat_id);
+            Ok(())
+        },
+        Err(e) => {
+            println!("[ChatService] Failed to delete chat {}: {}", chat_id, e);
+            Err(format!("Database error: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn delete_friend_from_database(user_id: String) -> Result<(), String> {
+    println!("[FriendService] Deleting friend {} from database...", user_id);
+    
+    match database::delete_friend(&user_id) {
+        Ok(_) => {
+            println!("[FriendService] Successfully deleted friend {} from database", user_id);
+            Ok(())
+        },
+        Err(e) => {
+            println!("[FriendService] Failed to delete friend {}: {}", user_id, e);
+            Err(format!("Database error: {}", e))
+        }
     }
 }

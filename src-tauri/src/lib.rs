@@ -42,6 +42,8 @@ pub fn run() {
             connect_socket,
             disconnect_socket,
             send_socket_message,
+            send_socket_binary_message,
+            send_socket_ping,
             get_websocket_status,
             // Message storage
             fetch_messages,
@@ -58,6 +60,21 @@ pub fn run() {
             get_chats,
             get_chats_with_token,
             get_chat_members_with_token,
+            // Cached data commands
+            get_cached_chats_with_delta,
+            get_cached_friends_with_delta,
+                    get_cached_chats_only,
+        get_cached_friends_only,
+        get_cached_messages_for_chat,
+        get_cached_participants_for_chat,
+        fetch_all_chats_and_save,
+        fetch_all_friends_and_save,
+        chats_delta_update,
+        friends_delta_update,
+        get_cached_chats_for_current_user,
+        get_cached_friends_for_current_user,
+        delete_chat_from_database,
+        delete_friend_from_database,
             send_message,
             get_messages,
             search_users,
@@ -92,12 +109,21 @@ pub fn run() {
             db_count_unread_messages,
             db_mark_messages_as_read,
             db_update_message_id_by_client,
+    db_message_exists,
+    db_get_chat_id_for_message,
+    db_reset_unread_count,
+    db_increment_unread_count,
+    db_get_unread_count,
+    db_mark_messages_as_read_by_ids,
+    db_clear_messages,
             db_delete_message_by_id,
             db_delete_message_by_client_id,
             db_clear_message_data,
             // Database commands - Friend
             db_insert_friend,
             db_get_all_friends,
+            // Window management
+            resize_window,
             db_clear_friend_data,
             // Database commands - Participant
             db_insert_participant,
@@ -110,7 +136,8 @@ pub fn run() {
             db_update_dark_mode,
             db_get_dark_mode,
             // Database commands - Clear all
-            db_clear_all_data
+            db_clear_all_data,
+            db_reset_database
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

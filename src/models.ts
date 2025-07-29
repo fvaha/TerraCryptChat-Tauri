@@ -51,6 +51,7 @@ export enum MessageSendStatus {
 // WebSocket Message Types
 export interface ChatMessage {
   message_id: string;
+  client_message_id?: string;
   chat_id: string;
   sender_id: string;
   content: string;
@@ -62,6 +63,20 @@ export interface ChatMessage {
 export interface ChatMessageWrapper {
   message: ChatMessage;
   type: "chat";
+  client_message_id?: string;
+}
+
+export interface DirectChatMessage {
+  type: "chat-message";
+  message: {
+    message_id?: string;
+    chat_id: string;
+    content: string;
+    sender_id: string;
+    client_message_id?: string;
+    timestamp?: string;
+    sender_username?: string;
+  };
 }
 
 export interface OutgoingChatMessage {
@@ -141,6 +156,7 @@ export interface ChatNotificationWrapper {
 
 export type IncomingWSMessage =
   | ChatMessageWrapper
+  | DirectChatMessage
   | MessageStatusMessage
   | ConnectionStatusMessage
   | ErrorWebSocketMessage
@@ -186,4 +202,34 @@ export interface ParticipantEntity {
   joinedAt: number;
   role: string;
   chatId: string;
+}
+
+// API Models (matching Rust backend)
+export interface Chat {
+  chat_id: string;
+  name: string;
+  creator_id: string;
+  is_group: boolean;
+  description?: string;
+  group_name?: string;
+  last_message_content?: string;
+  last_message_timestamp?: number;
+  unread_count: number;
+  created_at: number;
+}
+
+export interface Friend {
+  user_id: string;
+  username: string;
+  name: string;
+  email: string;
+  picture?: string;
+  status?: string;
+  is_favorite?: boolean;
+}
+
+export interface ChatMember {
+  user: Friend;
+  is_admin: boolean;
+  joined_at: string;
 }

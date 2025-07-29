@@ -8,6 +8,21 @@
 * {
   transition: all 0.2s ease-in-out;
   font-family: var(--font-family);
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
 .app-container {

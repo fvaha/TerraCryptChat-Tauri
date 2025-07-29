@@ -11,7 +11,7 @@ import * as notificationsService from "./notificationsService";
 
 import { sessionManager, SessionState } from "./sessionManager";
 import { apiService } from "./apiService";
-import { websocketService, WebSocketStatus } from "./websocketService";
+import { websocketService, WebSocketStatus, ConnectionState } from "./websocketService";
 import { nativeApiService } from "./nativeApiService";
 import { UserEntity } from "./models";
 
@@ -53,10 +53,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [error, setError] = useState<string | null>(null);
   const [sessionState, setSessionState] = useState<SessionState>(sessionManager.getState());
   const [websocketStatus, setWebsocketStatus] = useState<WebSocketStatus>({
+    connection_state: ConnectionState.Disconnected,
     is_connected: false,
     is_connecting: false,
     reconnect_attempts: 0,
     last_heartbeat: 0,
+    max_reconnect_attempts: 5,
+    heartbeat_interval: 30,
   });
   const [lastInitTime, setLastInitTime] = useState<number>(0); // Prevent rapid reinitialization
 
@@ -117,13 +120,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubscribe = sessionManager.onStateChange((state) => {
       setSessionState(state);
       setUser(state.currentUser);
-      setToken(state.currentUser?.tokenHash || null);
+      // Get token from session manager directly
+      setToken(sessionManager.getToken());
     });
 
     return unsubscribe;
   }, []);
 
-  // Initialize session
+  // Connect WebSocket when user is authenticated
+  useEffect(() => {
+    const connectWebSocket = async () => {
+      if (token && user) {
+        try {
+          console.log("🔌 Connecting WebSocket for authenticated user...");
+          await websocketService.connect(token);
+          console.log("✅ WebSocket connected successfully");
+        } catch (error) {
+          console.error("❌ Failed to connect WebSocket:", error);
+          // Don't throw error here, just log it
+        }
+      } else if (!token && websocketStatus.is_connected) {
+        // Disconnect WebSocket when user logs out
+        try {
+          console.log("🔌 Disconnecting WebSocket due to logout...");
+          await websocketService.disconnect();
+          console.log("✅ WebSocket disconnected successfully");
+        } catch (error) {
+          console.error("❌ Failed to disconnect WebSocket:", error);
+        }
+      }
+    };
+
+    connectWebSocket();
+  }, [token, user]);
+
+  // Initialize session and listen to state changes
   useEffect(() => {
     const initializeApp = async () => {
       try {
@@ -147,11 +178,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await sessionManager.initializeSession();
         clearTimeout(initTimeout);
         
-        // TODO: Set up message flow callback for WebSocket
-        // websocketService.setMessageFlowCallback((message) => {
-        //   // Handle incoming messages
-        //   messageService.messageService.handleIncomingMessage(JSON.stringify(message));
-        // });
+        // Update state from session manager
+        const sessionState = sessionManager.getState();
+        if (sessionState.isLoggedIn && sessionState.currentUser) {
+          setUser(sessionState.currentUser);
+          setToken(sessionManager.getToken());
+        }
+        
+        // Set up WebSocket message handler
+        console.log("🔌 Setting up WebSocket message handler...");
+        // The WebSocket handler is set up in useWebSocketHandler.ts and called from ChatScreen
         
         console.log("✅ Application initialized");
       } catch (err) {
@@ -170,7 +206,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
 
+    // Listen to session state changes
+    const unsubscribe = sessionManager.onStateChange((newState) => {
+      console.log("🔄 Session state changed:", newState);
+      setSessionState(newState);
+      
+      if (newState.isLoggedIn && newState.currentUser) {
+        console.log("✅ Setting user and token from session state");
+        setUser(newState.currentUser);
+        setToken(sessionManager.getToken());
+      } else {
+        console.log("❌ Clearing user and token");
+        setUser(null);
+        setToken(null);
+      }
+    });
+
     initializeApp();
+
+    // Cleanup subscription
+    return () => {
+      unsubscribe();
+    };
   }, [lastInitTime]);
 
   // Network status detection

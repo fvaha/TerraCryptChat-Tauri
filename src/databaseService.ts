@@ -110,7 +110,28 @@ class DatabaseService {
 
   // Chat operations
   async insertChat(chat: Chat): Promise<void> {
-    await invoke('db_insert_chat', { chat });
+    try {
+      await invoke('db_insert_chat', { chat });
+    } catch (error) {
+      console.error('[DatabaseService] Failed to insert chat:', error);
+      
+      // Check if this is a schema issue
+      if (error && typeof error === 'object' && 'toString' in error && error.toString().includes('table chat has no column named name')) {
+        console.log('[DatabaseService] Detected database schema issue, attempting to fix...');
+        try {
+          await invoke('db_reset_database');
+          console.log('[DatabaseService] Database schema fixed, retrying chat insertion...');
+          // Retry the insertion
+          await invoke('db_insert_chat', { chat });
+          console.log('[DatabaseService] Chat inserted successfully after schema fix');
+        } catch (fixError) {
+          console.error('[DatabaseService] Failed to fix database schema:', fixError);
+          throw fixError;
+        }
+      } else {
+        throw error;
+      }
+    }
   }
 
   async getChatById(chatId: string): Promise<Chat | null> {
@@ -126,11 +147,11 @@ class DatabaseService {
   }
 
   async updateChatLastMessage(chatId: string, content?: string, timestamp?: number): Promise<void> {
-    await invoke('db_update_chat_last_message', { chatId, content, timestamp });
+    await invoke('db_update_chat_last_message', { chat_id: chatId, content, timestamp });
   }
 
   async deleteChatById(chatId: string): Promise<void> {
-    await invoke('db_delete_chat_by_id', { chatId });
+    await invoke('db_delete_chat_by_id', { chat_id: chatId });
   }
 
   async clearChatData(): Promise<void> {
@@ -155,11 +176,11 @@ class DatabaseService {
   }
 
   async getMessagesForChat(chatId: string): Promise<Message[]> {
-    return await invoke('db_get_messages_for_chat', { chatId });
+    return await invoke('db_get_messages_for_chat', { chat_id: chatId });
   }
 
   async getMessagesBeforeTimestamp(chatId: string, beforeTimestamp: number, limit: number): Promise<Message[]> {
-    return await invoke('db_get_messages_before_timestamp', { chatId, beforeTimestamp, limit });
+    return await invoke('db_get_messages_before_timestamp', { chat_id: chatId, before_timestamp: beforeTimestamp, limit });
   }
 
   async getLastMessage(chatId: string): Promise<Message | null> {
@@ -183,27 +204,27 @@ class DatabaseService {
   }
 
   async getUnreadMessages(chatId: string): Promise<Message[]> {
-    return await invoke('db_get_unread_messages', { chatId });
+    return await invoke('db_get_unread_messages', { chat_id: chatId });
   }
 
   async countUnreadMessages(chatId: string): Promise<number> {
-    return await invoke('db_count_unread_messages', { chatId });
+    return await invoke('db_count_unread_messages', { chat_id: chatId });
   }
 
   async markMessagesAsRead(chatId: string): Promise<void> {
-    await invoke('db_mark_messages_as_read', { chatId });
+    await invoke('db_mark_messages_as_read', { chat_id: chatId });
   }
 
   async updateMessageIdByClient(clientMessageId: string, serverId: string): Promise<void> {
-    await invoke('db_update_message_id_by_client', { clientMessageId, serverId });
+    await invoke('db_update_message_id_by_client', { client_message_id: clientMessageId, server_id: serverId });
   }
 
   async deleteMessageById(messageId: string): Promise<void> {
-    await invoke('db_delete_message_by_id', { messageId });
+    await invoke('db_delete_message_by_id', { message_id: messageId });
   }
 
   async deleteMessageByClientId(clientMessageId: string): Promise<void> {
-    await invoke('db_delete_message_by_client_id', { clientMessageId });
+    await invoke('db_delete_message_by_client_id', { client_message_id: clientMessageId });
   }
 
   async clearMessageData(): Promise<void> {
@@ -212,7 +233,28 @@ class DatabaseService {
 
   // Friend operations
   async insertFriend(friend: Friend): Promise<void> {
-    await invoke('db_insert_friend', { friend });
+    try {
+      await invoke('db_insert_friend', { friend });
+    } catch (error) {
+      console.error('[DatabaseService] Failed to insert friend:', error);
+      
+      // Check if this is a schema issue
+      if (error && typeof error === 'object' && 'toString' in error && error.toString().includes('table friend has no column named user_id')) {
+        console.log('[DatabaseService] Detected database schema issue, attempting to fix...');
+        try {
+          await invoke('db_reset_database');
+          console.log('[DatabaseService] Database schema fixed, retrying friend insertion...');
+          // Retry the insertion
+          await invoke('db_insert_friend', { friend });
+          console.log('[DatabaseService] Friend inserted successfully after schema fix');
+        } catch (fixError) {
+          console.error('[DatabaseService] Failed to fix database schema:', fixError);
+          throw fixError;
+        }
+      } else {
+        throw error;
+      }
+    }
   }
 
   async getAllFriends(): Promise<Friend[]> {
@@ -229,7 +271,7 @@ class DatabaseService {
   }
 
   async getParticipantsForChat(chatId: string): Promise<Participant[]> {
-    return await invoke('db_get_participants_for_chat', { chatId });
+    return await invoke('db_get_participants_for_chat', { chat_id: chatId });
   }
 
   async clearParticipantData(): Promise<void> {

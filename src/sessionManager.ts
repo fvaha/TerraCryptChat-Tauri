@@ -55,7 +55,14 @@ export class SessionManager {
           // Try silent relogin with stored credentials
           const success = await this.attemptSilentRelogin();
           if (!success) {
-            console.log('Silent relogin failed, logging out');
+            console.log('Silent relogin failed, resetting database and logging out');
+            // Reset database on failed session restoration
+            try {
+              await invoke('db_reset_database');
+              console.log('✅ Database reset after failed session restoration');
+            } catch (resetError) {
+              console.error('❌ Failed to reset database after session restoration error:', resetError);
+            }
             await this.logOut();
             this.isInitialized = true;
             this.emitStateChange();
@@ -64,9 +71,22 @@ export class SessionManager {
         } else {
           // Token is valid, restore session
           await this.updateTokenAndState(cachedUser.token_hash, cachedUser);
+          
+          // Fetch fresh data from API
+          try {
+            console.log('Fetching fresh data after session restoration...');
+            await nativeApiService.fetchAllChatsAndSave(cachedUser.token_hash);
+            await nativeApiService.fetchAllFriendsAndSave(cachedUser.token_hash);
+            console.log('Fresh data fetch completed');
+          } catch (error) {
+            console.error('Failed to fetch fresh data:', error);
+            // Don't fail the session restoration if data fetch fails
+          }
         }
       } else {
-        console.log('No cached user found');
+        console.log('No cached user found, resetting database for clean start');
+        // Reset database to ensure clean schema
+        await invoke('db_reset_database');
         await this.logOut();
       }
 
@@ -75,6 +95,14 @@ export class SessionManager {
       return this.isLoggedIn();
     } catch (error) {
       console.error('Session initialization failed:', error);
+      // Reset database on session initialization failure
+      try {
+        console.log('🔄 Resetting database due to session initialization failure...');
+        await invoke('db_reset_database');
+        console.log('✅ Database reset completed after session initialization failure');
+      } catch (resetError) {
+        console.error('❌ Failed to reset database after session initialization error:', resetError);
+      }
       this.isInitialized = true;
       this.emitStateChange();
       return false;
@@ -142,7 +170,7 @@ export class SessionManager {
     // Set token in native API service
     nativeApiService.setToken(token);
     
-    console.log('Session restored successfully');
+    console.log('✅ Session restored successfully - Token:', token.substring(0, 20) + '...', 'User:', user.username);
     this.emitStateChange();
   }
 
@@ -162,6 +190,14 @@ export class SessionManager {
       }
     } catch (error) {
       console.error('Login failed:', error);
+      // Reset database on failed login to ensure clean state
+      try {
+        console.log('🔄 Resetting database due to failed login...');
+        await invoke('db_reset_database');
+        console.log('✅ Database reset completed after failed login');
+      } catch (resetError) {
+        console.error('❌ Failed to reset database after login error:', resetError);
+      }
       return { success: false, error: 'Login failed: Unknown error' };
     }
   }
@@ -211,7 +247,22 @@ export class SessionManager {
           userId: userData.user_id
         };
         
+        // Set the token in the session manager
+        this.token = accessToken;
+        
         console.log('Login process completed successfully');
+        
+        // Fetch initial data from API and save to database
+        try {
+          console.log('Fetching initial chats and friends data...');
+          await nativeApiService.fetchAllChatsAndSave(accessToken);
+          await nativeApiService.fetchAllFriendsAndSave(accessToken);
+          console.log('Initial data fetch completed');
+        } catch (error) {
+          console.error('Failed to fetch initial data:', error);
+          // Don't fail the login if data fetch fails
+        }
+        
         this.emitStateChange();
       } else {
         throw new Error('Failed to get user data');
@@ -224,8 +275,15 @@ export class SessionManager {
 
   async logout(): Promise<void> {
     try {
+      console.log('🔄 Starting logout process...');
+      
       // Clear all data from database
       await invoke('db_clear_all_data');
+      console.log('✅ Database data cleared');
+      
+      // Reset database with new schema
+      await invoke('db_reset_database');
+      console.log('✅ Database reset with new schema');
       
       // Clear token from native API service
       nativeApiService.clearToken();
@@ -233,10 +291,10 @@ export class SessionManager {
       this.token = null;
       this.currentUser = null;
       
-      console.log('Logout completed');
+      console.log('✅ Logout completed successfully');
       this.emitStateChange();
     } catch (error) {
-      console.error('Logout failed:', error);
+      console.error('❌ Logout failed:', error);
     }
   }
 
@@ -290,6 +348,7 @@ export class SessionManager {
   }
 
   async logOut(): Promise<void> {
+    console.log('🔄 Public logout called, resetting database...');
     await this.logout();
   }
 

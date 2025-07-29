@@ -58,22 +58,28 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
 
   // Load friends and pending requests
   useEffect(() => {
-    loadFriendsData();
-  }, [services.sessionManager.getToken()]);
+    if (user) {
+      loadFriendsData();
+    }
+  }, [user]);
 
   const loadFriendsData = async () => {
-    if (!user?.tokenHash) return;
+    const token = services.sessionManager.getToken();
+    if (!token) {
+      console.log('No token available for loading friends');
+      return;
+    }
 
     try {
       setIsLoading(true);
 
       // Token should already be set in native API service by session manager
       // Just ensure it's set
-      nativeApiService.setToken(user.tokenHash);
+      nativeApiService.setToken(token);
 
-      // Load friends list using native API
-      const friendsData = await nativeApiService.getFriends();
-      console.log("📋 Friends loaded via native API:", friendsData);
+      // Load friends list using cached native API with delta updates
+      const friendsData = await nativeApiService.getCachedFriendsOnly();
+      console.log("📋 Friends loaded via cached native API:", friendsData);
       console.log("🔍 Friends array length:", friendsData?.length || 0);
       console.log("🔍 First friend:", friendsData?.[0]);
       
@@ -90,6 +96,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
       }));
       
       setFriends(processedFriends);
+      console.log('✅ Friends set in state:', processedFriends.length);
 
       // Load friend requests using native API
       try {
@@ -229,18 +236,29 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
             style={{
               width: "40px",
               height: "40px",
-              borderRadius: "50%",
-              border: "none",
-              backgroundColor: "#404040",
-              color: "#ffffff",
+              borderRadius: "8px",
+              border: "1px solid #404040",
+              backgroundColor: "transparent",
+              color: "#9ca3af",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
-              fontSize: "18px"
+              fontSize: "16px",
+              transition: "all 0.2s ease"
+            }}
+            onMouseEnter={(e) => {
+              (e.target as HTMLButtonElement).style.backgroundColor = "#404040";
+              (e.target as HTMLButtonElement).style.color = "white";
+            }}
+            onMouseLeave={(e) => {
+              (e.target as HTMLButtonElement).style.backgroundColor = "transparent";
+              (e.target as HTMLButtonElement).style.color = "#9ca3af";
             }}
           >
-            ←
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15,18 9,12 15,6"/>
+            </svg>
           </button>
           <h1 style={{ fontSize: "20px", fontWeight: "600", color: "#ffffff", margin: 0 }}>
             Add Friend
@@ -279,7 +297,12 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
               transform: "translateY(-50%)",
               color: "#6b7280",
               fontSize: "16px"
-            }}>🔍</span>
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.35-4.35"/>
+              </svg>
+            </span>
           </div>
         </div>
 
@@ -392,12 +415,30 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
           transition: 'transform 0.3s ease-in-out'
         }}>
           <button
-                    onClick={onToggleCollapse}
-                    className={`toggle-button ${isCollapsed ? 'slide-in' : 'slide-out'}`}
-                    title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                  >
-                    ☰
-                  </button>
+            onClick={onToggleCollapse}
+            className={`toggle-button ${isCollapsed ? 'slide-in' : 'slide-out'}`}
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            style={{
+              width: "40px",
+              height: "40px",
+              borderRadius: "8px",
+              border: "1px solid #404040",
+              backgroundColor: "transparent",
+              color: "#9ca3af",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              fontSize: "16px",
+              transition: "all 0.2s ease"
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
           <h1 style={{ 
             fontSize: "20px", 
             fontWeight: "600", 
@@ -440,17 +481,27 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, isCollapsed, 
               height: "40px",
               borderRadius: "50%",
               border: "none",
-              backgroundColor: "#3b82f6",
-              color: "white",
+              backgroundColor: "transparent",
+              color: "#9ca3af",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
-              fontSize: "18px"
+              fontSize: "20px",
+              transition: "all 0.2s ease"
+            }}
+            onMouseEnter={(e) => {
+              (e.target as HTMLButtonElement).style.transform = "scale(1.1)";
+              (e.target as HTMLButtonElement).style.color = "#3b82f6";
+            }}
+            onMouseLeave={(e) => {
+              (e.target as HTMLButtonElement).style.transform = "scale(1)";
+              (e.target as HTMLButtonElement).style.color = "#9ca3af";
             }}
           >
             +
           </button>
+
         </div>
       </div>
 

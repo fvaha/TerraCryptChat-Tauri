@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref DB_CONNECTION: Mutex<Option<Connection>> = Mutex::new(None);
+    pub static ref DB_CONNECTION: Mutex<Option<Connection>> = Mutex::new(None);
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,18 +29,16 @@ pub struct User {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Chat {
     pub chat_id: String,
-    pub chat_type: Option<String>,
-    pub chat_name: Option<String>,
+    pub name: Option<String>,
     pub created_at: i64,
-    pub admin_id: Option<String>,
-    pub unread_count: i32,
-    pub description: Option<String>,
+    pub creator_id: Option<String>,
+    pub is_group: bool,
     pub group_name: Option<String>,
+    pub description: Option<String>,
+    pub unread_count: i32,
     pub last_message_content: Option<String>,
     pub last_message_timestamp: Option<i64>,
     pub participants: Option<String>,
-    pub is_group: bool,
-    pub creator_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,7 +60,7 @@ pub struct Message {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Friend {
-    pub friend_id: String,
+    pub user_id: String,  // Changed from friend_id to user_id to match commands
     pub username: String,
     pub email: String,
     pub name: String,
@@ -108,21 +106,93 @@ pub fn get_db_path() -> PathBuf {
 
 pub fn initialize_database() -> Result<()> {
     let db_path = get_db_path();
+    println!("[Database] Initializing database at: {:?}", db_path);
 
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        println!("[Database] Created parent directory: {:?}", parent);
     }
 
     let conn = Connection::open(&db_path)?;
-    conn.execute_batch(include_str!("../sql/full_tauri_schema.sql"))?;
-
+    println!("[Database] Opened database connection");
+    
+    let schema_sql = include_str!("../sql/full_tauri_schema.sql");
+    println!("[Database] Schema SQL length: {} characters", schema_sql.len());
+    println!("[Database] Schema SQL preview: {}", &schema_sql[..schema_sql.len().min(200)]);
+    
+    conn.execute_batch(schema_sql)?;
+    println!("[Database] Executed schema successfully");
+    
+    // Verify tables were created
+    let table_names: Vec<String> = {
+        let mut tables = conn.prepare("SELECT name FROM sqlite_master WHERE type='table'")?;
+        let result = tables.query_map([], |row| row.get(0))?.collect::<Result<Vec<_>>>()?;
+        result
+    };
+    println!("[Database] Created tables: {:?}", table_names);
+    
+    // Store the connection
     let mut db_guard = DB_CONNECTION.lock().unwrap();
     *db_guard = Some(conn);
+    println!("[Database] Database initialized successfully");
+
+    // Test the database by trying to insert a test record
+    println!("[Database] Testing database functionality...");
+    let test_result = test_database_functionality();
+    match test_result {
+        Ok(_) => println!("[Database] Database test passed"),
+        Err(e) => println!("[Database] Database test failed: {}", e),
+    }
 
     Ok(())
 }
 
+fn test_database_functionality() -> Result<()> {
+    // Test friend table
+    let test_friend = Friend {
+        user_id: "test-user-id".to_string(),
+        username: "test-username".to_string(),
+        email: "test@example.com".to_string(),
+        name: "Test User".to_string(),
+        picture: None,
+        created_at: None,
+        updated_at: None,
+        status: None,
+        is_favorite: false,
+    };
+    
+    insert_or_update_friend(&test_friend)?;
+    println!("[Database] Friend table test passed");
+    
+    // Test chat table
+    let test_chat = Chat {
+        chat_id: "test-chat-id".to_string(),
+        name: Some("Test Chat".to_string()),
+        created_at: chrono::Utc::now().timestamp(),
+        creator_id: Some("test-creator".to_string()),
+        is_group: false,
+        group_name: None,
+        description: None,
+        unread_count: 0,
+        last_message_content: None,
+        last_message_timestamp: None,
+        participants: None,
+    };
+    
+    insert_or_update_chat(&test_chat)?;
+    println!("[Database] Chat table test passed");
+    
+    // Clean up test data
+    let conn = get_connection()?;
+    conn.execute("DELETE FROM friend WHERE user_id = ?", params!["test-user-id"])?;
+    conn.execute("DELETE FROM chat WHERE chat_id = ?", params!["test-chat-id"])?;
+    println!("[Database] Test data cleaned up");
+    
+    Ok(())
+}
+
 fn get_connection() -> Result<Connection> {
+    // Always open a new connection - this is simpler and more reliable
     let db_path = get_db_path();
     Connection::open(&db_path)
 }
@@ -280,24 +350,22 @@ pub fn insert_or_update_chat(chat: &Chat) -> Result<()> {
     
     conn.execute(
         "INSERT OR REPLACE INTO chat (
-            chat_id, chat_type, chat_name, created_at, admin_id, unread_count,
-            description, group_name, last_message_content, last_message_timestamp,
-            participants, is_group, creator_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            chat_id, name, created_at, creator_id, is_group, group_name,
+            description, unread_count, last_message_content, last_message_timestamp,
+            participants
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             chat.chat_id,
-            chat.chat_type,
-            chat.chat_name,
+            chat.name,
             chat.created_at,
-            chat.admin_id,
-            chat.unread_count,
-            chat.description,
+            chat.creator_id,
+            chat.is_group,
             chat.group_name,
+            chat.description,
+            chat.unread_count,
             chat.last_message_content,
             chat.last_message_timestamp,
-            chat.participants,
-            chat.is_group,
-            chat.creator_id
+            chat.participants
         ]
     )?;
     Ok(())
@@ -309,18 +377,16 @@ pub fn get_chat_by_id(chat_id: &str) -> Result<Option<Chat>> {
     let chat_iter = stmt.query_map(params![chat_id], |row| {
         Ok(Chat {
             chat_id: row.get(0)?,
-            chat_type: row.get(1)?,
-            chat_name: row.get(2)?,
-            created_at: row.get(3)?,
-            admin_id: row.get(4)?,
-            unread_count: row.get(5)?,
+            name: row.get(1)?,
+            created_at: row.get(2)?,
+            creator_id: row.get(3)?,
+            is_group: row.get(4)?,
+            group_name: row.get(5)?,
             description: row.get(6)?,
-            group_name: row.get(7)?,
+            unread_count: row.get(7)?,
             last_message_content: row.get(8)?,
             last_message_timestamp: row.get(9)?,
             participants: row.get(10)?,
-            is_group: row.get(11)?,
-            creator_id: row.get(12)?,
         })
     })?;
 
@@ -336,18 +402,16 @@ pub fn get_all_chats() -> Result<Vec<Chat>> {
     let chat_iter = stmt.query_map([], |row| {
         Ok(Chat {
             chat_id: row.get(0)?,
-            chat_type: row.get(1)?,
-            chat_name: row.get(2)?,
-            created_at: row.get(3)?,
-            admin_id: row.get(4)?,
-            unread_count: row.get(5)?,
+            name: row.get(1)?,
+            created_at: row.get(2)?,
+            creator_id: row.get(3)?,
+            is_group: row.get(4)?,
+            group_name: row.get(5)?,
             description: row.get(6)?,
-            group_name: row.get(7)?,
+            unread_count: row.get(7)?,
             last_message_content: row.get(8)?,
             last_message_timestamp: row.get(9)?,
             participants: row.get(10)?,
-            is_group: row.get(11)?,
-            creator_id: row.get(12)?,
         })
     })?;
 
@@ -706,6 +770,83 @@ pub fn update_message_id_by_client(client_message_id: &str, server_id: &str) -> 
     Ok(())
 }
 
+pub fn message_exists(client_message_id: &str, server_message_id: &str) -> Result<bool> {
+    let conn = get_connection()?;
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM message WHERE client_message_id = ? OR message_id = ?",
+        params![client_message_id, server_message_id],
+        |row| row.get(0)
+    )?;
+    Ok(count > 0)
+}
+
+pub fn get_chat_id_for_message(message_id: &str) -> Result<Option<String>> {
+    let conn = get_connection()?;
+    let result = conn.query_row(
+        "SELECT chat_id FROM message WHERE message_id = ? OR client_message_id = ?",
+        params![message_id, message_id],
+        |row| row.get(0)
+    );
+    
+    match result {
+        Ok(chat_id) => Ok(Some(chat_id)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn reset_unread_count(chat_id: &str) -> Result<()> {
+    let conn = get_connection()?;
+    conn.execute(
+        "UPDATE chat SET unread_count = 0 WHERE chat_id = ?",
+        params![chat_id]
+    )?;
+    Ok(())
+}
+
+pub fn increment_unread_count(chat_id: &str) -> Result<()> {
+    let conn = get_connection()?;
+    conn.execute(
+        "UPDATE chat SET unread_count = unread_count + 1 WHERE chat_id = ?",
+        params![chat_id]
+    )?;
+    Ok(())
+}
+
+pub fn get_unread_count(chat_id: &str) -> Result<i32> {
+    let conn = get_connection()?;
+    let count = conn.query_row(
+        "SELECT unread_count FROM chat WHERE chat_id = ?",
+        params![chat_id],
+        |row| row.get(0)
+    )?;
+    Ok(count)
+}
+
+pub fn mark_messages_as_read_by_ids(message_ids: &[String]) -> Result<()> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+    
+    let conn = get_connection()?;
+    let placeholders = message_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!("UPDATE message SET is_read = 1 WHERE message_id IN ({})", placeholders);
+    
+    let mut stmt = conn.prepare(&query)?;
+    stmt.execute(rusqlite::params_from_iter(message_ids))?;
+    
+    Ok(())
+}
+
+pub fn clear_messages(chat_id: &str) -> Result<()> {
+    let conn = get_connection()?;
+    conn.execute(
+        "DELETE FROM message WHERE chat_id = ?",
+        params![chat_id]
+    )?;
+    Ok(())
+}
+
 pub fn delete_message_by_id(message_id: &str) -> Result<()> {
     let conn = get_connection()?;
     conn.execute("DELETE FROM message WHERE message_id = ?", params![message_id])?;
@@ -729,10 +870,10 @@ pub fn insert_or_update_friend(friend: &Friend) -> Result<()> {
     let conn = get_connection()?;
     conn.execute(
         "INSERT OR REPLACE INTO friend (
-            friend_id, username, email, name, picture, created_at, updated_at, status, is_favorite
+            user_id, username, email, name, picture, created_at, updated_at, status, is_favorite
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
-            friend.friend_id,
+            friend.user_id,
             friend.username,
             friend.email,
             friend.name,
@@ -747,11 +888,16 @@ pub fn insert_or_update_friend(friend: &Friend) -> Result<()> {
 }
 
 pub fn get_all_friends() -> Result<Vec<Friend>> {
+    println!("[Database] Getting all friends from database...");
     let conn = get_connection()?;
+    println!("[Database] Got database connection");
+    
     let mut stmt = conn.prepare("SELECT * FROM friend ORDER BY name ASC")?;
+    println!("[Database] Prepared query successfully");
+    
     let friend_iter = stmt.query_map([], |row| {
         Ok(Friend {
-            friend_id: row.get(0)?,
+            user_id: row.get(0)?,
             username: row.get(1)?,
             email: row.get(2)?,
             name: row.get(3)?,
@@ -762,11 +908,13 @@ pub fn get_all_friends() -> Result<Vec<Friend>> {
             is_favorite: row.get(8)?,
         })
     })?;
+    println!("[Database] Query executed successfully");
 
     let mut friends = Vec::new();
     for friend in friend_iter {
         friends.push(friend?);
     }
+    println!("[Database] Retrieved {} friends from database", friends.len());
     Ok(friends)
 }
 
@@ -874,5 +1022,16 @@ pub fn clear_all_data() -> Result<()> {
     clear_message_data()?;
     clear_friend_data()?;
     clear_participant_data()?;
+    Ok(())
+}
+
+// Additional functions for the new service architecture
+pub fn delete_chat(chat_id: &str) -> Result<()> {
+    delete_chat_by_id(chat_id)
+}
+
+pub fn delete_friend(user_id: &str) -> Result<()> {
+    let conn = get_connection()?;
+    conn.execute("DELETE FROM friend WHERE user_id = ?", params![user_id])?;
     Ok(())
 } 
