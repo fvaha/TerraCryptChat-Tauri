@@ -62,49 +62,57 @@ class WebSocketService {
   private statusHandlers: ((status: WebSocketStatus) => void)[] = [];
 
   constructor() {
+    console.log("[WebSocketService] 🔥 CONSTRUCTOR CALLED - Initializing WebSocket service");
     this.setupEventListeners();
+    console.log("[WebSocketService] 🔥 CONSTRUCTOR COMPLETED");
   }
 
   private setupEventListeners() {
+    console.log("[WebSocketService] Setting up event listeners...");
+    
     // Listen for WebSocket status updates only
     // Message handling is done in useWebSocketHandler.ts to avoid conflicts
-    listen<ConnectionStatusMessage>("websocket-status", (event) => {
-      const status = event.payload;
+    listen("websocket-status", (event) => {
+      console.log("[WebSocketService] 🔥 RECEIVED websocket-status event:", event);
+      const status = event.payload as any;
       console.log("[WebSocketService] Received status update:", status);
-      this.updateConnectionStatus(status.message.status);
+      
+      // Handle the correct event structure from Rust
+      if (status && status.type === "connection-status" && status.message) {
+        console.log("[WebSocketService] Processing connection status:", status.message.status);
+        this.updateConnectionStatus(status.message.status);
+      } else {
+        console.warn("[WebSocketService] Unexpected status event structure:", status);
+      }
     }).catch(error => {
       console.error("[WebSocketService] Failed to set up status listener:", error);
     });
+    
+    console.log("[WebSocketService] Event listeners set up successfully");
   }
 
   private updateConnectionStatus(status: string) {
     console.log("[WebSocketService] Updating connection status:", status);
-    console.log("[WebSocketService] Previous state:", this.connectionState);
     
-    switch (status) {
-      case "connected":
-        this.connectionState = ConnectionState.Connected;
-        this.reconnectAttempts = 0;
-        this.lastHeartbeat = Date.now();
-        console.log("[WebSocketService] Connection established - State updated to Connected");
-        break;
-      case "disconnected":
-        this.connectionState = ConnectionState.Disconnected;
-        console.log("[WebSocketService] Connection disconnected - State updated to Disconnected");
-        break;
-      case "heartbeat_timeout":
-        this.connectionState = ConnectionState.Disconnected;
-        console.log("[WebSocketService] Connection timed out - State updated to Disconnected");
-        break;
-      default:
-        console.log("[WebSocketService] Unknown status:", status);
+    if (status === "connected" || status === "established") {
+      this.connectionState = ConnectionState.Connected;
+      console.log("[WebSocketService] Connection state set to Connected");
+    } else if (status === "connecting") {
+      this.connectionState = ConnectionState.Connecting;
+      console.log("[WebSocketService] Connection state set to Connecting");
+    } else {
+      this.connectionState = ConnectionState.Disconnected;
+      console.log("[WebSocketService] Connection state set to Disconnected");
     }
-
-    console.log("[WebSocketService] New state:", this.connectionState);
+    
     this.emitStatus();
   }
 
   private emitStatus() {
+    console.log("[WebSocketService] 🔥 Emitting status to handlers...");
+    console.log("[WebSocketService] Current connection state:", this.connectionState);
+    console.log("[WebSocketService] Number of status handlers:", this.statusHandlers.length);
+    
     const status: WebSocketStatus = {
       connection_state: this.connectionState,
       is_connected: this.connectionState === ConnectionState.Connected,
@@ -115,7 +123,17 @@ class WebSocketService {
       heartbeat_interval: this.heartbeatInterval,
     };
 
-    this.statusHandlers.forEach(handler => handler(status));
+    console.log("[WebSocketService] Status object:", status);
+    
+    this.statusHandlers.forEach((handler, index) => {
+      console.log(`[WebSocketService] Calling status handler ${index + 1}/${this.statusHandlers.length}`);
+      try {
+        handler(status);
+        console.log(`[WebSocketService] Status handler ${index + 1} called successfully`);
+      } catch (error) {
+        console.error(`[WebSocketService] Error in status handler ${index + 1}:`, error);
+      }
+    });
   }
 
   // Public methods
