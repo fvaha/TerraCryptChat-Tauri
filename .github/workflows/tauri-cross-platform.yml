@@ -11,6 +11,13 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-22.04, windows-latest, macos-latest]
+        include:
+          - os: macos-latest
+            rust-target: x86_64-apple-darwin
+          - os: ubuntu-22.04
+            rust-target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
 
     steps:
       - name: Checkout code
@@ -25,7 +32,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          targets: x86_64-unknown-linux-gnu
+          targets: ${{ matrix.rust-target }}
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
@@ -52,17 +59,25 @@ jobs:
       - name: Install Windows dependencies
         if: matrix.os == 'windows-latest'
         run: |
-          choco install -y nodejs.install
-          choco install -y python --version=3.11.5
-          choco install -y mingw
+          choco install -y nodejs.install python --version=3.11.5 mingw
 
-      - name: Install macOS dependencies
+      - name: Install macOS dependencies (with Homebrew fixes)
         if: matrix.os == 'macos-latest'
         run: |
+          # Reset Homebrew to avoid tap issues
+          brew update-reset
           brew update
-          brew upgrade cmake  # Upgrade outdated cmake
-          brew install gtk+3 webkitgtk libsoup libayatana-appindicator3
-          brew link --overwrite libayatana-appindicator3
+          
+          # Install required dependencies
+          brew install cmake pkg-config
+          brew install gtk+3 webkitgtk libsoup
+          brew install libayatana-appindicator
+          
+          # Fix potential linking issues
+          brew link --overwrite libayatana-appindicator
+          
+          # Verify installations
+          brew list --versions gtk+3 webkitgtk libsoup libayatana-appindicator
 
       - name: Install npm dependencies
         run: npm install
@@ -71,8 +86,8 @@ jobs:
         run: npm run tauri build
 
       - name: Upload artifacts
-        if: success()
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: tauri-${{ matrix.os }}-build
           path: |
