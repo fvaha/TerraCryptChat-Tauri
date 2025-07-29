@@ -52,22 +52,48 @@ jobs:
             libwebkit2gtk-4.1-dev \
             build-essential \
             libgtk-3-dev \
-            libayatana-appindicator3-dev
+            libayatana-appindicator3-dev \
+            libssl-dev \
+            libsoup2.4-dev
 
       - name: Install Windows dependencies
         if: matrix.os == 'windows-latest'
         run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           choco install -y nodejs-lts --version=18.17.1
           choco install -y python --version=3.10.11
           choco install -y vcredist2015
+
+      - name: Clean macOS environment
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew untap homebrew/core || true
+          brew untap homebrew/cask || true
+          brew untap aws/tap || true
+          brew update-reset || true
+          brew cleanup || true
 
       - name: Install macOS dependencies
         if: matrix.os == 'macos-latest'
         run: |
           brew update
-          brew install cmake pkg-config gtk+3 webkitgtk libsoup
+          brew install cmake pkg-config
+          brew install gtk+3 webkit
+          brew install libsoup
           brew install libayatana-appindicator
           brew link --overwrite libayatana-appindicator
+
+      - name: Verify macOS environment
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "Checking installed versions:"
+          pkg-config --modversion gtk+-3.0
+          pkg-config --modversion javascriptcore
+          pkg-config --modversion libayatana-appindicator-3.0
+          ls -la /opt/homebrew/lib/pkgconfig/
 
       - name: Install npm dependencies
         run: npm install
@@ -77,10 +103,16 @@ jobs:
 
       - name: Find built artifacts
         run: |
-          # List all potential build outputs
-          ls -la src-tauri/target/release/
+          echo "Linux files:"
+          ls -la src-tauri/target/release/ || true
           ls -la src-tauri/target/release/bundle/ || true
+          
+          echo "Windows files:"
+          ls -la src-tauri/target/release/ || true
           ls -la src-tauri/target/release/bundle/msi/ || true
+          
+          echo "macOS files:"
+          ls -la src-tauri/target/release/ || true
           ls -la src-tauri/target/release/bundle/dmg/ || true
           ls -la src-tauri/target/release/bundle/osx/ || true
 
