@@ -74,18 +74,17 @@ jobs:
       - name: Install macOS dependencies
         if: matrix.os == 'macos-latest'
         run: |
-          # Install core dependencies (no webkit required on macOS)
+          # Install only essential build tools
           brew install cmake pkg-config
+          
+          # Install minimal required dependencies
+          # Note: WebKit is already available on macOS
           brew install gtk+3 libsoup
           
-          # Install system tray support
+          # Attempt to install system tray support (optional)
           brew install libayatana-appindicator || \
             brew install ayatana-indicator-ayatana || \
             echo "System tray support might be limited"
-          
-          # Verify installations
-          pkg-config --modversion gtk+-3.0 || echo "GTK not found"
-          pkg-config --modversion libsoup-3.0 || echo "libsoup not found"
 
       - name: Install npm dependencies
         run: npm install
