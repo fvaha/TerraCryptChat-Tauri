@@ -7,96 +7,157 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, windows-latest, macos-latest]
-        include:
-          - os: macos-latest
-            rust-target: x86_64-apple-darwin
-          - os: ubuntu-22.04
-            rust-target: x86_64-unknown-linux-gnu
-          - os: windows-latest
-            rust-target: x86_64-pc-windows-msvc
-
+  build-linux:
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: ${{ matrix.rust-target }}
-
-      - name: Cache cargo
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
             libwebkit2gtk-4.0-dev \
             build-essential \
             libgtk-3-dev \
-            libayatana-appindicator3-dev
+            libayatana-appindicator3-dev \
+            pkg-config \
+            curl \
+            libssl-dev \
+            cmake
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-gnu
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: linux-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - run: npm install
+
+      - run: npm run tauri build
+
+      - run: |
+          echo "Build artifacts:"
+          ls -la src-tauri/target/release/
+          ls -la src-tauri/target/release/bundle/ || true
+          ls -la src-tauri/target/release/bundle/**/*.deb || true
+          ls -la src-tauri/target/release/bundle/**/*.AppImage || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-linux-build
+          path: src-tauri/target/release/bundle/**/*.deb
+          
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
 
       - name: Install Windows dependencies
-        if: matrix.os == 'windows-latest'
         run: |
           choco install -y nodejs-lts --version=18.17.1
           choco install -y python --version=3.10.11
           choco install -y vcredist2015
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            C:\Users\runneradmin\.cargo\registry
+            C:\Users\runneradmin\.cargo\git
+            src-tauri\target
+          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - run: npm install
+
+      - run: npm run tauri build
+
+      - run: dir src-tauri\target\release\bundle\msi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-windows-build
+          path: src-tauri/target/release/bundle/msi/*.msi
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
       - name: Setup macOS environment
-        if: matrix.os == 'macos-latest'
         run: |
           brew update || true
           brew upgrade || true
-          brew install cmake pkg-config gtk+3 libsoup || true
+          brew install cmake pkg-config gtk+3 libsoup
 
-      - name: Install npm dependencies
-        run: npm install
-
-      - name: Build Tauri app
-        run: npm run tauri build
-
-      - name: Verify build outputs
-        run: |
-          echo "Build artifacts:"
-          ls -la src-tauri/target/release/
-          ls -la src-tauri/target/release/bundle/ || true
-          ls -la src-tauri/target/release/bundle/msi/ || true
-          ls -la src-tauri/target/release/bundle/dmg/ || true
-          ls -la src-tauri/target/release/bundle/osx/ || true
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          name: tauri-${{ matrix.os }}-build
+          toolchain: stable
+          targets: x86_64-apple-darwin
+
+      - uses: actions/cache@v3
+        with:
           path: |
-            src-tauri/target/release/bundle/**/*.deb
-            src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/msi/*.msi
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: macos-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - run: npm install
+
+      - run: npm run tauri build
+
+      - run: ls -la src-tauri/target/release/bundle/dmg
+      - run: ls -la src-tauri/target/release/bundle/osx
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-macos-build
+          path: |
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/osx/*.pkg
 
-      - name: Create Release
-        if: success() && startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+  create-release:
+    needs: [build-linux, build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: tauri-linux-build
+          path: ./artifacts/linux
+      - uses: actions/download-artifact@v3
+        with:
+          name: tauri-windows-build
+          path: ./artifacts/windows
+      - uses: actions/download-artifact@v3
+        with:
+          name: tauri-macos-build
+          path: ./artifacts/macos
+
+      - uses: softprops/action-gh-release@v1
         with:
           name: Release ${{ github.ref_name }}
           body: |
@@ -104,10 +165,10 @@ jobs:
             - Built for Windows, macOS, and Linux
             - See commit history for changes
           files: |
-            src-tauri/target/release/bundle/**/*.deb
-            src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/osx/*.pkg
+            ./artifacts/linux/**/*.deb
+            ./artifacts/linux/**/*.AppImage
+            ./artifacts/windows/*.msi
+            ./artifacts/macos/*.dmg
+            ./artifacts/macos/*.pkg
           draft: false
           prerelease: false
