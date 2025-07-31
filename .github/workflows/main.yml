@@ -19,12 +19,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install Linux dependencies
         run: |
@@ -36,23 +46,114 @@ jobs:
             libssl-dev \
             libgtk-3-dev \
             libwebkit2gtk-4.0-dev \
+            libwebkit2gtk-4.1-dev \
             libsoup2.4-dev \
+            libsoup-3.0-dev \
             libjavascriptcoregtk-4.0-dev \
+            libjavascriptcoregtk-4.1-dev \
             libayatana-appindicator3-dev \
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            pkg-config
-          # Linker workaround for missing library versions
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
+            pkg-config \
+            libdbus-1-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxss-dev \
+            libxtst-dev \
+            libasound2-dev \
+            libpango1.0-dev \
+            libcairo2-dev \
+            libgdk-pixbuf2.0-dev \
+            libatk1.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev
+
+      - name: Create symlinks for missing libraries
+        run: |
+          echo "Checking existing libraries..."
+          ls -la /usr/lib/x86_64-linux-gnu/libwebkit* || echo "No webkit libraries found"
+          ls -la /usr/lib/x86_64-linux-gnu/libsoup* || echo "No soup libraries found"
+          ls -la /usr/lib/x86_64-linux-gnu/libjavascriptcore* || echo "No javascriptcore libraries found"
+          
+          echo "Creating symlinks..."
+          # Find the actual webkit library and create symlink
+          WEBKIT_LIB=$(find /usr/lib/x86_64-linux-gnu -name "libwebkit2gtk-4*.so*" | head -1)
+          if [ -n "$WEBKIT_LIB" ]; then
+            echo "Found webkit library: $WEBKIT_LIB"
+            sudo ln -sf "$WEBKIT_LIB" /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so
+          else
+            echo "No webkit library found, trying alternative approach"
+            sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
+          fi
+          
+          # Find the actual soup library and create symlink
+          SOUP_LIB=$(find /usr/lib/x86_64-linux-gnu -name "libsoup*.so*" | head -1)
+          if [ -n "$SOUP_LIB" ]; then
+            echo "Found soup library: $SOUP_LIB"
+            sudo ln -sf "$SOUP_LIB" /usr/lib/x86_64-linux-gnu/libsoup-3.0.so
+          else
+            echo "No soup library found, trying alternative approach"
+            sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
+          fi
+          
+          # Find the actual javascriptcore library and create symlink
+          JSC_LIB=$(find /usr/lib/x86_64-linux-gnu -name "libjavascriptcore*.so*" | head -1)
+          if [ -n "$JSC_LIB" ]; then
+            echo "Found javascriptcore library: $JSC_LIB"
+            sudo ln -sf "$JSC_LIB" /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so
+          else
+            echo "No javascriptcore library found, trying alternative approach"
+            sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
+          fi
+          
+          echo "Verifying symlinks..."
+          ls -la /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || echo "webkit2gtk-4.1 symlink failed"
+          ls -la /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || echo "libsoup-3.0 symlink failed"
+          ls -la /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || echo "libjavascriptcoregtk-4.1 symlink failed"
+          
+          echo "Updating library cache..."
+          sudo ldconfig
+          
+          echo "Checking pkg-config..."
+          pkg-config --list-all | grep -i webkit || echo "No webkit pkg-config found"
+          pkg-config --list-all | grep -i soup || echo "No soup pkg-config found"
+          pkg-config --list-all | grep -i javascript || echo "No javascript pkg-config found"
+          
+          echo "Checking library availability..."
+          ldconfig -p | grep webkit || echo "No webkit libraries in cache"
+          ldconfig -p | grep soup || echo "No soup libraries in cache"
+          ldconfig -p | grep javascript || echo "No javascript libraries in cache"
+          
+          echo "Checking specific library files..."
+          find /usr/lib -name "*webkit*" -type f 2>/dev/null | head -5 || echo "No webkit libraries found"
+          find /usr/lib -name "*soup*" -type f 2>/dev/null | head -5 || echo "No soup libraries found"
+          find /usr/lib -name "*javascript*" -type f 2>/dev/null | head -5 || echo "No javascript libraries found"
 
       - name: Install npm dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
 
       - name: Build Tauri app
-        run: npm run tauri build
+        run: |
+          echo "Attempting to build with current library setup..."
+          npm run tauri build || {
+            echo "First build attempt failed, trying with alternative library setup..."
+            # Try to create additional symlinks for different library versions
+            sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
+            sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
+            sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
+            sudo ldconfig
+            npm run tauri build
+          }
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
+          PKG_CONFIG_PATH: "/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+          LD_LIBRARY_PATH: "/usr/lib/x86_64-linux-gnu"
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
@@ -61,6 +162,7 @@ jobs:
           path: |
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.tar.gz
 
   macos-build:
     name: Build on macOS
@@ -74,6 +176,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -81,17 +184,32 @@ jobs:
           toolchain: stable
           targets: x86_64-apple-darwin
 
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Install macOS dependencies
         run: |
           brew update
-          brew install cmake pkg-config gtk+3 libsoup
+          brew install cmake pkg-config gtk+3 libsoup webkitgtk
           brew install libayatana-appindicator || true
+          brew install libappindicator || true
 
       - name: Install npm dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
 
       - name: Build Tauri app
         run: npm run tauri build
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
@@ -113,12 +231,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install Windows dependencies
         run: |
@@ -127,10 +255,15 @@ jobs:
           choco install -y vcredist2015
 
       - name: Install npm dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
 
       - name: Build Tauri app
         run: npm run tauri build
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
@@ -138,6 +271,7 @@ jobs:
           name: tauri-windows
           path: |
             src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
 
   release:
     name: Create GitHub Release
@@ -161,4 +295,4 @@ jobs:
             - Built from tag ${{ github.ref_name }}
           files: ./artifacts/**/*.*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
