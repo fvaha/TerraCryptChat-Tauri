@@ -1,4 +1,4 @@
-import { nativeApiService } from '../nativeApiService';
+import { nativeApiService } from '../api/nativeApiService';
 
 export class DatabaseFixUtil {
   /**
@@ -118,7 +118,7 @@ export class DatabaseFixUtil {
     console.log('[DatabaseFixUtil] Force resetting database...');
     
     try {
-      await nativeApiService.resetDatabase();
+      await nativeApiService.clearAllData();
       console.log('[DatabaseFixUtil] Database force reset completed');
       
       // Wait a moment for the reset to complete

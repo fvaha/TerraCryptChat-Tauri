@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../AppContext';
-import { useTheme } from '../ThemeContext';
-import { ColorScheme } from '../ThemeContext';
+import { useTheme } from './ThemeContext';
+import { ColorScheme } from './ThemeContext';
 
 interface SettingsContentProps {
   selectedCategory: string;

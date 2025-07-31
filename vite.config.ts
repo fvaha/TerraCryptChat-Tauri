@@ -8,9 +8,13 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5173,
+    port: 4000,
+    strictPort: true,
   },
   optimizeDeps: {
     force: true, // Force Vite to rebuild deps like @tauri-apps/api
   },
+  esbuild: {
+    logOverride: { 'this-is-undefined-in-esm': 'silent' }
+  }
 });

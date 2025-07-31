@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useTheme } from '../ThemeContext';
+import { useTheme } from './ThemeContext';
 
 interface MenuBarProps {
   onToggleSidebar?: () => void;

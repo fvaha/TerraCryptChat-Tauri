@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTheme } from '../ThemeContext';
+import { useTheme } from './ThemeContext';
 
 interface SidebarProps {
   activeTab: 'chats' | 'friends' | 'settings';
@@ -19,7 +19,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isCollapsed, 
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      padding: '16px 0',
+      padding: '0',
       flexShrink: 0,
       transition: 'width 0.3s ease-in-out',
       position: 'relative',
@@ -42,16 +42,24 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isCollapsed, 
           alignItems: 'center',
           justifyContent: 'center',
           fontSize: '20px',
+          marginTop: '0px',
           marginBottom: '16px',
-          transition: 'all 0.2s ease'
+          transition: 'all 0.3s ease',
+          animation: isCollapsed ? 'fadeOutSlide 0.3s ease' : 'none',
+          opacity: isCollapsed ? 0 : 1,
+          transform: isCollapsed ? 'translateX(-20px)' : 'translateX(0)'
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = theme.hover;
-          e.currentTarget.style.color = theme.text;
+          if (!isCollapsed) {
+            e.currentTarget.style.backgroundColor = theme.hover;
+            e.currentTarget.style.color = theme.text;
+          }
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = 'transparent';
-          e.currentTarget.style.color = theme.textSecondary;
+          if (!isCollapsed) {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.color = theme.textSecondary;
+          }
         }}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -193,6 +201,19 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isCollapsed, 
           </svg>
         </button>
       </div>
+      
+      <style>{`
+        @keyframes fadeOutSlide {
+          from {
+            opacity: 1;
+            transform: translateX(0);
+          }
+          to {
+            opacity: 0;
+            transform: translateX(-20px);
+          }
+        }
+      `}</style>
     </div>
   );
 };

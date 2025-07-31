@@ -1,19 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
-import * as messageService from "./messageService";
-import * as chatService from "./chatService";
-import * as participantService from "./participantService";
-import * as userService from "./userService";
-import * as friendService from "./friendService";
-import * as authService from "./authService";
-import * as chatRequestService from "./chatRequestService";
-import * as settingsService from "./settingsService";
-import * as notificationsService from "./notificationsService";
+import * as messageService from "./services/messageService";
+import * as chatService from "./chat/chatService";
+import * as participantService from "./participant/participantService";
+import * as userService from "./services/userService";
+import * as friendService from "./friend/friendService";
+import * as authService from "./auth/authService";
+import * as chatRequestService from "./services/chatRequestService";
+import * as settingsService from "./settings/settingsService";
+import * as notificationsService from "./services/notificationsService";
 
-import { sessionManager, SessionState } from "./sessionManager";
-import { apiService } from "./apiService";
-import { websocketService, WebSocketStatus, ConnectionState } from "./websocketService";
-import { nativeApiService } from "./nativeApiService";
-import { UserEntity } from "./models";
+import { sessionManager, SessionState } from "./utils/sessionManager";
+import { apiService } from "./api/apiService";
+import { websocketService, WebSocketStatus, ConnectionState } from "./websocket/websocketService";
+import { nativeApiService } from "./api/nativeApiService";
+import { UserEntity } from "./models/models";
 
 interface AppContextType {
   user: UserEntity | null;
@@ -46,12 +46,18 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Simple state without complex initialization
   const [user, setUser] = useState<UserEntity | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [error, setError] = useState<string | null>(null);
-  const [sessionState, setSessionState] = useState<SessionState>(sessionManager.getState());
+  const [sessionState, setSessionState] = useState<SessionState>({
+    isLoggedIn: false,
+    currentUser: null,
+    isSessionInitialized: false,
+    isDarkModeEnabled: false
+  });
   const [websocketStatus, setWebsocketStatus] = useState<WebSocketStatus>({
     connection_state: ConnectionState.Disconnected,
     is_connected: false,
@@ -61,24 +67,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     max_reconnect_attempts: 5,
     heartbeat_interval: 30,
   });
-  const [lastInitTime, setLastInitTime] = useState<number>(0); // Prevent rapid reinitialization
 
-  // Login function
+  // Initialize session on mount
+  useEffect(() => {
+    const initializeSession = async () => {
+      try {
+        console.log('🔄 Initializing session...');
+        const isLoggedIn = await sessionManager.initializeSession();
+        
+        if (isLoggedIn) {
+          const currentUser = sessionManager.getCurrentUser();
+          const currentToken = sessionManager.getToken();
+          
+          if (currentUser && currentToken) {
+            setUser(currentUser);
+            setToken(currentToken);
+            console.log('✅ Session restored successfully');
+          }
+        }
+        
+        console.log('Session initialization completed');
+        
+        // Verify MessageService is initialized
+        console.log('🔍 Checking MessageService initialization...');
+        if (messageService.messageService) {
+          console.log('✅ MessageService is available');
+        } else {
+          console.log('❌ MessageService is not available');
+        }
+      } catch (error) {
+        console.error('Session initialization failed:', error);
+        setError('Failed to initialize session. Please restart the application.');
+      }
+    };
+
+    initializeSession();
+  }, []);
+
+  // Updated login function to handle new response format
   const login = useCallback(async (username: string, password: string) => {
     try {
       setIsLoading(true);
       setError(null);
       
-      console.log("🔐 Attempting login...");
+      console.log("🔄 Attempting login...");
       const result = await sessionManager.login(username, password);
       
       if (result.success) {
         console.log("✅ Login successful");
+        // Update state after successful login
+        const currentUser = sessionManager.getCurrentUser();
+        const currentToken = sessionManager.getToken();
+        setUser(currentUser);
+        setToken(currentToken);
       } else {
         throw new Error(result.error || "Login failed");
       }
     } catch (err) {
-      console.error("❌ Login failed:", err);
+      console.error("Login failed:", err);
       setError("Login failed: " + (err instanceof Error ? err.message : "Unknown error"));
       throw err;
     } finally {
@@ -86,7 +132,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Logout function
+  // Simple logout function
   const logout = useCallback(async () => {
     try {
       await sessionManager.logOut();
@@ -94,141 +140,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setToken(null);
       setError(null);
     } catch (err) {
-      console.error("❌ Logout error:", err);
+      console.error("Logout error:", err);
       setError("Logout failed. Please try again.");
     }
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
-
-  // WebSocket status monitoring
-  useEffect(() => {
-    const handleStatusChange = (status: WebSocketStatus) => {
-      setWebsocketStatus(status);
-      console.log("🔌 WebSocket status changed:", status);
-    };
-
-    websocketService.onStatusChange(handleStatusChange);
-
-    return () => {
-      websocketService.offStatusChange(handleStatusChange);
-    };
-  }, []);
-
-  // Listen to session state changes
-  useEffect(() => {
-    const unsubscribe = sessionManager.onStateChange((state) => {
-      setSessionState(state);
-      setUser(state.currentUser);
-      // Get token from session manager directly
-      setToken(sessionManager.getToken());
-    });
-
-    return unsubscribe;
-  }, []);
-
-  // Connect WebSocket when user is authenticated
-  useEffect(() => {
-    const connectWebSocket = async () => {
-      if (token && user) {
-        try {
-          console.log("🔌 Connecting WebSocket for authenticated user...");
-          await websocketService.connect(token);
-          console.log("✅ WebSocket connected successfully");
-        } catch (error) {
-          console.error("❌ Failed to connect WebSocket:", error);
-          // Don't throw error here, just log it
-        }
-      } else if (!token && websocketStatus.is_connected) {
-        // Disconnect WebSocket when user logs out
-        try {
-          console.log("🔌 Disconnecting WebSocket due to logout...");
-          await websocketService.disconnect();
-          console.log("✅ WebSocket disconnected successfully");
-        } catch (error) {
-          console.error("❌ Failed to disconnect WebSocket:", error);
-        }
-      }
-    };
-
-    connectWebSocket();
-  }, [token, user]);
-
-  // Initialize session and listen to state changes
-  useEffect(() => {
-    const initializeApp = async () => {
-      try {
-        // Prevent rapid reinitialization (minimum 2 seconds between attempts)
-        const now = Date.now();
-        if (now - lastInitTime < 2000) {
-          console.log("⚠️ Skipping rapid reinitialization");
-          return;
-        }
-        setLastInitTime(now);
-        
-        console.log("🚀 Initializing application...");
-        setIsLoading(true);
-        setError(null);
-        
-        // Initialize session manager with timeout
-        const initTimeout = setTimeout(() => {
-          console.warn("⚠️ Session initialization taking longer than expected");
-        }, 5000);
-        
-        await sessionManager.initializeSession();
-        clearTimeout(initTimeout);
-        
-        // Update state from session manager
-        const sessionState = sessionManager.getState();
-        if (sessionState.isLoggedIn && sessionState.currentUser) {
-          setUser(sessionState.currentUser);
-          setToken(sessionManager.getToken());
-        }
-        
-        // Set up WebSocket message handler
-        console.log("🔌 Setting up WebSocket message handler...");
-        // The WebSocket handler is set up in useWebSocketHandler.ts and called from ChatScreen
-        
-        console.log("✅ Application initialized");
-      } catch (err) {
-        console.error("❌ Application initialization failed:", err);
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        setError("Failed to initialize application: " + errorMessage);
-        
-        // Try to recover by clearing session and allowing retry
-        try {
-          await sessionManager.logOut();
-        } catch (logoutError) {
-          console.error("❌ Failed to logout during error recovery:", logoutError);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    // Listen to session state changes
-    const unsubscribe = sessionManager.onStateChange((newState) => {
-      console.log("🔄 Session state changed:", newState);
-      setSessionState(newState);
-      
-      if (newState.isLoggedIn && newState.currentUser) {
-        console.log("✅ Setting user and token from session state");
-        setUser(newState.currentUser);
-        setToken(sessionManager.getToken());
-      } else {
-        console.log("❌ Clearing user and token");
-        setUser(null);
-        setToken(null);
-      }
-    });
-
-    initializeApp();
-
-    // Cleanup subscription
-    return () => {
-      unsubscribe();
-    };
-  }, [lastInitTime]);
 
   // Network status detection
   useEffect(() => {
@@ -266,7 +183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       apiService,
       websocketService,
       nativeApiService,
-    }), []), // Empty dependency array since these are static service instances
+    }), []),
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
