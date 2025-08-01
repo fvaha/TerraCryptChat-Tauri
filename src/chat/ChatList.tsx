@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../AppContext';
 
 import { useTheme } from '../components/ThemeContext';
@@ -51,7 +51,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   // Load chats function
-  const loadChats = async () => {
+  const loadChats = useCallback(async () => {
     // Prevent multiple simultaneous loads
     if (isLoadingChats) {
       console.log(" Chat loading already in progress, skipping...");
@@ -112,7 +112,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
       setIsLoading(false);
       setIsLoadingChats(false);
     }
-  };
+  }, []);
 
   const formatTime = (timestamp: string) => {
     try {

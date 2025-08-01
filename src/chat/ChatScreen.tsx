@@ -28,6 +28,17 @@ interface ChatData {
   participantNames: string[];
 }
 
+interface Theme {
+  background: string;
+  surface: string;
+  text: string;
+  textSecondary: string;
+  border: string;
+  primary: string;
+  hover: string;
+  sidebar: string;
+}
+
 const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
   console.log(" ChatScreen: Component rendering with chatId:", chatId);
   
@@ -50,6 +61,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -112,7 +125,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
             // For direct chats, try to get the other participant's name
             const participants = chat.participants ? JSON.parse(chat.participants) : [];
             if (participants.length > 0 && currentUserId) {
-              const otherParticipant = participants.find((p: any) => p !== currentUserId);
+              const otherParticipant = participants.find((p: string) => p !== currentUserId);
               if (otherParticipant) {
                 // Try to get the username from the participant data
                 if (typeof otherParticipant === 'object' && otherParticipant.username) {
@@ -144,7 +157,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
           if (currentUserId) {
             // Try to get the other participant's ID from the chat name or participants
             const participants = chat.participants ? JSON.parse(chat.participants) : [];
-            const otherParticipant = participants.find((p: any) => p !== currentUserId);
+                         const otherParticipant = participants.find((p: string) => p !== currentUserId);
             if (otherParticipant) {
               receiverId = otherParticipant;
             }
@@ -183,7 +196,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
       console.log(` Loading messages for chat ${chatId} from database...`);
       
       // Load messages from database only (messages come via WebSocket)
-      const cachedMessages = await messageService.fetchMessages(chatId, 50);
+      const cachedMessages = await messageService.fetchMessages(chatId, 100);
       console.log(` Found ${cachedMessages.length} messages in database`);
       
       // Set raw messages directly
@@ -199,29 +212,36 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
   }, [chatId]);
 
   // Load older messages (pagination)
-  const loadOlderMessages = useCallback(async (beforeTimestamp: number) => {
+  const loadOlderMessages = useCallback(async () => {
+    if (isLoadingMore || !hasMoreMessages || rawMessages.length === 0) return;
+    
     try {
-      const olderMessages = await messageService.fetchOldMessages(chatId, beforeTimestamp);
+      setIsLoadingMore(true);
+      const oldestMessage = rawMessages[0];
+      const olderMessages = await messageService.fetchOldMessages(chatId, oldestMessage.timestamp);
+      
       if (olderMessages.length > 0) {
         setRawMessages(prev => {
           const combined = [...olderMessages, ...prev];
           const sorted = combined.sort((a, b) => a.timestamp - b.timestamp);
           return sorted;
         });
+      } else {
+        // No more messages to load
+        setHasMoreMessages(false);
       }
     } catch (error) {
       console.error("Failed to load older messages:", error);
     } finally {
-      isLoadingOlderMessages.current = false;
+      setIsLoadingMore(false);
     }
-  }, [chatId]);
+  }, [chatId, isLoadingMore, hasMoreMessages, rawMessages]);
 
   // Handle new message from WebSocket
   const handleNewMessage = useCallback((newMessage: MessageEntity) => {
     console.log("  handleNewMessage called with:", newMessage.client_message_id || newMessage.message_id);
     console.log(" Message content:", newMessage.content?.substring(0, 50) + "...");
     console.log(" Message status - is_delivered:", newMessage.is_delivered, "is_sent:", newMessage.is_sent);
-    console.log(" Current rawMessages count:", rawMessages.length);
     
     setRawMessages(prev => {
       console.log(" Previous messages count:", prev.length);
@@ -248,14 +268,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
         return newMessages;
       }
     });
-    
-    // Auto-scroll to bottom immediately
-    setTimeout(() => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-      }
-    }, 50);
-  }, [rawMessages]);
+  }, []);
 
 
 
@@ -298,19 +311,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
       messageService.setMessageFlow(messageFlowCallback);
       console.log("  Message flow callback set successfully");
       
-      // Auto-scroll to bottom on chat entry
-      setTimeout(() => {
-        if (messagesEndRef.current) {
-          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 500);
+      
     } catch (error) {
       console.error("Failed to initialize chat data:", error);
       setError("Failed to load chat data");
     } finally {
       setIsLoading(false);
     }
-  }, [chatId, loadCurrentUser, loadChatData, loadMessages]);
+  }, [chatId]);
 
   // Message service handles all WebSocket messages automatically
   // No need for separate WebSocket handler
@@ -325,7 +333,18 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
       messageService.setMessageFlow(null);
       console.log(`  Message flow cleaned up for chat: ${chatId}`);
     };
-  }, [chatId, initializeData]);
+  }, [chatId]);
+
+  // Scroll to bottom when messages are loaded
+  useEffect(() => {
+    if (rawMessages.length > 0 && !isLoading) {
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'instant' });
+        }
+      }, 100);
+    }
+  }, [rawMessages.length, isLoading]);
 
   // Prepare messages for display - extract reply information from content
   const prepareMessagesForDisplay = useCallback((messages: MessageEntity[]) => {
@@ -399,18 +418,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
     
     // Show scroll to bottom button when scrolled up
     setShowScrollToBottom(scrollTop < scrollHeight - clientHeight - 100);
-    
-    // Load older messages when scrolling near top
-    if (scrollTop < 100 && !isLoadingOlderMessages.current && rawMessages.length > 0) {
-      const oldestMessage = rawMessages[0];
-      if (oldestMessage) {
-        isLoadingOlderMessages.current = true;
-        setTimeout(() => {
-          loadOlderMessages(oldestMessage.timestamp);
-        }, 100);
-      }
-    }
-  }, [rawMessages, loadOlderMessages]);
+  }, []);
 
   // Throttled mark as read function - commented out as unused
   // const markMessagesAsRead = useCallback(async () => {
@@ -539,20 +547,23 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
         theme={theme}
       />
 
-      {/* Messages */}
-      <ChatScreenMessages
-        groupedMessages={groupedMessages}
-        currentUserId={currentUserId}
-        chatData={chatData}
-        theme={theme}
-        onReply={handleReply}
-        onResend={handleResend}
-        onScroll={handleScroll}
-        messagesEndRef={messagesEndRef}
-        messagesContainerRef={messagesContainerRef}
-        formatTime={formatTime}
-        formatDate={formatDate}
-      />
+             {/* Messages */}
+       <ChatScreenMessages
+         groupedMessages={groupedMessages}
+         currentUserId={currentUserId}
+         chatData={chatData}
+         theme={theme}
+         onReply={handleReply}
+         onResend={handleResend}
+         onScroll={handleScroll}
+         messagesEndRef={messagesEndRef}
+         messagesContainerRef={messagesContainerRef}
+         formatTime={formatTime}
+         formatDate={formatDate}
+         onLoadMore={loadOlderMessages}
+         hasMoreMessages={hasMoreMessages}
+         isLoadingMore={isLoadingMore}
+       />
 
              {/* Reply view */}
        {replyTo && (
@@ -608,7 +619,7 @@ const ChatScreenHeader: React.FC<{
   setIsSearching: (searching: boolean) => void;
   searchText: string;
   setSearchText: (text: string) => void;
-  theme: any;
+  theme: Theme;
 }> = ({ chatData, isSearching, setIsSearching, theme }) => (
   <div style={{
     display: "flex",
@@ -705,7 +716,7 @@ const ChatScreenMessages: React.FC<{
   groupedMessages: { date: string; messages: MessageEntity[] }[];
   currentUserId: string;
   chatData: ChatData;
-  theme: any;
+  theme: Theme;
   onReply: (message: MessageEntity) => void;
   onResend: (message: MessageEntity) => void;
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
@@ -713,7 +724,10 @@ const ChatScreenMessages: React.FC<{
   messagesContainerRef: React.RefObject<HTMLDivElement>;
   formatTime: (timestamp: number) => string;
   formatDate: (timestamp: number) => string;
-}> = ({ groupedMessages, currentUserId, chatData, theme, onReply, onResend, onScroll, messagesEndRef, messagesContainerRef, formatTime }) => {
+  onLoadMore: () => void;
+  hasMoreMessages: boolean;
+  isLoadingMore: boolean;
+}> = ({ groupedMessages, currentUserId, chatData, theme, onReply, onResend, onScroll, messagesEndRef, messagesContainerRef, formatTime, onLoadMore, hasMoreMessages, isLoadingMore }) => {
   console.log(" ChatScreenMessages rendering with:", {
     groupedMessagesCount: groupedMessages.length,
     currentUserId,
@@ -731,6 +745,34 @@ const ChatScreenMessages: React.FC<{
       }}
       onScroll={onScroll}
     >
+      {/* Load More Messages Button */}
+      {hasMoreMessages && (
+        <div style={{
+          textAlign: "center",
+          margin: "16px 0",
+          padding: "12px"
+        }}>
+          <button
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: isLoadingMore ? theme.border : theme.primary,
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              cursor: isLoadingMore ? "not-allowed" : "pointer",
+              fontSize: "14px",
+              fontWeight: "500",
+              opacity: isLoadingMore ? 0.7 : 1,
+              transition: "all 0.2s ease"
+            }}
+          >
+            {isLoadingMore ? "Loading..." : "Load More Messages"}
+          </button>
+        </div>
+      )}
+      
       {groupedMessages.map(({ date, messages }) => (
         <div key={date}>
           {/* Date separator */}
@@ -796,7 +838,7 @@ const ChatScreenMessages: React.FC<{
 const ChatScreenReplyView: React.FC<{
   replyTo: MessageEntity;
   onCancel: () => void;
-  theme: any;
+  theme: Theme;
   chatData: ChatData;
 }> = ({ replyTo, onCancel, theme, chatData }) => (
   <div style={{
@@ -846,7 +888,7 @@ const ChatScreenInput: React.FC<{
   newMessage: string;
   setNewMessage: (message: string) => void;
   onSend: () => void;
-  theme: any;
+  theme: Theme;
   messageInputRef: React.RefObject<HTMLTextAreaElement>;
 }> = ({ newMessage, setNewMessage, onSend, theme, messageInputRef }) => (
   <div style={{

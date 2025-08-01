@@ -93,7 +93,7 @@ export default function CreateChatForm({ token, onCreated, onCancel }: Props) {
         { user_id: selectedFriend.user_id }
       ];
 
-      const response = await invoke("create_chat", {
+      await invoke("create_chat", {
         token,
         members: JSON.stringify(members),
         is_group: false

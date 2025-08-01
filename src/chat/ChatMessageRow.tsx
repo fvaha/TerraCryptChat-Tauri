@@ -11,7 +11,16 @@ interface ChatMessageRowProps {
   onScrollToMessage: (messageId: string) => void;
   isFirstInGroup?: boolean;
   formatTime: (timestamp: number) => string;
-  theme: any;
+  theme: {
+    background: string;
+    surface: string;
+    text: string;
+    textSecondary: string;
+    border: string;
+    primary: string;
+    hover: string;
+    sidebar: string;
+  };
 }
 
 const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
@@ -40,14 +49,14 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
         display: "flex",
         justifyContent: isCurrentUser ? "flex-end" : "flex-start",
         marginBottom: "8px",
-        padding: "0 16px"
+        padding: "0 3px" // Reduced from 16px to 3px
       }}
     >
       <div 
         style={{
           maxWidth: message.content.length > 50 ? "70%" : "auto",
           minWidth: message.content.length < 10 ? "120px" : "auto",
-          padding: "12px 16px",
+                     padding: "3px 16px",
           borderRadius: "12px",
           backgroundColor: bubbleColor,
           color: textColor,
@@ -72,51 +81,44 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
           </div>
         )}
 
-        {/* Reply preview if exists */}
-        {message.reply_to_message_id && (
-          <div
-            style={{
-              width: "100%",
-              maxWidth: "280px",
-              marginBottom: "6px",
-              padding: "4px 6px 4px 8px",
-              backgroundColor: `${textColor}10`,
-              borderRadius: "1px",
-              cursor: "pointer"
-            }}
-            onClick={() => onScrollToMessage(message.reply_to_message_id!)}
-          >
+                 {/* Reply preview if exists */}
+         {message.reply_to_message_id && (
+           <div
+             style={{
+               width: "100%",
+               maxWidth: "280px",
+               marginBottom: "6px",
+               padding: "4px 6px 4px 8px",
+               backgroundColor: `${textColor}25`,
+               borderRadius: "4px",
+               cursor: "pointer",
+               borderLeft: `3px solid ${bubbleColor}60`
+             }}
+             onClick={() => onScrollToMessage(message.reply_to_message_id!)}
+           >
             <div style={{ display: "flex", alignItems: "center" }}>
-              {/* Reply indicator line */}
-              <div style={{
-                width: "3px",
-                height: "28px",
-                backgroundColor: `${textColor}40`,
-                borderRadius: "1px",
-                marginRight: "6px"
-              }} />
-              
-                             <div style={{ flex: 1 }}>
-                 <div style={{
-                   fontSize: "11px",
-                   color: `${textColor}85`,
-                   maxLines: 1,
-                   overflow: "hidden",
-                   textOverflow: "ellipsis"
-                 }}>
-                   ↩ Reply to {message.reply_to_username || 'Unknown'}
-                 </div>
-                 <div style={{
-                   fontSize: "11px",
-                   color: `${textColor}60`,
-                   fontStyle: "italic",
-                   maxLines: 1,
-                   overflow: "hidden",
-                   textOverflow: "ellipsis"
-                 }}>
-                   {message.reply_to_content || message.reply_to_message_id}
-                 </div>
-               </div>
+              <div style={{ flex: 1 }}>
+                <div style={{
+                  fontSize: "11px",
+                  color: `${textColor}90`,
+                  fontWeight: "500",
+                  maxLines: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis"
+                }}>
+                  ↩ {message.reply_to_username || 'Unknown'}
+                </div>
+                <div style={{
+                  fontSize: "11px",
+                  color: `${textColor}70`,
+                  fontStyle: "italic",
+                  maxLines: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis"
+                }}>
+                  {message.reply_to_content || message.reply_to_message_id}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -132,87 +134,83 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
           {message.content}
         </div>
 
-        {/* Message metadata - matching Kotlin layout */}
+        {/* Message metadata - WhatsApp-like layout */}
         <div style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-end",
           justifyContent: "space-between",
           marginTop: "2px",
-          fontSize: "11px",
-          opacity: 0.7
+          paddingBottom: "0px",
+          marginBottom: "0px",
+          fontSize: "10px",
+          opacity: 0.85
         }}>
-                     {/* Reply indicator on left */}
-           {message.reply_to_message_id && (
-             <span style={{ fontSize: "9px", opacity: 0.6 }}>
-               ↶ Reply to {message.reply_to_username || 'Unknown'}
-             </span>
-           )}
+          {/* Reply button on left */}
+          <button
+            onClick={() => onReply(message)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "inherit",
+              cursor: "pointer",
+              fontSize: "10px",
+              padding: "1px 3px",
+              borderRadius: "3px",
+              opacity: 0.85,
+              marginLeft: "-8px"
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
+            onMouseLeave={(e) => e.currentTarget.style.opacity = "0.85"}
+          >
+            Reply
+          </button>
           
           {/* Timestamp and status on right */}
           <div style={{
             display: "flex",
             alignItems: "center",
-            gap: "8px"
+            gap: "1px",
+            marginRight: "-8px"
           }}>
-            <span>{formatTime(normalizedTimestamp)}</span>
+                         <span style={{ marginRight: "3px", opacity: 0.85, fontSize: "10px" }}>{formatTime(normalizedTimestamp)}</span>
             
             {/* Status indicators for own messages */}
             {isCurrentUser && (
-              <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0px" }}>
                 {message.is_failed ? (
-                  <span style={{ color: '#ff4444' }}>⚠</span>
+                  <span style={{ color: '#ff4444', fontSize: "10px" }}>⚠</span>
                 ) : message.is_read ? (
-                  <span style={{ color: '#4CAF50' }}>✓✓</span>
+                  <span style={{ color: 'black', opacity: 0.85, fontSize: "10px", marginLeft: "-1px" }}>✓✓</span>
                 ) : message.is_delivered ? (
-                  <span style={{ color: '#2196F3' }}>✓✓</span>
+                  <span style={{ color: 'black', opacity: 0.85, fontSize: "10px", marginLeft: "-1px" }}>✓✓</span>
                 ) : message.is_sent ? (
-                  <span style={{ color: '#9E9E9E' }}>✓</span>
+                  <span style={{ color: 'black', opacity: 0.85, fontSize: "10px" }}>✓</span>
                 ) : (
-                  <span style={{ color: '#9E9E9E' }}>⋯</span>
+                  <span style={{ color: 'black', opacity: 0.85, fontSize: "10px" }}>⋯</span>
                 )}
               </div>
             )}
             
-            {/* Message actions */}
-            <div style={{ display: "flex", gap: "4px" }}>
+            {/* Resend button for failed messages */}
+            {message.is_failed && (
               <button
-                onClick={() => onReply(message)}
+                onClick={() => onResend(message)}
                 style={{
                   background: "none",
                   border: "none",
                   color: "inherit",
                   cursor: "pointer",
-                  fontSize: "11px",
-                  padding: "2px 4px",
-                  borderRadius: "4px",
-                  opacity: 0.7
+                  fontSize: "10px",
+                  padding: "1px 3px",
+                  borderRadius: "3px",
+                  opacity: 0.85
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = "0.7"}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = "0.85"}
               >
-                Reply
+                Resend
               </button>
-              
-              {message.is_failed && (
-                <button
-                  onClick={() => onResend(message)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "inherit",
-                    cursor: "pointer",
-                    fontSize: "11px",
-                    padding: "2px 4px",
-                    borderRadius: "4px",
-                    opacity: 0.7
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
-                  onMouseLeave={(e) => e.currentTarget.style.opacity = "0.7"}
-                >
-                  Resend
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>

@@ -145,9 +145,9 @@ const ChatApp: React.FC = () => {
           }
         }
       } else {
-        // Main app - 800x600 size
+        // Main app - 960x600 size (20% wider)
         try {
-          await nativeApiService.resizeWindow(800, 600);
+          await nativeApiService.resizeWindow(960, 600);
         } catch (error) {
           console.error('Failed to resize window:', error);
         }
@@ -377,7 +377,7 @@ const ChatApp: React.FC = () => {
             <>
               {/* Chat List Panel */}
               <div style={{
-                width: '350px',
+                width: '280px', // Reduced from 350px (-20%)
                 backgroundColor: theme.sidebar,
                 borderRight: `1px solid ${theme.sidebarBorder}`,
                 display: 'flex',
@@ -421,7 +421,7 @@ const ChatApp: React.FC = () => {
             <>
               {/* Friends Sidebar */}
               <div style={{
-                width: '350px',
+                width: '280px', // Reduced from 350px (-20%)
                 backgroundColor: theme.sidebar,
                 borderRight: `1px solid ${theme.sidebarBorder}`,
                 display: 'flex',
