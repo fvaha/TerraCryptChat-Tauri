@@ -4,8 +4,8 @@ import { useTheme } from '../components/ThemeContext';
 import ScreenHeader from '../components/ScreenHeader';
 import { friendService } from './friendService';
 import { Friend } from '../models/models';
-import { backgroundSyncManager } from '../services/backgroundSyncManager';
 import NewFriendSearch from './NewFriendSearch';
+import FriendRequestsModal from './FriendRequestsModal';
 
 interface FriendsScreenProps {
   onOpenChat: (friendId: string, friendName: string) => void;
@@ -19,30 +19,35 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [showFriendSearch, setShowFriendSearch] = useState(false);
-  const [showAddFriend, setShowAddFriend] = useState(false);
-  const [newFriendUsername, setNewFriendUsername] = useState('');
-  const [isAddingFriend, setIsAddingFriend] = useState(false);
+  const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
+  const [friendRequests, setFriendRequests] = useState<any[]>([]);
+  const [friendRequestsCount, setFriendRequestsCount] = useState(0);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  
+  // Search functionality for header
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   // Load friends
   const loadFriends = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      console.log("🔄 Loading friends...");
+      console.log(" Loading friends...");
       
       const friendsData = await friendService.getCachedFriendsForCurrentUser();
-      console.log("✅ Friends loaded:", friendsData);
+      console.log(" Friends loaded:", friendsData);
       
       if (Array.isArray(friendsData)) {
         setFriends(friendsData);
       } else {
-        console.warn("⚠️ Invalid friends data received:", friendsData);
+        console.warn(" Invalid friends data received:", friendsData);
         setFriends([]);
       }
     } catch (error) {
-      console.error("❌ Failed to load friends:", error);
+      console.error(" Failed to load friends:", error);
       setError("Failed to load friends");
     } finally {
       setIsLoading(false);
@@ -50,42 +55,118 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
   };
 
   // Add friend function
-  const handleAddFriend = async (username: string) => {
+  const handleAddFriend = async (username: string, userId: string) => {
     try {
-      console.log("🔄 Adding friend:", username);
+      console.log(" Adding friend:", username);
       
-      await friendService.sendFriendRequest(username);
-      console.log("✅ Friend request sent successfully");
+      await friendService.sendFriendRequest(userId);
+      console.log(" Friend request sent successfully");
       
-      // Reload friends to show the new request
-      await loadFriends();
+      // Don't immediately close the search screen - let the success message show first
+      // The NewFriendSearch component will handle showing the success message
+      // We'll reload friends after a delay to give the success message time to show
+      setTimeout(async () => {
+        // Close the search screen
+        setShowFriendSearch(false);
+        
+        // Reload friends to show the new friend
+        await loadFriends();
+      }, 2500); // Wait 2.5 seconds to allow the success message to show for 2 seconds
     } catch (error) {
-      console.error("❌ Failed to add friend:", error);
+      console.error(" Failed to add friend:", error);
       setError("Failed to add friend");
     }
   };
 
-  // Filter friends based on search query
-  const filteredFriends = friends.filter(friend => {
-    if (!searchQuery.trim()) return true;
-    const friendName = (friend.username || '').toLowerCase();
-    const friendDisplayName = (friend.name || '').toLowerCase();
-    return friendName.includes(searchQuery.toLowerCase()) || 
-           friendDisplayName.includes(searchQuery.toLowerCase());
-  });
+  // Load friend requests
+  const loadFriendRequests = async () => {
+    try {
+      setIsLoadingRequests(true);
+      const requests = await friendService.getFriendRequests();
+      setFriendRequests(requests);
+      setFriendRequestsCount(requests.length);
+    } catch (error) {
+      console.error("Failed to load friend requests:", error);
+    } finally {
+      setIsLoadingRequests(false);
+    }
+  };
 
-  // Load friends on mount and trigger background sync
+  // Search functionality
+  const handleSearchClick = () => {
+    setIsSearchActive(!isSearchActive);
+    if (!isSearchActive) {
+      setSearchQuery('');
+    }
+  };
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    
+    // Clear existing timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+    
+    // Set new timeout for auto-close (2 seconds)
+    const timeout = setTimeout(() => {
+      setIsSearchActive(false);
+      setSearchQuery('');
+    }, 2000);
+    
+    setSearchTimeout(timeout);
+  };
+
+
+
+  // Handle friend request actions
+  const handleAcceptRequest = async (requestId: string) => {
+    try {
+      await friendService.acceptFriendRequest(requestId);
+      console.log(" Friend request accepted");
+      await loadFriendRequests(); // Reload requests
+      await loadFriends(); // Reload friends list
+    } catch (error) {
+      console.error(" Failed to accept friend request:", error);
+      setError("Failed to accept friend request");
+    }
+  };
+
+  const handleDeclineRequest = async (requestId: string) => {
+    try {
+      await friendService.rejectFriendRequest(requestId);
+      console.log(" Friend request declined");
+      await loadFriendRequests(); // Reload requests
+    } catch (error) {
+      console.error(" Failed to decline friend request:", error);
+      setError("Failed to decline friend request");
+    }
+  };
+
+  // Load friends on mount
   useEffect(() => {
     const initializeScreen = async () => {
-      // Load friends from local database first (fast)
       await loadFriends();
-      
-      // Trigger background delta sync (doesn't affect UI)
-      backgroundSyncManager.onFriendsScreenOpened();
+      await loadFriendRequests();
     };
     
     initializeScreen();
   }, []);
+
+  // Cleanup search timeout
+  useEffect(() => {
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchTimeout]);
+
+  // Filter friends based on search query
+  const filteredFriends = friends.filter(friend => 
+    friend.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    friend.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   if (isLoading) {
     return (
@@ -100,8 +181,18 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
           onToggleSidebar={onToggleSidebar}
           sidebarCollapsed={sidebarCollapsed}
           showAddButton={true}
-          onAddClick={() => setShowAddFriend(!showAddFriend)}
+          onAddClick={() => setShowFriendSearch(true)}
           addButtonTitle="Add friend"
+          showFriendRequestsButton={true}
+          onFriendRequestsClick={() => setShowFriendRequestsModal(true)}
+          friendRequestsCount={friendRequestsCount}
+          showSearchButton={true}
+          onSearchClick={handleSearchClick}
+          isSearchActive={isSearchActive}
+          showSearchBar={true}
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+          searchPlaceholder="Search friends..."
         />
         
         {/* Loading skeleton */}
@@ -152,11 +243,11 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
         flexDirection: "column",
         backgroundColor: theme.background
       }}>
-                 <ScreenHeader
-           title="Friends"
-           onToggleSidebar={onToggleSidebar}
-           sidebarCollapsed={sidebarCollapsed}
-         />
+        <ScreenHeader
+          title="Friends"
+          onToggleSidebar={onToggleSidebar}
+          sidebarCollapsed={sidebarCollapsed}
+        />
         <div style={{
           flex: 1,
           display: "flex",
@@ -189,10 +280,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
   // Show friend search screen if requested
   if (showFriendSearch) {
     return (
-              <NewFriendSearch
-          onBack={() => setShowFriendSearch(false)}
-          onAddFriend={handleAddFriend}
-        />
+      <NewFriendSearch
+        onBack={() => setShowFriendSearch(false)}
+        onAddFriend={handleAddFriend}
+      />
     );
   }
 
@@ -209,16 +300,22 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
         sidebarCollapsed={sidebarCollapsed}
         showAddButton={true}
         onAddClick={() => setShowFriendSearch(true)}
+        addButtonTitle="Add friend"
+        showFriendRequestsButton={true}
+        onFriendRequestsClick={() => setShowFriendRequestsModal(true)}
+        friendRequestsCount={friendRequestsCount}
+        showSearchButton={true}
+        onSearchClick={handleSearchClick}
+        isSearchActive={isSearchActive}
         showSearchBar={true}
         searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
+        onSearchChange={handleSearchChange}
         searchPlaceholder="Search friends..."
-        addButtonTitle="Add friend"
       />
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-        {filteredFriends.length === 0 ? (
+        {filteredFriends.length === 0 && (
           <div style={{
             display: "flex",
             alignItems: "center",
@@ -233,77 +330,119 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
                 marginBottom: "8px",
                 color: theme.text
               }}>
-                {searchQuery ? "No friends found" : "No friends yet"}
+                No friends found
               </h3>
               <p style={{ fontSize: "14px", color: theme.textSecondary }}>
-                {searchQuery ? "Try a different search term" : "Add friends to start chatting"}
+                Try a different search term
               </p>
             </div>
           </div>
-        ) : (
-          filteredFriends.map((friend) => (
-            <div
-              key={friend.user_id}
-              style={{
-                backgroundColor: theme.surface,
-                border: `1px solid ${theme.border}`,
-                borderRadius: "12px",
-                padding: "16px",
-                marginBottom: "12px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                minHeight: "60px"
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", flex: 1 }}>
-                <div
-                  style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "50%",
-                    backgroundColor: theme.primary,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#ffffff",
-                    fontSize: "16px",
-                    fontWeight: "600",
-                    marginRight: "12px"
-                  }}
-                >
-                  {friend.username ? friend.username.charAt(0).toUpperCase() : "?"}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ color: theme.text, margin: "0 0 4px 0", fontSize: "16px", fontWeight: "500" }}>
-                    {friend.username}
-                  </h3>
-                  <p style={{ color: theme.textSecondary, margin: 0, fontSize: "14px" }}>
-                    @{friend.username}
-                  </p>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={() => onOpenChat(friend.user_id, friend.username)}
-                  style={{
-                    padding: "8px 12px",
-                    backgroundColor: theme.primary,
-                    color: "white",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontWeight: "500"
-                  }}
-                >
-                  Message
-                </button>
-              </div>
-            </div>
-          ))
         )}
+
+        {/* Show friends list */}
+        {filteredFriends.map((friend) => (
+          <div
+            key={friend.user_id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "12px 16px",
+              cursor: "pointer",
+              backgroundColor: "transparent",
+              borderLeft: "3px solid transparent",
+              transition: "all 0.2s ease"
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = theme.hover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
+          >
+            {/* Avatar */}
+            <div style={{ 
+              width: "48px", 
+              height: "48px", 
+              borderRadius: "50%",
+              backgroundColor: theme.primary,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#ffffff",
+              fontSize: "16px",
+              fontWeight: "600",
+              marginRight: "12px",
+              flexShrink: 0
+            }}>
+              {friend.username ? friend.username.charAt(0).toUpperCase() : "?"}
+            </div>
+            
+            {/* Friend Info */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center",
+                marginBottom: "4px"
+              }}>
+                <h3 style={{ 
+                  fontSize: "14px", 
+                  fontWeight: "600", 
+                  color: theme.text,
+                  margin: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }}>
+                  {friend.username}
+                </h3>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  flexShrink: 0
+                }}>
+                  <button
+                    onClick={() => onOpenChat(friend.user_id, friend.username)}
+                    style={{
+                      padding: "6px 10px",
+                      backgroundColor: theme.primary,
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "11px",
+                      fontWeight: "500"
+                    }}
+                  >
+                    Message
+                  </button>
+                </div>
+              </div>
+              <p style={{ 
+                color: theme.textSecondary, 
+                margin: 0, 
+                fontSize: "12px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap"
+              }}>
+                @{friend.username}
+              </p>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {/* Friend Requests Modal */}
+      <FriendRequestsModal
+        isOpen={showFriendRequestsModal}
+        onClose={() => setShowFriendRequestsModal(false)}
+        requests={friendRequests}
+        onAccept={handleAcceptRequest}
+        onDecline={handleDeclineRequest}
+        isLoading={isLoadingRequests}
+      />
     </div>
   );
 };

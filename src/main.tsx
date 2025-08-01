@@ -6,13 +6,13 @@ import './index.css'
 
 // Force MessageService instantiation early
 import { messageService } from './services/messageService';
-console.log('🚀 Main: MessageService imported and instantiated');
+console.log(' Main: MessageService imported and instantiated');
 
 // Force the MessageService to be instantiated
 if (messageService) {
-  console.log('✅ MessageService is available in main');
+  console.log(' MessageService is available in main');
 } else {
-  console.log('❌ MessageService is not available in main');
+  console.log(' MessageService is not available in main');
 }
 
 // Global error handlers to prevent crashes

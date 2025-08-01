@@ -41,7 +41,7 @@ export interface ChatMemberResponse {
 
 export interface Chat {
   chat_id: string;
-  chat_name: string;
+  name: string;
   creator_id: string;
   is_group: boolean;
   description?: string;
@@ -331,7 +331,7 @@ class NativeApiService {
     }
   }
 
-  async getUserById(userId: string, token: string): Promise<any> {
+  async getUserById(userId: string): Promise<any> {
     console.log(`Getting user by ID ${userId}...`);
     try {
       return await invoke('db_async_get_user_by_id', { userId });
@@ -373,13 +373,14 @@ class NativeApiService {
   }
 
   // User search API
-  async searchUsers(query: string): Promise<UserData[]> {
+  async searchUsers(query: string, token?: string): Promise<UserData[]> {
     console.log(`Searching users with query: ${query} via native API...`);
-    if (!this.token) {
+    const searchToken = token || this.token;
+    if (!searchToken) {
       throw new Error('No token available');
     }
     try {
-      const result = await invoke('search_users', { token: this.token, query });
+      const result = await invoke('search_users', { token: searchToken, query });
       return result as UserData[];
     } catch (error) {
       console.error('Search users failed:', error);

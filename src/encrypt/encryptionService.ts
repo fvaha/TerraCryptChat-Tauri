@@ -78,7 +78,7 @@ export class EncryptionService {
   }
 
   // Import a user's public keys (needed for encryption)
-  importUserPublicKeys(userId: string, _publicKeys: string[]): void {
+  importUserPublicKeys(userId: string): void {
     if (this.sdkInstancePtr !== null) {
       // TODO: Implement SDK key import when needed
       // await invoke("sdk_import_user_keys", { 

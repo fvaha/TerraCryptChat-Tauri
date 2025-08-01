@@ -1,4 +1,5 @@
 import React from "react";
+import { useTheme } from '../components/ThemeContext';
 
 interface FriendRequest {
   request_id: string;
@@ -30,6 +31,7 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
   onDecline,
   isLoading = false
 }) => {
+  const { theme } = useTheme();
   const getUserInitials = (name: string, username: string) => {
     const displayName = name || username;
     return displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -51,7 +53,7 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
       zIndex: 1000
     }}>
       <div style={{
-        backgroundColor: "white",
+        backgroundColor: theme.surface,
         borderRadius: "12px",
         width: "90%",
         maxWidth: "500px",
@@ -62,7 +64,7 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
         {/* Header */}
         <div style={{
           padding: "20px 24px",
-          borderBottom: "1px solid #e5e7eb",
+          borderBottom: `1px solid ${theme.border}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between"
@@ -70,7 +72,7 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
           <h2 style={{
             fontSize: "20px",
             fontWeight: "600",
-            color: "#111827",
+            color: theme.text,
             margin: 0
           }}>
             Friend Requests ({requests.length})
@@ -82,8 +84,8 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
               height: "32px",
               borderRadius: "50%",
               border: "none",
-              backgroundColor: "#f3f4f6",
-              color: "#6b7280",
+              backgroundColor: theme.hover,
+              color: theme.textSecondary,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -106,13 +108,13 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
                 display: "inline-block",
                 width: "32px",
                 height: "32px",
-                border: "2px solid #e5e7eb",
-                borderTop: "2px solid #3b82f6",
+                border: `2px solid ${theme.border}`,
+                borderTop: `2px solid ${theme.primary}`,
                 borderRadius: "50%",
                 animation: "spin 1s linear infinite",
                 marginBottom: "16px"
               }}></div>
-              <p style={{ color: "#6b7280" }}>Loading requests...</p>
+              <p style={{ color: theme.textSecondary }}>Loading requests...</p>
             </div>
           ) : requests.length === 0 ? (
             <div style={{
@@ -122,24 +124,24 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
               <div style={{
                 width: "64px",
                 height: "64px",
-                backgroundColor: "#f3f4f6",
+                backgroundColor: theme.hover,
                 borderRadius: "50%",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 margin: "0 auto 16px"
               }}>
-                <span style={{ fontSize: "24px" }}>👥</span>
+                <span style={{ fontSize: "24px" }}></span>
               </div>
               <h3 style={{
                 fontSize: "16px",
                 fontWeight: "500",
-                color: "#111827",
+                color: theme.text,
                 margin: "0 0 8px 0"
               }}>
                 No pending requests
               </h3>
-              <p style={{ color: "#6b7280", margin: 0 }}>
+              <p style={{ color: theme.textSecondary, margin: 0 }}>
                 You're all caught up!
               </p>
             </div>
@@ -153,8 +155,8 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
                     alignItems: "center",
                     padding: "16px",
                     borderRadius: "8px",
-                    border: "1px solid #e5e7eb",
-                    backgroundColor: "white",
+                    border: `1px solid ${theme.border}`,
+                    backgroundColor: theme.surface,
                     marginBottom: "12px"
                   }}
                 >
@@ -178,21 +180,21 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
                     <h3 style={{
                       fontSize: "16px",
                       fontWeight: "500",
-                      color: "#111827",
+                      color: theme.text,
                       margin: "0 0 4px 0"
                     }}>
                       {request.sender?.name || request.sender?.username || "Unknown"}
                     </h3>
                     <p style={{
                       fontSize: "14px",
-                      color: "#6b7280",
+                      color: theme.textSecondary,
                       margin: "0 0 4px 0"
                     }}>
                       @{request.sender?.username}
                     </p>
                     <p style={{
                       fontSize: "12px",
-                      color: "#9ca3af",
+                      color: theme.textSecondary,
                       margin: 0
                     }}>
                       Wants to be your friend
@@ -211,7 +213,8 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
                         fontSize: "14px",
                         fontWeight: "500",
                         cursor: "pointer",
-                        minWidth: "80px"
+                        minWidth: "80px",
+                        transition: "all 0.2s ease"
                       }}
                     >
                       Accept
@@ -220,14 +223,15 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
                       onClick={() => onDecline(request.request_id)}
                       style={{
                         padding: "8px 16px",
-                        border: "1px solid #d1d5db",
+                        border: `1px solid ${theme.border}`,
                         borderRadius: "6px",
-                        backgroundColor: "white",
-                        color: "#6b7280",
+                        backgroundColor: theme.surface,
+                        color: theme.textSecondary,
                         fontSize: "14px",
                         fontWeight: "500",
                         cursor: "pointer",
-                        minWidth: "80px"
+                        minWidth: "80px",
+                        transition: "all 0.2s ease"
                       }}
                     >
                       Decline

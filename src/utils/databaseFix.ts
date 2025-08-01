@@ -27,20 +27,9 @@ export class DatabaseFixUtil {
     const issues: string[] = [];
     
     try {
-      // Try to insert a test friend to check for schema issues
-      const testFriend = {
-        user_id: 'test-user-id',
-        username: 'test-username',
-        email: 'test@example.com',
-        name: 'Test User',
-        picture: null,
-        created_at: null,
-        updated_at: null,
-        status: null,
-        is_favorite: false
-      };
-      
-      await nativeApiService.insertOrUpdateFriend(testFriend);
+      // Check if friend table has the correct schema by trying to access it
+      // We don't actually insert test data, just check if the table exists
+      await nativeApiService.getAllFriends();
       
       // If we get here, the friend table is working
       console.log('[DatabaseFixUtil] Friend table schema is healthy');
@@ -51,22 +40,9 @@ export class DatabaseFixUtil {
     }
     
     try {
-      // Try to insert a test chat to check for schema issues
-      const testChat = {
-        chat_id: 'test-chat-id',
-        name: 'Test Chat',
-        created_at: Date.now(),
-        creator_id: 'test-creator',
-        is_group: false,
-        group_name: null,
-        description: null,
-        unread_count: 0,
-        last_message_content: null,
-        last_message_timestamp: null,
-        participants: null
-      };
-      
-      await nativeApiService.insertOrUpdateChat(testChat);
+      // Check if chat table has the correct schema by trying to access it
+      // We don't actually insert test data, just check if the table exists
+      await nativeApiService.getCachedChatsOnly();
       
       // If we get here, the chat table is working
       console.log('[DatabaseFixUtil] Chat table schema is healthy');

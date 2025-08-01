@@ -52,13 +52,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isLoading, setIsLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [error, setError] = useState<string | null>(null);
-  const [sessionState, setSessionState] = useState<SessionState>({
+  const [sessionState] = useState<SessionState>({
     isLoggedIn: false,
     currentUser: null,
     isSessionInitialized: false,
     isDarkModeEnabled: false
   });
-  const [websocketStatus, setWebsocketStatus] = useState<WebSocketStatus>({
+  const [websocketStatus] = useState<WebSocketStatus>({
     connection_state: ConnectionState.Disconnected,
     is_connected: false,
     is_connecting: false,

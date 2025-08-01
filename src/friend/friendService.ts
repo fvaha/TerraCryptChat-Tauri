@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { databaseServiceAsync } from '../services/databaseServiceAsync';
 import { Friend } from '../services/databaseServiceAsync';
-import { SessionManager } from '../utils/sessionManager';
+import { sessionManager } from '../utils/sessionManager';
 import { nativeApiService } from '../api/nativeApiService';
 
 export class FriendService {
@@ -151,49 +151,87 @@ export class FriendService {
 
   async searchUsers(query: string): Promise<any[]> {
     try {
-      console.log(`[FriendService] Searching users with query: ${query}`);
+      console.log(`[FriendService] Searching users with query: '${query}'`);
       
-      // Get the current token from session manager
-      const sessionManager = new SessionManager();
+      // Get token from session manager
       const token = sessionManager.getToken();
       
       if (!token) {
-        console.error("[FriendService] No token available for search");
-        return [];
+        throw new Error("No token available for search");
       }
       
-      const response = await invoke<{ data: any[] }>("search_users", { token, query });
+      // Use nativeApiService instead of direct invoke
+      const response = await nativeApiService.searchUsers(query, token);
+      console.log(`[FriendService] Raw response received:`, response);
       
-      if (!response || !response.data) {
-        console.warn("[FriendService] No search results received");
-        return [];
+      if (Array.isArray(response)) {
+        console.log(`[FriendService] Found ${response.length} users matching query`);
+        
+        // Get current user's friends and friend requests to filter them out
+        const [friends, friendRequests] = await Promise.all([
+          this.getCachedFriendsForCurrentUser().catch(() => []),
+          this.getFriendRequests().catch(() => [])
+        ]);
+        
+        console.log(`[FriendService] Found ${friends.length} current friends`);
+        console.log(`[FriendService] Found ${friendRequests.length} pending friend requests`);
+        
+        // Create sets of user IDs to filter out
+        const friendIds = new Set(friends.map(friend => friend.user_id));
+        const requestIds = new Set(friendRequests.map(request => request.user_id));
+        const currentUserId = sessionManager.getCurrentUser()?.user_id;
+        
+        // Filter out current user, existing friends, and users with pending requests
+        const filteredUsers = response.filter(user => {
+          const isCurrentUser = user.user_id === currentUserId;
+          const isAlreadyFriend = friendIds.has(user.user_id);
+          const hasPendingRequest = requestIds.has(user.user_id);
+          
+          return !isCurrentUser && !isAlreadyFriend && !hasPendingRequest;
+        });
+        
+        console.log(`[FriendService] Filtered to ${filteredUsers.length} available users`);
+        return filteredUsers;
       }
       
-      console.log(`[FriendService] Found ${response.data.length} users matching query`);
-      return response.data;
-    } catch (error) {
-      console.error("[FriendService] Failed to search users:", error);
       return [];
-    }
-  }
-
-  async sendFriendRequest(friendId: string): Promise<void> {
-    try {
-      console.log(`[FriendService] Sending friend request to: ${friendId}`);
-      
-      const response = await invoke("send_friend_request", { friendId });
-      console.log("[FriendService] Friend request sent successfully");
     } catch (error) {
-      console.error("[FriendService] Failed to send friend request:", error);
+      console.error(`[FriendService] Search failed:`, error);
       throw error;
     }
   }
 
-  async acceptFriendRequest(friendId: string): Promise<void> {
+  async sendFriendRequest(userId: string): Promise<void> {
     try {
-      console.log(`[FriendService] Accepting friend request from: ${friendId}`);
+      console.log(`[FriendService] Starting friend request process for user ID: ${userId}`);
       
-      const response = await invoke("accept_friend_request", { friendId });
+      // Get token from session manager
+      const token = sessionManager.getToken();
+      
+      if (!token) {
+        throw new Error("No token available for sending friend request");
+      }
+      
+      // Use nativeApiService instead of direct invoke
+      await nativeApiService.sendFriendRequest(userId, token);
+      console.log(`[FriendService] Friend request sent successfully!`);
+    } catch (error) {
+      console.error(`[FriendService] Failed to send friend request:`, error);
+      throw error;
+    }
+  }
+
+  async acceptFriendRequest(requestId: string): Promise<void> {
+    try {
+      console.log(`[FriendService] Accepting friend request: ${requestId}`);
+      
+      const token = sessionManager.getToken();
+      
+      if (!token) {
+        throw new Error("No token available for accepting friend request");
+      }
+      
+      await nativeApiService.acceptFriendRequest(requestId, token);
       console.log("[FriendService] Friend request accepted successfully");
     } catch (error) {
       console.error("[FriendService] Failed to accept friend request:", error);
@@ -201,11 +239,17 @@ export class FriendService {
     }
   }
 
-  async rejectFriendRequest(friendId: string): Promise<void> {
+  async rejectFriendRequest(requestId: string): Promise<void> {
     try {
-      console.log(`[FriendService] Rejecting friend request from: ${friendId}`);
+      console.log(`[FriendService] Rejecting friend request: ${requestId}`);
       
-      const response = await invoke("reject_friend_request", { friendId });
+      const token = sessionManager.getToken();
+      
+      if (!token) {
+        throw new Error("No token available for rejecting friend request");
+      }
+      
+      await nativeApiService.rejectFriendRequest(requestId, token);
       console.log("[FriendService] Friend request rejected successfully");
     } catch (error) {
       console.error("[FriendService] Failed to reject friend request:", error);
@@ -246,6 +290,42 @@ export class FriendService {
     }
   }
 
+  async getFriendRequests(): Promise<any[]> {
+    try {
+      console.log("[FriendService] Getting friend requests...");
+      
+      const token = sessionManager.getToken();
+      
+      if (!token) {
+        console.error("[FriendService] No token available for getting friend requests");
+        return [];
+      }
+      
+      const response = await invoke<{ data: any[] }>("get_friend_requests", { token });
+      
+      if (!response || !response.data) {
+        console.warn("[FriendService] No friend requests received");
+        return [];
+      }
+      
+      console.log(`[FriendService] Found ${response.data.length} friend requests`);
+      return response.data;
+    } catch (error) {
+      console.error("[FriendService] Failed to get friend requests:", error);
+      return [];
+    }
+  }
+
+  async getFriendRequestsCount(): Promise<number> {
+    try {
+      const requests = await this.getFriendRequests();
+      return requests.length;
+    } catch (error) {
+      console.error("[FriendService] Failed to get friend requests count:", error);
+      return 0;
+    }
+  }
+
   async getCachedFriendsForCurrentUser(): Promise<Friend[]> {
     try {
       console.log("[FriendService] Getting cached friends for current user...");
@@ -256,7 +336,6 @@ export class FriendService {
       
       // Then try to fetch fresh data from API and save to database
       try {
-        const sessionManager = new SessionManager();
         const token = sessionManager.getToken();
         
         if (token) {

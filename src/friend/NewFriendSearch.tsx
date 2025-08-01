@@ -1,61 +1,149 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../components/ThemeContext';
 import { friendService } from './friendService';
-import { UserEntity } from '../models/models';
 
 interface NewFriendSearchProps {
   onBack: () => void;
-  onAddFriend: (username: string) => void;
+  onAddFriend: (username: string, userId: string) => void;
 }
 
 const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }) => {
-  const { theme } = useTheme();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<UserEntity[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [userErrors, setUserErrors] = useState<Record<string, string>>({});
+  const [userTimeouts, setUserTimeouts] = useState<Record<string, ReturnType<typeof setTimeout>>>({});
+  const { theme } = useTheme();
 
-  // Search users
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      // Clear all timeouts when component unmounts
+      Object.values(userTimeouts).forEach(timeout => {
+        clearTimeout(timeout);
+      });
+    };
+  }, [userTimeouts]);
+
+  // Create an instance of FriendService
+  // const friendService = new FriendService(); // This line is removed
+
   const searchUsers = async (query: string) => {
+    console.log(" searchUsers called with query:", query);
+    
     if (!query.trim()) {
+      console.log(" Empty query, clearing results");
       setSearchResults([]);
       return;
     }
 
     try {
-      setIsSearching(true);
+      setIsLoading(true);
       setError(null);
-      console.log("🔍 Searching users:", query);
+      console.log(" Searching users with query:", query);
+      console.log(" Query length:", query.length);
+      console.log(" friendService available:", !!friendService);
+      console.log(" friendService.searchUsers available:", !!friendService.searchUsers);
       
+      // Use the same API call as in FriendsScreen
       const results = await friendService.searchUsers(query);
-      console.log("✅ Search results:", results);
+      console.log(" Search results received:", results);
+      console.log(" Number of results:", results?.length || 0);
+      console.log(" Results type:", typeof results);
+      console.log(" Is array:", Array.isArray(results));
       
       setSearchResults(results || []);
     } catch (error) {
-      console.error("❌ Failed to search users:", error);
+      console.error(" Failed to search users:", error);
+      console.error(" Error details:", error);
       setError("Failed to search users");
+      setSearchResults([]);
     } finally {
-      setIsSearching(false);
+      setIsLoading(false);
     }
   };
 
-  // Debounced search
+  // Debounced search - matches Kotlin's onDebouncedQueryChange
   useEffect(() => {
+    console.log(" useEffect triggered with searchQuery:", searchQuery);
+    
     const timeoutId = setTimeout(() => {
-      searchUsers(searchQuery);
-    }, 300);
+      console.log(" Debounced search executing with query:", searchQuery);
+      if (searchQuery.trim()) {
+        console.log(" Calling searchUsers with:", searchQuery);
+        searchUsers(searchQuery);
+      } else {
+        console.log(" Empty query, clearing results");
+        setSearchResults([]);
+      }
+    }, 150); // Reduced from 300ms to 150ms for faster response
 
-    return () => clearTimeout(timeoutId);
+    console.log(" Setting timeout for search");
+    return () => {
+      console.log(" Clearing timeout");
+      clearTimeout(timeoutId);
+    };
   }, [searchQuery]);
 
-  const handleAddFriend = async (username: string) => {
+  const handleAddFriend = async (username: string, userId: string) => {
     try {
-      await friendService.sendFriendRequest(username);
-      console.log("✅ Friend request sent to:", username);
-      onAddFriend(username);
+      console.log(` [NewFriendSearch] handleAddFriend called with:`, { username, userId });
+      console.log(` [NewFriendSearch] Clearing previous errors...`);
+      
+      // Clear any existing error for this user
+      setUserErrors(prev => ({ ...prev, [userId]: "" }));
+      setError(null);
+      
+      console.log(` [NewFriendSearch] Calling friendService.sendFriendRequest(${userId})...`);
+      await friendService.sendFriendRequest(userId);
+      console.log(` [NewFriendSearch] Friend request sent successfully to: ${username}`);
+      
+      console.log(` [NewFriendSearch] Calling onAddFriend callback...`);
+      onAddFriend(username, userId);
+      
+      console.log(` [NewFriendSearch] Showing success message...`);
+      // Show success message briefly for this user
+      setUserErrors(prev => ({ ...prev, [userId]: "Friend request sent successfully!" }));
+      
+      // Clear any existing timeout for this user
+      if (userTimeouts[userId]) {
+        clearTimeout(userTimeouts[userId]);
+      }
+      
+      const timeout = setTimeout(() => {
+        console.log(` [NewFriendSearch] Clearing success message...`);
+        setUserErrors(prev => ({ ...prev, [userId]: "" }));
+        // Remove timeout reference
+        setUserTimeouts(prev => {
+          const newTimeouts = { ...prev };
+          delete newTimeouts[userId];
+          return newTimeouts;
+        });
+      }, 2000);
+      
+      // Store timeout reference
+      setUserTimeouts(prev => ({ ...prev, [userId]: timeout }));
     } catch (error) {
-      console.error("❌ Failed to send friend request:", error);
-      setError("Failed to send friend request");
+      console.error(` [NewFriendSearch] Failed to send friend request:`);
+      console.error(` [NewFriendSearch] Error type:`, typeof error);
+      console.error(` [NewFriendSearch] Error message:`, error);
+      console.error(` [NewFriendSearch] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
+      
+      // Handle specific error cases gracefully
+      let errorMessage = "Failed to send friend request";
+      if (typeof error === 'string') {
+        if (error.includes("already exists") || error.includes("409")) {
+          errorMessage = "Friend request already sent";
+        } else if (error.includes("not found") || error.includes("404")) {
+          errorMessage = "User not found";
+        } else if (error.includes("unauthorized") || error.includes("401")) {
+          errorMessage = "Session expired, please login again";
+        }
+      }
+      
+      // Set error for this specific user
+      setUserErrors(prev => ({ ...prev, [userId]: errorMessage }));
     }
   };
 
@@ -68,7 +156,7 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
     }}>
       {/* Header */}
       <div style={{
-        padding: "16px",
+        padding: "12px 16px",
         borderBottom: `1px solid ${theme.border}`,
         backgroundColor: theme.sidebar
       }}>
@@ -95,7 +183,7 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15,18 9,12 15,6"/>
+              <path d="m15 18-6-6 6-6"/>
             </svg>
           </button>
           <h2 style={{
@@ -114,15 +202,26 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
             type="text"
             placeholder="Search users by username..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              console.log(" Search input changed:", e.target.value);
+              setSearchQuery(e.target.value);
+            }}
             style={{
               width: "100%",
               padding: "8px 12px",
-              borderRadius: "6px",
+              borderRadius: "8px",
               border: `1px solid ${theme.border}`,
               backgroundColor: theme.inputBackground,
               color: theme.text,
-              fontSize: "14px"
+              fontSize: "14px",
+              outline: "none",
+              transition: "all 0.2s ease"
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = theme.primary;
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = theme.border;
             }}
           />
         </div>
@@ -130,45 +229,28 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+        {isLoading && (
+          <div style={{ padding: "16px", textAlign: "center" }}>
+            <p style={{ color: theme.textSecondary, fontSize: "14px" }}>
+              Searching...
+            </p>
+          </div>
+        )}
+
         {error && (
-          <div style={{
-            padding: "16px",
+          <div style={{ 
+            padding: "16px", 
             margin: "16px",
-            backgroundColor: theme.error,
-            color: "white",
+            backgroundColor: theme.errorBackground || "#fee",
+            border: `1px solid ${theme.error || "#f56565"}`,
             borderRadius: "8px",
-            fontSize: "14px"
+            color: theme.error || "#f56565"
           }}>
             {error}
           </div>
         )}
 
-        {isSearching && (
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "24px"
-          }}>
-            <div style={{
-              width: "24px",
-              height: "24px",
-              border: `2px solid ${theme.border}`,
-              borderTop: `2px solid ${theme.primary}`,
-              borderRadius: "50%",
-              animation: "spin 1s linear infinite"
-            }}></div>
-            <span style={{
-              marginLeft: "12px",
-              fontSize: "14px",
-              color: theme.textSecondary
-            }}>
-              Searching...
-            </span>
-          </div>
-        )}
-
-        {!isSearching && searchQuery && searchResults.length === 0 && (
+        {!isLoading && searchResults.length === 0 && searchQuery.trim() && (
           <div style={{
             display: "flex",
             alignItems: "center",
@@ -192,87 +274,129 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
           </div>
         )}
 
-        {!isSearching && !searchQuery && (
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "100%",
-            padding: "24px"
-          }}>
-            <div style={{ textAlign: "center" }}>
-              <h3 style={{ 
-                fontSize: "16px", 
-                fontWeight: "500", 
-                marginBottom: "8px",
-                color: theme.text
-              }}>
-                Search for users
-              </h3>
-              <p style={{ fontSize: "14px", color: theme.textSecondary }}>
-                Enter a username to find and add friends
-              </p>
-            </div>
-          </div>
-        )}
-
+        {/* Search Results */}
         {searchResults.map((user) => (
-          <div
-            key={user.user_id}
-            style={{
-              backgroundColor: theme.surface,
-              border: `1px solid ${theme.border}`,
-              borderRadius: "12px",
-              padding: "16px",
-              margin: "12px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              minHeight: "60px"
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", flex: 1 }}>
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  backgroundColor: theme.primary,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#ffffff",
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  marginRight: "12px"
-                }}
-              >
+          <div key={user.user_id}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "12px 16px",
+                cursor: "pointer",
+                backgroundColor: "transparent",
+                borderLeft: "3px solid transparent",
+                transition: "all 0.2s ease"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme.hover;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              {/* Avatar */}
+              <div style={{ 
+                width: "48px", 
+                height: "48px", 
+                borderRadius: "50%",
+                backgroundColor: theme.primary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#ffffff",
+                fontSize: "16px",
+                fontWeight: "600",
+                marginRight: "12px",
+                flexShrink: 0
+              }}>
                 {user.username ? user.username.charAt(0).toUpperCase() : "?"}
               </div>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ color: theme.text, margin: "0 0 4px 0", fontSize: "16px", fontWeight: "500" }}>
-                  {user.username}
-                </h3>
-                <p style={{ color: theme.textSecondary, margin: 0, fontSize: "14px" }}>
+              
+              {/* User Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ 
+                  display: "flex", 
+                  justifyContent: "space-between", 
+                  alignItems: "center",
+                  marginBottom: "4px"
+                }}>
+                  <h3 style={{ 
+                    fontSize: "14px", 
+                    fontWeight: "600", 
+                    color: theme.text,
+                    margin: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }}>
+                    {user.name || user.username}
+                  </h3>
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    flexShrink: 0
+                  }}>
+                    <button
+                      onClick={() => handleAddFriend(user.username, user.user_id)}
+                      style={{
+                        padding: "6px 10px",
+                        backgroundColor: theme.primary,
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        fontSize: "11px",
+                        fontWeight: "500",
+                        transition: "all 0.2s ease"
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = "0.8";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = "1";
+                      }}
+                    >
+                      Add Friend
+                    </button>
+                  </div>
+                </div>
+                <p style={{ 
+                  color: theme.textSecondary, 
+                  margin: 0, 
+                  fontSize: "12px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }}>
                   @{user.username}
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => handleAddFriend(user.username)}
-              style={{
-                padding: "8px 12px",
-                backgroundColor: theme.primary,
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
+            
+            {/* Per-user error message */}
+            {userErrors[user.user_id] && (
+              <div style={{
+                padding: "8px 16px",
+                margin: "0 16px 8px 16px",
+                backgroundColor: userErrors[user.user_id].includes("successfully") 
+                  ? "#d4edda"
+                  : (theme.errorBackground || "#fee"),
+                border: `1px solid ${
+                  userErrors[user.user_id].includes("successfully")
+                    ? "#28a745"
+                    : (theme.error || "#f56565")
+                }`,
+                borderRadius: "4px",
+                color: userErrors[user.user_id].includes("successfully")
+                  ? "#28a745"
+                  : (theme.error || "#f56565"),
                 fontSize: "12px",
-                fontWeight: "500"
-              }}
-            >
-              Add Friend
-            </button>
+                textAlign: "center"
+              }}>
+                {userErrors[user.user_id]}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -280,4 +404,4 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
   );
 };
 
-export default NewFriendSearch; 
+export default NewFriendSearch;

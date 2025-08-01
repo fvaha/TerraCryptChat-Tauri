@@ -19,7 +19,7 @@ export class DeltaUpdateService {
       for (const chat of response.data) {
         const chatEntity = {
           chat_id: chat.chat_id,
-          chat_name: chat.name || null,
+          name: chat.name || null,
           is_group: Boolean(chat.is_group),
           created_at: new Date(chat.created_at).getTime(),
           creator_id: chat.creator_id,

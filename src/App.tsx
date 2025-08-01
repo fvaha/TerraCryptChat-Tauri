@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAppContext } from './AppContext';
 import { useTheme } from './components/ThemeContext';
 import LoginScreen from './auth/LoginScreen';
@@ -11,26 +11,71 @@ import ErrorBoundary from './ErrorBoundary';
 import Sidebar from './components/Sidebar';
 import MenuBar from './components/MenuBar';
 
-import './App.css';
+
 import { ThemeProvider } from './components/ThemeContext';
 import SettingsContent from './components/SettingsContent';
 import { nativeApiService } from './api/nativeApiService';
-import { DatabaseFixUtil } from './utils/databaseFix';
-import { Chat, Friend } from './models/models';
+import { Chat } from './models/models';
 
 const ChatApp: React.FC = () => {
   const { user, token } = useAppContext();
   const { theme, isLoading: themeLoading } = useTheme();
   const [chats, setChats] = useState<Chat[]>([]);
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'chats' | 'friends' | 'settings'>('chats');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedSettingsCategory, setSelectedSettingsCategory] = useState<string>('general');
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showRegister, setShowRegister] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+
+  // Define loadChats and loadFriends functions with useCallback to prevent infinite loops
+  const loadChats = useCallback(async () => {
+    try {
+      console.log('Loading chats...');
+      
+      // First try to get cached chats
+      let chatsData = await nativeApiService.getCachedChatsOnly();
+      console.log('Cached chats loaded:', chatsData);
+      
+      // Then try to fetch fresh data from API and save to database
+      try {
+        const freshChats = await nativeApiService.fetchAllChatsAndSave(token!);
+        console.log('Fresh chats loaded and saved:', freshChats);
+        chatsData = freshChats;
+      } catch (error) {
+        console.warn('Failed to fetch fresh chats, using cached data:', error);
+      }
+      
+      setChats(Array.isArray(chatsData) ? chatsData : []);
+    } catch (error) {
+      console.error('Failed to load chats:', error);
+    }
+  }, [token]);
+
+  const loadFriends = useCallback(async () => {
+    try {
+      console.log('Loading friends...');
+      
+      // First try to get cached friends
+      let friendsData = await nativeApiService.getCachedFriendsOnly();
+      console.log('Cached friends loaded:', friendsData);
+      
+      // Then try to fetch fresh data from API and save to database
+      try {
+        const freshFriends = await nativeApiService.fetchAllFriendsAndSave(token!);
+        console.log('Fresh friends loaded and saved:', freshFriends);
+        friendsData = freshFriends;
+      } catch (error) {
+        console.warn('Failed to fetch fresh friends, using cached data:', error);
+      }
+      
+      // setFriends(Array.isArray(friendsData) ? friendsData : []); // This line was removed
+    } catch (error) {
+      console.error('Failed to load friends:', error);
+    }
+  }, [token]);
 
   // Initialize app and handle errors
   useEffect(() => {
@@ -59,6 +104,14 @@ const ChatApp: React.FC = () => {
 
     initializeApp();
   }, []);
+
+  // Load chats when user is logged in
+  useEffect(() => {
+    if (user && token) {
+      loadChats();
+      loadFriends();
+    }
+  }, [user, token, loadChats, loadFriends]);
 
   // Auto-resize window based on content
   useEffect(() => {
@@ -109,80 +162,10 @@ const ChatApp: React.FC = () => {
     };
   }, [showRegister, token, user]);
 
-  // Load chats when user is logged in
-  useEffect(() => {
-    console.log('App useEffect - user:', user?.username, 'token:', token ? 'present' : 'missing');
-    if (user && token) {
-      console.log('User and token available, loading chats...');
-      
-      // Check database health and auto-fix if needed
-      const checkAndFixDatabase = async () => {
-        try {
-          await DatabaseFixUtil.autoFixIfNeeded();
-        } catch (error) {
-          console.error('Database health check failed:', error);
-        }
-      };
-      
-      checkAndFixDatabase().then(() => {
-        loadChats();
-        loadFriends(); // Load friends when user is logged in
-      });
-    } else {
-      console.log('User or token missing, not loading chats');
-    }
-  }, [user, token]);
-
-  const loadChats = async () => {
-    try {
-      console.log('Loading chats...');
-      
-      // First try to get cached chats
-      let chatsData = await nativeApiService.getCachedChatsOnly();
-      console.log('Cached chats loaded:', chatsData);
-      
-      // Then try to fetch fresh data from API and save to database
-      try {
-        const freshChats = await nativeApiService.fetchAllChatsAndSave(token!);
-        console.log('Fresh chats loaded and saved:', freshChats);
-        chatsData = freshChats;
-      } catch (error) {
-        console.warn('Failed to fetch fresh chats, using cached data:', error);
-      }
-      
-      setChats(Array.isArray(chatsData) ? chatsData : []);
-    } catch (error) {
-      console.error('Failed to load chats:', error);
-    }
-  };
-
-  const loadFriends = async () => {
-    try {
-      console.log('Loading friends...');
-      
-      // First try to get cached friends
-      let friendsData = await nativeApiService.getCachedFriendsOnly();
-      console.log('Cached friends loaded:', friendsData);
-      
-      // Then try to fetch fresh data from API and save to database
-      try {
-        const freshFriends = await nativeApiService.fetchAllFriendsAndSave(token!);
-        console.log('Fresh friends loaded and saved:', freshFriends);
-        friendsData = freshFriends;
-      } catch (error) {
-        console.warn('Failed to fetch fresh friends, using cached data:', error);
-      }
-      
-      setFriends(Array.isArray(friendsData) ? friendsData : []);
-    } catch (error) {
-      console.error('Failed to load friends:', error);
-    }
-  };
-
   const findChatWithFriend = (friendId: string) => {
     return chats.find(chat => 
       !chat.is_group && 
-      chat.participants?.some((p: any) => p.user?.user_id === friendId)
+      chat.participants?.some((participantId: string) => participantId === friendId)
     )?.chat_id;
   };
 
@@ -338,7 +321,9 @@ const ChatApp: React.FC = () => {
       backgroundColor: theme.background,
       color: theme.text,
       fontFamily: 'Inter, system-ui, sans-serif',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      opacity: 1, // Removed opacity transition as it's not needed for smooth transition
+      transition: 'opacity 0.3s ease-in-out'
     }}>
       {/* Menu Bar */}
       <MenuBar 
@@ -383,7 +368,9 @@ const ChatApp: React.FC = () => {
           flex: 1,
           display: 'flex',
           overflow: 'hidden',
-          position: 'relative'
+          position: 'relative',
+          opacity: 1, // Removed opacity transition as it's not needed for smooth transition
+          transition: 'opacity 0.5s ease-in-out'
         }}>
 
           {activeTab === 'chats' && (

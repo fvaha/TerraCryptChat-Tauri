@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Message as MessageEntity, IncomingWSMessage, MessageStatusMessage, ChatMessageWrapper, RequestNotificationWrapper, ChatNotificationWrapper, MessageSendStatus } from "../services/databaseServiceAsync";
+import { Message as MessageEntity, MessageStatusMessage, RequestNotificationWrapper, ChatNotificationWrapper, MessageSendStatus } from "../services/databaseServiceAsync";
 import { encryptionService } from "../encrypt/encryptionService";
-import { websocketService } from "../websocket/websocketService";
 import { messageLinkingManager } from "../linking/messageLinkingManager";
 import { databaseServiceAsync } from "./databaseServiceAsync";
 import { listen } from "@tauri-apps/api/event";
@@ -21,15 +20,15 @@ export class MessageService {
   private cachedMessages: MessageEntity[] = [];
 
   constructor() {
-    console.log("[MessageService] 🚀 Constructor called - initializing MessageService");
+    console.log("[MessageService]  Constructor called - initializing MessageService");
     // Attach WebSocket message listener like in Kotlin
     this.attachWebSocketManager();
-    console.log("[MessageService] ✅ Constructor completed - MessageService initialized");
+    console.log("[MessageService]  Constructor completed - MessageService initialized");
   }
 
   // Attach WebSocket manager for incoming messages (like Kotlin)
   attachWebSocketManager() {
-    console.log("[MessageService] 🎯 attachWebSocketManager called - setting up event listeners immediately");
+    console.log("[MessageService]  attachWebSocketManager called - setting up event listeners immediately");
     
     // Try to set up Tauri event listeners
     this.setupTauriEventListeners();
@@ -37,70 +36,70 @@ export class MessageService {
     // Set up polling mechanism as fallback
     this.setupPollingMechanism();
     
-    console.log("[MessageService] ✅ Event listeners set up immediately");
-    console.log("[MessageService] 📦 MessageService module: messageService exported");
+    console.log("[MessageService]  Event listeners set up immediately");
+    console.log("[MessageService]  MessageService module: messageService exported");
   }
 
   private setupTauriEventListeners() {
     try {
       // Listen for message status updates from Rust backend
       listen<any>("message-status-update", async (event) => {
-        console.log("[MessageService] 🎯 Received 'message-status-update' event:", event.payload);
+        console.log("[MessageService]  Received 'message-status-update' event:", event.payload);
         if (event.payload) {
           await this.handleMessageStatusUpdate(event.payload);
         }
       }).catch(error => {
-        console.error("[MessageService] ❌ Failed to set up message-status-update listener:", error);
+        console.error("[MessageService]  Failed to set up message-status-update listener:", error);
       });
 
       // Listen for message saved events from Rust backend
       listen<any>("message-saved", async (event) => {
-        console.log("[MessageService] 🎯 Received message-saved event:", event.payload);
+        console.log("[MessageService]  Received message-saved event:", event.payload);
         if (event.payload) {
-          console.log("[MessageService] 🎯 Processing message-saved event...");
+          console.log("[MessageService]  Processing message-saved event...");
           await this.handleMessageSaved(event.payload);
         } else {
-          console.log("[MessageService] ❌ Empty message-saved event payload");
+          console.log("[MessageService]  Empty message-saved event payload");
         }
       }).catch(error => {
-        console.error("[MessageService] ❌ Failed to set up message-saved listener:", error);
+        console.error("[MessageService]  Failed to set up message-saved listener:", error);
       });
 
       // Listen for raw WebSocket messages (like Kotlin implementation)
       listen<any>("message", async (event) => {
-        console.log("[MessageService] 🎯 Received raw WebSocket message:", event.payload);
+        console.log("[MessageService]  Received raw WebSocket message:", event.payload);
         if (event.payload) {
-          console.log("[MessageService] 🎯 Processing raw WebSocket message...");
+          console.log("[MessageService]  Processing raw WebSocket message...");
           await this.handleIncomingMessage(event.payload);
         } else {
-          console.log("[MessageService] ❌ Empty raw WebSocket message payload");
+          console.log("[MessageService]  Empty raw WebSocket message payload");
         }
       }).catch(error => {
-        console.error("[MessageService] ❌ Failed to set up message listener:", error);
+        console.error("[MessageService]  Failed to set up message listener:", error);
       });
 
       // Listen for ALL events to debug what's being received
       listen<any>("*", async (event) => {
-        console.log("[MessageService] 🔍 Received ANY event:", event.event, event.payload);
+        console.log("[MessageService]  Received ANY event:", event.event, event.payload);
       }).catch(error => {
-        console.error("[MessageService] ❌ Failed to set up wildcard listener:", error);
+        console.error("[MessageService]  Failed to set up wildcard listener:", error);
       });
 
       // Listen for test events to verify event system
       listen<any>("test-event", async (event) => {
-        console.log("[MessageService] 🧪 Test event received:", event.payload);
+        console.log("[MessageService]  Test event received:", event.payload);
       }).catch(error => {
-        console.error("[MessageService] ❌ Failed to set up test-event listener:", error);
+        console.error("[MessageService]  Failed to set up test-event listener:", error);
       });
 
-      console.log("[MessageService] ✅ Tauri event listeners set up successfully");
+      console.log("[MessageService]  Tauri event listeners set up successfully");
     } catch (error) {
-      console.error("[MessageService] ❌ Failed to set up Tauri event listeners:", error);
+      console.error("[MessageService]  Failed to set up Tauri event listeners:", error);
     }
   }
 
   private setupPollingMechanism() {
-    console.log("[MessageService] 🔄 Setting up polling mechanism as fallback");
+    console.log("[MessageService]  Setting up polling mechanism as fallback");
     
     // Poll for new messages every 2 seconds
     setInterval(async () => {
@@ -111,7 +110,7 @@ export class MessageService {
           const messages = await this.fetchMessages(currentChatId, 10);
           if (messages.length > this.cachedMessages.length) {
             const newMessages = messages.slice(this.cachedMessages.length);
-            console.log("[MessageService] 🔄 Polling found new messages:", newMessages.length);
+            console.log("[MessageService]  Polling found new messages:", newMessages.length);
             
             for (const message of newMessages) {
               this.emitMessage(message);
@@ -120,11 +119,11 @@ export class MessageService {
           this.cachedMessages = messages;
         }
       } catch (error) {
-        console.error("[MessageService] ❌ Error in polling mechanism:", error);
+        console.error("[MessageService]  Error in polling mechanism:", error);
       }
     }, 2000);
     
-    console.log("[MessageService] ✅ Polling mechanism set up");
+    console.log("[MessageService]  Polling mechanism set up");
   }
 
   private getCurrentChatId(): string | null {
@@ -155,18 +154,18 @@ export class MessageService {
    * Emit a message to the flow (like Kotlin's messageFlow.emit)
    */
   private emitMessage(message: MessageEntity) {
-    console.log(`[MessageService] 🎯 emitMessage called for message: ${message.client_message_id || message.message_id} for chat: ${message.chat_id}`);
+    console.log(`[MessageService]  emitMessage called for message: ${message.client_message_id || message.message_id} for chat: ${message.chat_id}`);
     console.log(`[MessageService] Message status - is_delivered: ${message.is_delivered}, is_sent: ${message.is_sent}, is_failed: ${message.is_failed}`);
     if (this.messageFlow) {
-      console.log(`[MessageService] ✅ Message flow is set, calling callback`);
+      console.log(`[MessageService]  Message flow is set, calling callback`);
       try {
         this.messageFlow(message);
-        console.log(`[MessageService] ✅ Message flow callback executed successfully`);
+        console.log(`[MessageService]  Message flow callback executed successfully`);
       } catch (error) {
-        console.error(`[MessageService] ❌ Error in message flow callback:`, error);
+        console.error(`[MessageService]  Error in message flow callback:`, error);
       }
     } else {
-      console.log(`[MessageService] ❌ Message flow is not set, message not emitted`);
+      console.log(`[MessageService]  Message flow is not set, message not emitted`);
     }
   }
 
@@ -366,7 +365,7 @@ export class MessageService {
     senderName: string,
     replyToMessageId?: string
   ): Promise<void> {
-    console.log(`[MessageService] 🎯 saveIncomingMessage called with:`, {
+    console.log(`[MessageService]  saveIncomingMessage called with:`, {
       messageId, clientMessageId, chatId, content: content.substring(0, 50) + "...", senderId, sentAt, senderName
     });
     
@@ -387,7 +386,7 @@ export class MessageService {
         reply_to_message_id: replyToMessageId
       };
 
-      console.log(`[MessageService] 🎯 Created message entity:`, {
+      console.log(`[MessageService]  Created message entity:`, {
         message_id: messageEntity.message_id,
         client_message_id: messageEntity.client_message_id,
         chat_id: messageEntity.chat_id,
@@ -395,22 +394,22 @@ export class MessageService {
       });
 
       // Emit message immediately for instant display
-      console.log(`[MessageService] 🎯 About to emit message to flow...`);
+      console.log(`[MessageService]  About to emit message to flow...`);
       this.emitMessage(messageEntity);
       
       // Save to database in background
       setTimeout(async () => {
         try {
           await databaseServiceAsync.insertMessage(messageEntity);
-          console.log(`[MessageService] ✅ Saved incoming message to database: ${messageEntity.client_message_id}`);
+          console.log(`[MessageService]  Saved incoming message to database: ${messageEntity.client_message_id}`);
         } catch (error) {
-          console.error(`[MessageService] ❌ Failed to save incoming message to database:`, error);
+          console.error(`[MessageService]  Failed to save incoming message to database:`, error);
         }
       }, 0);
       
-      console.log(`[MessageService] ✅ Emitted incoming message immediately: ${messageEntity.client_message_id}`);
+      console.log(`[MessageService]  Emitted incoming message immediately: ${messageEntity.client_message_id}`);
     } catch (error) {
-      console.error(`[MessageService] ❌ Failed to save incoming message:`, error);
+      console.error(`[MessageService]  Failed to save incoming message:`, error);
       throw error;
     }
   }
@@ -523,7 +522,6 @@ export class MessageService {
       }
 
       const clientMessageId = generateUUID();
-      const timestamp = Date.now();
 
       // Save message locally first
       await this.saveOutgoingMessage(
@@ -651,8 +649,8 @@ export class MessageService {
       
       // Status updates should NOT emit messages to UI - they only update database
       // The ChatScreen will handle status updates through its own mechanisms
-      console.log(`[MessageService] ✅ Status update processed for message ${server_message_id}: ${status}`);
-      console.log(`[MessageService] ✅ Database updated, no UI emission needed for status updates`);
+      console.log(`[MessageService]  Status update processed for message ${server_message_id}: ${status}`);
+      console.log(`[MessageService]  Database updated, no UI emission needed for status updates`);
       
       console.log("[MessageService] Message status updated via MessageLinkingManager");
     } catch (e) {
@@ -662,10 +660,10 @@ export class MessageService {
 
   // Handle message saved events from Rust backend
   async handleIncomingMessage(rawMessage: string) {
-    console.log("[MessageService] 🎯 INCOMING: Processing raw WebSocket message:", rawMessage.substring(0, 100) + "...");
+    console.log("[MessageService]  INCOMING: Processing raw WebSocket message:", rawMessage.substring(0, 100) + "...");
     
     if (!rawMessage || rawMessage.length < 5 || !rawMessage.includes('"type"')) {
-      console.log("[MessageService] ❌ Invalid raw message, skipping");
+      console.log("[MessageService]  Invalid raw message, skipping");
       return;
     }
 
@@ -674,7 +672,7 @@ export class MessageService {
       const messageData = JSON.parse(rawMessage);
       const messageType = messageData.type;
       
-      console.log("[MessageService] 🎯 Message type:", messageType);
+      console.log("[MessageService]  Message type:", messageType);
       
       switch (messageType) {
         case "chat":
@@ -684,31 +682,31 @@ export class MessageService {
           await this.handleMessageStatus(rawMessage);
           break;
         case "connection-status":
-          console.log("[MessageService] 🎯 Connection status message received");
+          console.log("[MessageService]  Connection status message received");
           break;
         case "error":
-          console.log("[MessageService] 🎯 Error message received");
+          console.log("[MessageService]  Error message received");
           break;
         case "info":
-          console.log("[MessageService] 🎯 Info message received");
+          console.log("[MessageService]  Info message received");
           break;
         default:
-          console.log("[MessageService] 🎯 Unknown message type:", messageType);
+          console.log("[MessageService]  Unknown message type:", messageType);
       }
     } catch (error) {
-      console.error("[MessageService] ❌ Error processing incoming message:", error);
+      console.error("[MessageService]  Error processing incoming message:", error);
     }
   }
 
   async handleChatMessage(rawMessage: string) {
-    console.log("[MessageService] 🎯 Processing chat message:", rawMessage.substring(0, 100) + "...");
+    console.log("[MessageService]  Processing chat message:", rawMessage.substring(0, 100) + "...");
     
     try {
       const messageData = JSON.parse(rawMessage);
       const message = messageData.message;
       
       if (!message) {
-        console.log("[MessageService] ❌ No message field in WebSocket data");
+        console.log("[MessageService]  No message field in WebSocket data");
         return;
       }
 
@@ -718,14 +716,14 @@ export class MessageService {
       const decrypted_content = this.decryptMessage(encrypted_content);
       
       if (!decrypted_content) {
-        console.log("[MessageService] ❌ Failed to decrypt message content");
+        console.log("[MessageService]  Failed to decrypt message content");
         return;
       }
 
       // Parse timestamp
       const timestamp = new Date(sent_at).getTime();
       
-      console.log("[MessageService] 🎯 Decrypted message:", {
+      console.log("[MessageService]  Decrypted message:", {
         message_id,
         chat_id,
         sender_id,
@@ -751,12 +749,12 @@ export class MessageService {
       };
 
       // Emit the message to the flow immediately (like Kotlin)
-      console.log("[MessageService] 🎯 About to emit chat message to flow...");
+      console.log("[MessageService]  About to emit chat message to flow...");
       this.emitMessage(messageEntity);
       
-      console.log("[MessageService] ✅ Chat message processed and emitted immediately");
+      console.log("[MessageService]  Chat message processed and emitted immediately");
     } catch (error) {
-      console.error("[MessageService] ❌ Error processing chat message:", error);
+      console.error("[MessageService]  Error processing chat message:", error);
     }
   }
 
@@ -781,7 +779,7 @@ export class MessageService {
       // Convert to string
       return new TextDecoder().decode(decryptedBytes);
     } catch (error) {
-      console.error("[MessageService] ❌ Failed to decrypt message:", error);
+      console.error("[MessageService]  Failed to decrypt message:", error);
       return encryptedString; // Return original if decryption fails
     }
   }
@@ -790,7 +788,7 @@ export class MessageService {
     try {
       const { message_id, chat_id, sender_id, content, timestamp } = payload;
       
-      console.log("[MessageService] 🎯 Message saved event received:", { message_id, chat_id, sender_id, content: content?.substring(0, 50) + "..." });
+      console.log("[MessageService]  Message saved event received:", { message_id, chat_id, sender_id, content: content?.substring(0, 50) + "..." });
       
       // Create message entity from saved event
       const messageEntity: MessageEntity = {
@@ -809,7 +807,7 @@ export class MessageService {
         reply_to_message_id: undefined
       };
 
-      console.log("[MessageService] 🎯 Created message entity from saved event:", {
+      console.log("[MessageService]  Created message entity from saved event:", {
         message_id: messageEntity.message_id,
         client_message_id: messageEntity.client_message_id,
         chat_id: messageEntity.chat_id,
@@ -817,12 +815,12 @@ export class MessageService {
       });
 
       // Emit the message to the flow immediately
-      console.log("[MessageService] 🎯 About to emit message to flow...");
+      console.log("[MessageService]  About to emit message to flow...");
       this.emitMessage(messageEntity);
       
-      console.log("[MessageService] ✅ Message saved event processed and emitted immediately");
+      console.log("[MessageService]  Message saved event processed and emitted immediately");
     } catch (error) {
-      console.error("[MessageService] ❌ Error handling message saved event:", error);
+      console.error("[MessageService]  Error handling message saved event:", error);
     }
   }
 
@@ -967,7 +965,7 @@ export class MessageService {
 
   // Test method to manually emit a test message
   testEmitMessage() {
-    console.log("[MessageService] 🧪 Testing message emission...");
+    console.log("[MessageService]  Testing message emission...");
     const testMessage: MessageEntity = {
       message_id: "test-message-id",
       client_message_id: "test-client-id",
@@ -984,9 +982,9 @@ export class MessageService {
       reply_to_message_id: undefined
     };
     
-    console.log("[MessageService] 🧪 Emitting test message:", testMessage);
+    console.log("[MessageService]  Emitting test message:", testMessage);
     this.emitMessage(testMessage);
-    console.log("[MessageService] 🧪 Test message emission completed");
+    console.log("[MessageService]  Test message emission completed");
   }
 
   // MARK: - Utility Methods
@@ -1015,8 +1013,8 @@ export class MessageService {
 
 // Export singleton instance
 export const messageService = new MessageService();
-console.log("[MessageService] 🚀 MessageService instance created and exported");
-console.log('📦 MessageService module: messageService exported');
+console.log("[MessageService]  MessageService instance created and exported");
+console.log(' MessageService module: messageService exported');
 
 // Export convenience functions
 export const fetchMessages = (chatId: string, limit: number = 50) => messageService.fetchMessages(chatId, limit);

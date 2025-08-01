@@ -169,18 +169,14 @@ export type IncomingWSMessage =
 // Chat Entity
 export interface ChatEntity {
   chat_id: string;
-  chat_type: string;
-  chat_name?: string;
+  name?: string;
   created_at: number;
-  admin_id?: string;
+  creator_id?: string;
+  is_group: boolean;
+  participants?: string;
   unread_count: number;
-  description?: string;
-  group_name?: string;
   last_message_content?: string;
   last_message_timestamp?: number;
-  participants?: string;
-  is_group: boolean;
-  creator_id?: string;
 }
 
 // Friend Entity
@@ -215,7 +211,7 @@ export interface ParticipantEntity {
 // API Models (matching Rust backend)
 export interface Chat {
   chat_id: string;
-  chat_name: string;
+  name: string;
   creator_id: string;
   is_group: boolean;
   description?: string;

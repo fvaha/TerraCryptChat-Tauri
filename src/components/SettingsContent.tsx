@@ -156,7 +156,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
       <div style={{ backgroundColor: theme.surface, borderRadius: "8px", padding: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <span style={{ fontSize: "18px" }}>🌐</span>
+            <span style={{ fontSize: "18px" }}></span>
             <span style={{ color: theme.text, fontSize: "14px" }}>Language</span>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -334,7 +334,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
           <input type="checkbox" defaultChecked style={{ width: "20px", height: "20px", accentColor: theme.primary }} />
         </div>
         <p style={{ color: theme.textSecondary, fontSize: "12px", margin: "8px 0 0 0" }}>
-          For example, :-) will be converted to 😊
+          For example, :-) will be converted to 
         </p>
       </div>
 
@@ -343,7 +343,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
           Emoji skin tone
         </h3>
         <div style={{ display: "flex", gap: "8px" }}>
-          {['👋', '👋', '👋', '👋', '👋', '👋'].map((emoji, index) => (
+          {['', '', '', '', '', ''].map((emoji, index) => (
             <div key={index} style={{
               width: "32px",
               height: "32px",
@@ -700,7 +700,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-          <span style={{ fontSize: "18px" }}>👤</span>
+          <span style={{ fontSize: "18px" }}></span>
           <span style={{ color: theme.text, fontSize: "16px", fontWeight: "500" }}>
             {user?.name || user?.username || "Unknown User"}
           </span>
@@ -708,7 +708,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
 
         <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
-            <span style={{ fontSize: "18px" }}>✏️</span>
+            <span style={{ fontSize: "18px" }}></span>
             <span style={{ color: theme.text, fontSize: "14px" }}>About</span>
           </div>
           <p style={{ color: theme.textSecondary, fontSize: "12px", margin: "0 0 16px 0" }}>

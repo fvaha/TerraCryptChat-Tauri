@@ -260,7 +260,7 @@ pub async fn connect_socket(
                             
                             // Check if it's a chat message and log it prominently
                             if text.contains("\"type\":\"chat\"") {
-                                println!("[WebSocket] 🎯 CHAT MESSAGE RECEIVED: {}", text);
+                                println!("[WebSocket]  CHAT MESSAGE RECEIVED: {}", text);
                                 
                                 // Handle chat message in background task
                                 let app_clone_for_task = app_clone.clone();
@@ -274,7 +274,7 @@ pub async fn connect_socket(
                             else if text.contains("\"type\":\"message-status\"") || 
                                     text.contains("\"type\":\"status\"") ||
                                     (text.contains("\"status\"") && text.contains("\"message_id\"")) {
-                                println!("[WebSocket] 📨 MESSAGE STATUS UPDATE RECEIVED: {}", text);
+                                println!("[WebSocket]  MESSAGE STATUS UPDATE RECEIVED: {}", text);
                                 
                                 // Handle status update in background task
                                 let app_clone_for_task = app_clone.clone();

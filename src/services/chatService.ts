@@ -1,5 +1,6 @@
 import { databaseServiceAsync, Chat } from './databaseServiceAsync';
 import { invoke } from "@tauri-apps/api/core";
+import { nativeApiService } from './nativeApiService';
 
 export class ChatService {
   async getAllChats(): Promise<Chat[]> {
@@ -134,4 +135,54 @@ export class ChatService {
   }
 }
 
-export const chatService = new ChatService(); 
+export const chatService = {
+  async getChats(): Promise<Chat[]> {
+    try {
+      const chats = await nativeApiService.getCachedChatsOnly();
+      return chats.map(chat => ({
+        chat_id: chat.chat_id,
+        name: chat.name,
+        created_at: chat.created_at,
+        creator_id: chat.creator_id,
+        is_group: chat.is_group,
+        participants: chat.participants || [],
+        unread_count: chat.unread_count,
+        last_message_content: chat.last_message_content,
+        last_message_timestamp: chat.last_message_timestamp
+      }));
+    } catch (error) {
+      console.error('Failed to get chats:', error);
+      throw error;
+    }
+  },
+
+  async getChatById(chatId: string): Promise<Chat | null> {
+    try {
+      const chats = await this.getChats();
+      return chats.find(chat => chat.chat_id === chatId) || null;
+    } catch (error) {
+      console.error('Failed to get chat by ID:', error);
+      throw error;
+    }
+  },
+
+  async createChat(name: string, isGroup: boolean, participants: string[]): Promise<Chat> {
+    try {
+      const chat = await nativeApiService.createChat(name, isGroup, participants);
+      return {
+        chat_id: chat.chat_id,
+        name: chat.name,
+        created_at: chat.created_at,
+        creator_id: chat.creator_id,
+        is_group: chat.is_group,
+        participants: chat.participants || [],
+        unread_count: chat.unread_count,
+        last_message_content: chat.last_message_content,
+        last_message_timestamp: chat.last_message_timestamp
+      };
+    } catch (error) {
+      console.error('Failed to create chat:', error);
+      throw error;
+    }
+  }
+}; 

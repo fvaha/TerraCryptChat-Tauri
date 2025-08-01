@@ -20,7 +20,7 @@ export interface User {
 export interface Chat {
   chat_id: string;
   chat_type?: string;
-  chat_name?: string;
+  name?: string;
   created_at: number;
   admin_id?: string;
   unread_count: number;
@@ -48,6 +48,8 @@ export interface Message {
   is_failed: boolean;
   sender_username?: string;
   reply_to_message_id?: string;
+  reply_to_username?: string;
+  reply_to_content?: string;
 }
 
 export interface Friend {

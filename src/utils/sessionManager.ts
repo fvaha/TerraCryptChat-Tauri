@@ -42,15 +42,15 @@ export class SessionManager {
 
   async initializeSession(): Promise<boolean> {
     try {
-      console.log('🔄 Initializing session...');
+      console.log(' Initializing session...');
       
       // Ensure database is initialized
       try {
-        console.log('🔄 Ensuring database is initialized...');
+        console.log(' Ensuring database is initialized...');
         await invoke('db_ensure_initialized');
-        console.log('✅ Database initialization completed');
+        console.log(' Database initialization completed');
       } catch (initError) {
-        console.error('❌ Failed to initialize database:', initError);
+        console.error(' Failed to initialize database:', initError);
         // Continue anyway, the database might already be initialized
       }
       
@@ -69,9 +69,9 @@ export class SessionManager {
             // Reset database on failed session restoration
             try {
               await invoke('db_clear_all_data');
-              console.log('✅ Database cleared after failed session restoration');
+              console.log(' Database cleared after failed session restoration');
             } catch (resetError) {
-              console.error('❌ Failed to clear database after session restoration error:', resetError);
+              console.error(' Failed to clear database after session restoration error:', resetError);
             }
             await this.logOut();
             this.isInitialized = true;
@@ -145,17 +145,17 @@ export class SessionManager {
   }
 
   private async updateTokenAndState(token: string, user: any) {
-    console.log('🔄 Updating token and state...');
+    console.log(' Updating token and state...');
     this.token = token;
     this.currentUser = user;
     
     // Connect WebSocket after successful login
     try {
-      console.log('🔄 Connecting WebSocket...');
+      console.log(' Connecting WebSocket...');
       await invoke('connect_socket', { token });
-      console.log('✅ WebSocket connected successfully');
+      console.log(' WebSocket connected successfully');
     } catch (error) {
-      console.error('❌ Failed to connect WebSocket:', error);
+      console.error(' Failed to connect WebSocket:', error);
       // Don't fail the login if WebSocket fails
     }
     
@@ -164,7 +164,7 @@ export class SessionManager {
 
   async login(username: string, password: string): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log('🔄 Attempting login for user:', username);
+      console.log(' Attempting login for user:', username);
       
       // Validate input like Kotlin version
       if (!username || username.trim().length === 0) {
@@ -193,11 +193,11 @@ export class SessionManager {
       
       // Clear database on failed login to ensure clean state
       try {
-        console.log('🔄 Clearing database due to failed login...');
+        console.log(' Clearing database due to failed login...');
         await invoke('db_clear_all_data');
-        console.log('✅ Database cleared after failed login');
+        console.log(' Database cleared after failed login');
       } catch (clearError) {
-        console.error('❌ Failed to clear database after login error:', clearError);
+        console.error(' Failed to clear database after login error:', clearError);
       }
       
       // Return user-friendly error message
@@ -218,12 +218,12 @@ export class SessionManager {
 
   public async handleSuccessfulLogin(accessToken: string, username?: string, password?: string): Promise<void> {
     try {
-      console.log('🔄 Handling successful login with token:', accessToken.substring(0, 20) + '...');
+      console.log(' Handling successful login with token:', accessToken.substring(0, 20) + '...');
       
       // Set token in native API service
       nativeApiService.setToken(accessToken);
 
-      console.log('🔄 Fetching user data from API...');
+      console.log(' Fetching user data from API...');
       console.log('Token being used:', accessToken.substring(0, 20) + '...');
       
       // Get user data using the API call (like Kotlin version)
@@ -232,10 +232,10 @@ export class SessionManager {
       });
       
       if (userData) {
-        console.log('✅ User data received:', userData);
+        console.log(' User data received:', userData);
         
         // Save user to database with token_hash (like Kotlin/Swift)
-        console.log('🔄 Saving user to database...');
+        console.log(' Saving user to database...');
         // Convert ISO date strings to timestamps if they exist, otherwise use current time
         const created_at = userData.created_at ? new Date(userData.created_at).getTime() : Date.now();
         const updated_at = userData.updated_at ? new Date(userData.updated_at).getTime() : Date.now();
@@ -257,23 +257,23 @@ export class SessionManager {
           password: password || null // Store password for silent relogin
         };
         
-        console.log('🔄 User object to save:', userForDb);
+        console.log(' User object to save:', userForDb);
         
         try {
-          console.log('🔄 Attempting to save user to database...');
+          console.log(' Attempting to save user to database...');
           await invoke('db_insert_user', { user: userForDb });
-          console.log('✅ User saved to database successfully');
+          console.log(' User saved to database successfully');
           
           // Verify the user was saved by trying to retrieve it
           try {
-            console.log('🔄 Verifying user was saved...');
+            console.log(' Verifying user was saved...');
             const savedUser = await invoke('db_get_user_by_id', { user_id: userForDb.user_id });
-            console.log('✅ User verification successful:', savedUser);
+            console.log(' User verification successful:', savedUser);
           } catch (verifyError) {
-            console.error('❌ User verification failed:', verifyError);
+            console.error(' User verification failed:', verifyError);
           }
         } catch (dbError) {
-          console.error('❌ Failed to save user to database:', dbError);
+          console.error(' Failed to save user to database:', dbError);
           throw dbError;
         }
         
@@ -290,15 +290,15 @@ export class SessionManager {
         
         // Connect WebSocket after successful login
         try {
-          console.log('🔄 Connecting WebSocket...');
+          console.log(' Connecting WebSocket...');
           await invoke('connect_socket', { token: accessToken });
-          console.log('✅ WebSocket connected successfully');
+          console.log(' WebSocket connected successfully');
         } catch (error) {
-          console.error('❌ Failed to connect WebSocket:', error);
+          console.error(' Failed to connect WebSocket:', error);
           // Don't fail the login if WebSocket fails
         }
         
-        console.log('✅ Login process completed successfully');
+        console.log(' Login process completed successfully');
         
         // Data will be fetched from local SQLite database as needed
         console.log('Using locally stored data from SQLite database');
@@ -315,7 +315,7 @@ export class SessionManager {
 
   async logout(): Promise<void> {
     try {
-      console.log('🔄 Starting logout process...');
+      console.log(' Starting logout process...');
       
       // Clear token from native API service
       nativeApiService.clearToken();
@@ -323,10 +323,10 @@ export class SessionManager {
       this.token = null;
       this.currentUser = null;
       
-      console.log('✅ Logout completed successfully');
+      console.log(' Logout completed successfully');
       this.emitStateChange();
     } catch (error) {
-      console.error('❌ Logout failed:', error);
+      console.error(' Logout failed:', error);
     }
   }
 
@@ -380,12 +380,12 @@ export class SessionManager {
   }
 
   async logOut(): Promise<void> {
-    console.log('🔄 Public logout called, clearing database...');
+    console.log(' Public logout called, clearing database...');
     try {
       await invoke('db_clear_all_data');
-      console.log('✅ Database cleared during logout');
+      console.log(' Database cleared during logout');
     } catch (error) {
-      console.error('❌ Failed to clear database during logout:', error);
+      console.error(' Failed to clear database during logout:', error);
     }
     await this.logout();
   }

@@ -1,12 +1,11 @@
 import React from 'react';
 import { Message as MessageEntity } from '../services/databaseServiceAsync';
-import { formatAsTime, normalizeTimestamp } from '../utils/timestampUtils';
+import { normalizeTimestamp } from '../utils/timestampUtils';
 
 interface ChatMessageRowProps {
   message: MessageEntity;
   isGroupChat: boolean;
   isCurrentUser: boolean;
-  isDarkMode: boolean;
   onReply: (message: MessageEntity) => void;
   onResend: (message: MessageEntity) => void;
   onScrollToMessage: (messageId: string) => void;
@@ -19,7 +18,6 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
   message,
   isGroupChat,
   isCurrentUser,
-  isDarkMode,
   onReply,
   onResend,
   onScrollToMessage,
@@ -29,6 +27,7 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
 }) => {
   // Normalize timestamp to ensure it's in milliseconds
   const normalizedTimestamp = normalizeTimestamp(message.timestamp);
+  
   // Determine bubble color based on message properties
   const bubbleColor = isCurrentUser ? theme.primary : theme.surface;
   
@@ -40,7 +39,8 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
       style={{
         display: "flex",
         justifyContent: isCurrentUser ? "flex-end" : "flex-start",
-        marginBottom: "8px"
+        marginBottom: "8px",
+        padding: "0 16px"
       }}
     >
       <div 
@@ -96,27 +96,27 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
                 marginRight: "6px"
               }} />
               
-              <div style={{ flex: 1 }}>
-                <div style={{
-                  fontSize: "11px",
-                  color: `${textColor}85`,
-                  maxLines: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis"
-                }}>
-                  ↩ Reply
-                </div>
-                <div style={{
-                  fontSize: "11px",
-                  color: `${textColor}60`,
-                  fontStyle: "italic",
-                  maxLines: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis"
-                }}>
-                  {message.reply_to_message_id}
-                </div>
-              </div>
+                             <div style={{ flex: 1 }}>
+                 <div style={{
+                   fontSize: "11px",
+                   color: `${textColor}85`,
+                   maxLines: 1,
+                   overflow: "hidden",
+                   textOverflow: "ellipsis"
+                 }}>
+                   ↩ Reply to {message.reply_to_username || 'Unknown'}
+                 </div>
+                 <div style={{
+                   fontSize: "11px",
+                   color: `${textColor}60`,
+                   fontStyle: "italic",
+                   maxLines: 1,
+                   overflow: "hidden",
+                   textOverflow: "ellipsis"
+                 }}>
+                   {message.reply_to_content || message.reply_to_message_id}
+                 </div>
+               </div>
             </div>
           </div>
         )}
@@ -126,7 +126,8 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
           fontSize: "14px",
           lineHeight: "1.4",
           wordBreak: "break-word",
-          maxWidth: "100%"
+          maxWidth: "100%",
+          marginBottom: "4px"
         }}>
           {message.content}
         </div>
@@ -137,64 +138,83 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
           alignItems: "center",
           justifyContent: "space-between",
           marginTop: "2px",
-          fontSize: "9px",
+          fontSize: "11px",
           opacity: 0.7
         }}>
-          {/* Reply indicator on left */}
-          {message.reply_to_message_id && (
-            <span style={{ fontSize: "9px", opacity: 0.6 }}>
-              ↶ Reply
-            </span>
-          )}
+                     {/* Reply indicator on left */}
+           {message.reply_to_message_id && (
+             <span style={{ fontSize: "9px", opacity: 0.6 }}>
+               ↶ Reply to {message.reply_to_username || 'Unknown'}
+             </span>
+           )}
           
           {/* Timestamp and status on right */}
           <div style={{
             display: "flex",
             alignItems: "center",
-            gap: "4px"
+            gap: "8px"
           }}>
-            <span>{formatAsTime(normalizedTimestamp)}</span>
+            <span>{formatTime(normalizedTimestamp)}</span>
+            
+            {/* Status indicators for own messages */}
             {isCurrentUser && (
-              <span>
-                {message.is_failed ? "❌" :
-                 message.is_delivered ? "✓✓" :
-                 message.is_sent ? "✓" : "⏳"}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+                {message.is_failed ? (
+                  <span style={{ color: '#ff4444' }}>⚠</span>
+                ) : message.is_read ? (
+                  <span style={{ color: '#4CAF50' }}>✓✓</span>
+                ) : message.is_delivered ? (
+                  <span style={{ color: '#2196F3' }}>✓✓</span>
+                ) : message.is_sent ? (
+                  <span style={{ color: '#9E9E9E' }}>✓</span>
+                ) : (
+                  <span style={{ color: '#9E9E9E' }}>⋯</span>
+                )}
+              </div>
             )}
+            
+            {/* Message actions */}
+            <div style={{ display: "flex", gap: "4px" }}>
+              <button
+                onClick={() => onReply(message)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "inherit",
+                  cursor: "pointer",
+                  fontSize: "11px",
+                  padding: "2px 4px",
+                  borderRadius: "4px",
+                  opacity: 0.7
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = "0.7"}
+              >
+                Reply
+              </button>
+              
+              {message.is_failed && (
+                <button
+                  onClick={() => onResend(message)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "inherit",
+                    cursor: "pointer",
+                    fontSize: "11px",
+                    padding: "2px 4px",
+                    borderRadius: "4px",
+                    opacity: 0.7
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = "0.7"}
+                >
+                  Resend
+                </button>
+              )}
+            </div>
           </div>
         </div>
-
-        {/* Message actions - only show retry for failed messages */}
-        {isCurrentUser && message.is_failed && (
-          <div style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: "8px",
-            marginTop: "8px"
-          }}>
-            <button
-              onClick={() => onResend(message)}
-              style={{
-                background: "none",
-                border: "none",
-                color: "rgba(255,255,255,0.7)",
-                cursor: "pointer",
-                fontSize: "12px",
-                padding: "4px 8px",
-                borderRadius: "4px",
-                transition: "all 0.2s ease"
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-              }}
-            >
-              Retry
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

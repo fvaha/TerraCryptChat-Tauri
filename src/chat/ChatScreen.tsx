@@ -1,25 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-// Debounce utility function
-function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
-  let timeout: ReturnType<typeof setTimeout>;
-  return ((...args: any[]) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  }) as T;
-}
+// Debounce utility function - commented out as unused
+// function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
+//   let timeout: ReturnType<typeof setTimeout>;
+//   return ((...args: any[]) => {
+//     clearTimeout(timeout);
+//     timeout = setTimeout(() => func(...args), wait);
+//   }) as T;
+// }
 
 import { databaseServiceAsync, Message as MessageEntity } from '../services/databaseServiceAsync';
 import { messageService } from '../services/messageService';
-import { participantService } from '../participant/participantService';
-import { useAppContext } from '../AppContext';
+import ChatMessageRow from './ChatMessageRow';
 
 import { useTheme } from '../components/ThemeContext';
 import { sessionManager } from '../utils/sessionManager';
-import ChatMessageRow from './ChatMessageRow';
 import { normalizeTimestamp, getRelativeDateLabel, formatDateSeparator } from '../utils/timestampUtils';
-
-import './ChatScreen.css';
 
 interface ChatScreenProps {
   chatId: string;
@@ -33,13 +29,11 @@ interface ChatData {
 }
 
 const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
-  console.log("🚀 ChatScreen: Component rendering with chatId:", chatId);
+  console.log(" ChatScreen: Component rendering with chatId:", chatId);
   
-  const { token } = useAppContext();
   const { theme } = useTheme();
   
   // State management following Kotlin patterns
-  const [messages, setMessages] = useState<MessageEntity[]>([]);
   const [rawMessages, setRawMessages] = useState<MessageEntity[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [replyTo, setReplyTo] = useState<MessageEntity | null>(null);
@@ -55,50 +49,33 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [searchText, setSearchText] = useState('');
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
-  const listStateRef = useRef<{ firstVisibleItemIndex: number }>({ firstVisibleItemIndex: 0 });
   const isLoadingOlderMessages = useRef(false);
 
-  // Pastel colors for user avatars (following Kotlin pattern)
-  const pastelColors = [
-    '#667C73', '#6D99AD', '#7687B3', '#998C61',
-    '#8C80B7', '#949494', '#709E70', '#6D917D',
-    '#948A66', '#66A6BF', '#999969', '#6B9994', '#80A68C'
-  ];
+  // Pastel colors for user avatars (following Kotlin pattern) - commented out as unused
+  // const pastelColors = [
+  //   '#667C73', '#6D99AD', '#7687B3', '#998C61',
+  //   '#8C80B7', '#949494', '#709E70', '#6D917D',
+  //   '#948A66', '#66A6BF', '#999969', '#6B9994', '#80A68C'
+  // ];
 
-  // Simple hashCode function for string
-  const hashCode = (str: string): number => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return Math.abs(hash);
-  };
+  // Simple hashCode function for string - commented out as unused
+  // const hashCode = (str: string): number => {
+  //   let hash = 0;
+  //   for (let i = 0; i < str.length; i++) {
+  //     const char = str.charCodeAt(i);
+  //     hash = ((hash << 5) - hash) + char;
+  //     hash = hash & hash; // Convert to 32-bit integer
+  //   }
+  //   return Math.abs(hash);
+  // };
 
-  // Prepare messages for display (following Kotlin pattern)
-  const prepareMessagesForDisplay = useCallback((messages: MessageEntity[]): MessageEntity[] => {
-    return messages.map(msg => {
-      // Extract reply information from content
-      const replyMatch = msg.content.match(/⟪(.+?)⟫: (.+)\n/);
-      const cleanContent = replyMatch ? msg.content.replace(replyMatch[0], '') : msg.content;
-      
-      // Generate color for user
-      const colorHex = pastelColors[hashCode(msg.sender_id) % pastelColors.length] || '#CCCCCC';
-      
-      return {
-        ...msg,
-        content: cleanContent
-      };
-    });
-  }, []);
+
 
   // Load current user
   const loadCurrentUser = useCallback(async () => {
@@ -115,17 +92,17 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
   // Load chat data with optimized naming
   const loadChatData = useCallback(async () => {
     try {
-      console.log(`🔍 Loading chat data for chat ${chatId}`);
+      console.log(` Loading chat data for chat ${chatId}`);
       
       const chat = await databaseServiceAsync.getChatById(chatId);
-      console.log(`🔍 Chat from database:`, chat);
+      console.log(` Chat from database:`, chat);
       
       if (chat) {
         const isGroupChat = Boolean(chat.is_group);
-        console.log(`🔍 Is group chat: ${isGroupChat}`);
+        console.log(` Is group chat: ${isGroupChat}`);
         
         // Use the chat name from database (which should be properly set)
-        let chatName = chat.chat_name;
+        let chatName = chat.name;
         
         // If no chat name is set, try to get it from participants
         if (!chatName || chatName === 'Unknown Chat') {
@@ -154,6 +131,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
         if (!chatName || chatName === 'Unknown Chat') {
           chatName = isGroupChat ? 'Group Chat' : 'Direct Chat';
         }
+        
         let receiverId = '';
         let participantNames: string[] = [];
         
@@ -180,7 +158,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
           participantNames
         });
       } else {
-        console.warn(`🔍 No chat found for ID: ${chatId}`);
+        console.warn(` No chat found for ID: ${chatId}`);
         setChatData({
           chatName: 'Chat Not Found',
           isGroupChat: false,
@@ -202,18 +180,18 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
   // Load messages for this chat in background task
   const loadMessages = useCallback(async () => {
     try {
-      console.log(`📨 Loading messages for chat ${chatId} from database...`);
+      console.log(` Loading messages for chat ${chatId} from database...`);
       
       // Load messages from database only (messages come via WebSocket)
       const cachedMessages = await messageService.fetchMessages(chatId, 50);
-      console.log(`📨 Found ${cachedMessages.length} messages in database`);
+      console.log(` Found ${cachedMessages.length} messages in database`);
       
       // Set raw messages directly
       setRawMessages(cachedMessages);
       
-      console.log(`📨 Loaded ${cachedMessages.length} messages for chat ${chatId}`);
+      console.log(` Loaded ${cachedMessages.length} messages for chat ${chatId}`);
     } catch (error) {
-      console.error(`📨 Failed to load messages for chat ${chatId}:`, error);
+      console.error(` Failed to load messages for chat ${chatId}:`, error);
       setError("Failed to load messages");
     } finally {
       setIsLoading(false);
@@ -240,13 +218,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
 
   // Handle new message from WebSocket
   const handleNewMessage = useCallback((newMessage: MessageEntity) => {
-    console.log("📨 🎯 handleNewMessage called with:", newMessage.client_message_id || newMessage.message_id);
-    console.log("📨 Message content:", newMessage.content?.substring(0, 50) + "...");
-    console.log("📨 Message status - is_delivered:", newMessage.is_delivered, "is_sent:", newMessage.is_sent);
-    console.log("📨 Current rawMessages count:", rawMessages.length);
+    console.log("  handleNewMessage called with:", newMessage.client_message_id || newMessage.message_id);
+    console.log(" Message content:", newMessage.content?.substring(0, 50) + "...");
+    console.log(" Message status - is_delivered:", newMessage.is_delivered, "is_sent:", newMessage.is_sent);
+    console.log(" Current rawMessages count:", rawMessages.length);
     
     setRawMessages(prev => {
-      console.log("📨 Previous messages count:", prev.length);
+      console.log(" Previous messages count:", prev.length);
       
       // Check if this is an update to an existing message (same ID but different status)
       const existingMessageIndex = prev.findIndex(msg => 
@@ -256,17 +234,17 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
       
       if (existingMessageIndex !== -1) {
         // Update existing message
-        console.log("📨 ✅ Updating existing message:", newMessage.client_message_id || newMessage.message_id);
-        console.log("📨 Old message status - is_delivered:", prev[existingMessageIndex].is_delivered, "is_sent:", prev[existingMessageIndex].is_sent);
-        console.log("📨 New message status - is_delivered:", newMessage.is_delivered, "is_sent:", newMessage.is_sent);
+        console.log("  Updating existing message:", newMessage.client_message_id || newMessage.message_id);
+        console.log(" Old message status - is_delivered:", prev[existingMessageIndex].is_delivered, "is_sent:", prev[existingMessageIndex].is_sent);
+        console.log(" New message status - is_delivered:", newMessage.is_delivered, "is_sent:", newMessage.is_sent);
         const updatedMessages = [...prev];
         updatedMessages[existingMessageIndex] = newMessage;
         return updatedMessages;
       } else {
         // Add new message
-        console.log("📨 ✅ Adding new message:", newMessage.client_message_id || newMessage.message_id);
+        console.log("  Adding new message:", newMessage.client_message_id || newMessage.message_id);
         const newMessages = [...prev, newMessage].sort((a, b) => a.timestamp - b.timestamp);
-        console.log("📨 ✅ New count:", newMessages.length);
+        console.log("  New count:", newMessages.length);
         return newMessages;
       }
     });
@@ -279,60 +257,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
     }, 50);
   }, [rawMessages]);
 
-  // Handle message saved event from WebSocket
-  const handleMessageSaved = useCallback((event: any) => {
-    try {
-      const { message_id, chat_id, sender_id, content, timestamp } = event.payload;
-      
-      console.log("📨 Received message saved event:", { message_id, chat_id, sender_id, content });
-      
-      // Normalize timestamp using utility function
-      const properTimestamp = normalizeTimestamp(timestamp);
-      
-             const newMessage: MessageEntity = {
-         id: undefined,
-         message_id: message_id,
-         client_message_id: message_id,
-         chat_id: chat_id,
-         sender_id: sender_id,
-         content: content,
-         timestamp: properTimestamp,
-         is_read: false,
-         is_sent: true,
-         is_delivered: true,
-         is_failed: false,
-         sender_username: undefined,
-         reply_to_message_id: undefined,
-         message_text: content
-       };
-      
-      // Check if message already exists to prevent duplicates
-      const messageExists = rawMessages.some(msg => 
-        msg.message_id === message_id || 
-        msg.client_message_id === message_id
-      );
-      
-      if (!messageExists) {
-        console.log("📨 Adding new message to state:", newMessage);
-        handleNewMessage(newMessage);
-        
-        // Auto-scroll to bottom for new messages
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-          }
-        }, 100);
-      } else {
-        console.log("📨 Message already exists, skipping:", message_id);
-      }
-    } catch (error) {
-      console.error("📨 Error handling message saved event:", error);
-    }
-  }, [rawMessages, handleNewMessage]);
+
 
   // Initialize data when chatId changes
   const initializeData = useCallback(async () => {
-    console.log(`🚀 Initializing data for chat ${chatId}`);
+    console.log(` Initializing data for chat ${chatId}`);
     setIsLoading(true);
     setError(null);
     
@@ -345,29 +274,29 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
       await messageService.markAllMessagesAsRead(chatId);
       
       // Connect to MessageService flow for real-time updates
-      console.log(`📨 Setting up message flow for chat: ${chatId}`);
+      console.log(` Setting up message flow for chat: ${chatId}`);
       
 
       
       const messageFlowCallback = (message: MessageEntity) => {
-        console.log("📨 🎯 Received message from MessageService flow:", message);
-        console.log("📨 Message status - is_delivered:", message.is_delivered, "is_sent:", message.is_sent);
-        console.log("📨 Current chat ID:", chatId);
-        console.log("📨 Message chat ID:", message.chat_id);
-        console.log("📨 Message content:", message.content?.substring(0, 50) + "...");
+        console.log("  Received message from MessageService flow:", message);
+        console.log(" Message status - is_delivered:", message.is_delivered, "is_sent:", message.is_sent);
+        console.log(" Current chat ID:", chatId);
+        console.log(" Message chat ID:", message.chat_id);
+        console.log(" Message content:", message.content?.substring(0, 50) + "...");
         
         // Only add messages for current chat
         if (message.chat_id === chatId) {
-          console.log("📨 ✅ Adding message to current chat:", message.client_message_id || message.message_id);
+          console.log("  Adding message to current chat:", message.client_message_id || message.message_id);
           handleNewMessage(message);
         } else {
-          console.log("📨 ⚠️ Skipping message for different chat:", message.chat_id, "current chat:", chatId);
+          console.log("  Skipping message for different chat:", message.chat_id, "current chat:", chatId);
         }
       };
       
-      console.log("📨 🎯 Setting up message flow callback for chat:", chatId);
+      console.log("  Setting up message flow callback for chat:", chatId);
       messageService.setMessageFlow(messageFlowCallback);
-      console.log("📨 ✅ Message flow callback set successfully");
+      console.log("  Message flow callback set successfully");
       
       // Auto-scroll to bottom on chat entry
       setTimeout(() => {
@@ -392,11 +321,35 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
     
     // Cleanup function to disconnect from MessageService flow
     return () => {
-      console.log(`📨 🧹 Cleaning up message flow for chat: ${chatId}`);
+      console.log(`  Cleaning up message flow for chat: ${chatId}`);
       messageService.setMessageFlow(null);
-      console.log(`📨 ✅ Message flow cleaned up for chat: ${chatId}`);
+      console.log(`  Message flow cleaned up for chat: ${chatId}`);
     };
   }, [chatId, initializeData]);
+
+  // Prepare messages for display - extract reply information from content
+  const prepareMessagesForDisplay = useCallback((messages: MessageEntity[]) => {
+    return messages.map(message => {
+      // Check if message content contains reply information in format: ⟪username⟫: content\nnew message
+      const replyRegex = /⟪(.+?)⟫: (.+)\n/;
+      const match = message.content.match(replyRegex);
+      
+      if (match) {
+        const [, replyToUsername, replyToContent] = match;
+        // Extract the actual message content (everything after the reply info)
+        const actualContent = message.content.replace(replyRegex, '');
+        
+        return {
+          ...message,
+          content: actualContent,
+          reply_to_username: replyToUsername,
+          reply_to_content: replyToContent
+        };
+      }
+      
+      return message;
+    });
+  }, []);
 
   // Prepare messages for display
   const preparedMessages = useMemo(() => {
@@ -459,29 +412,24 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
     }
   }, [rawMessages, loadOlderMessages]);
 
-  // Throttled mark as read function
-  const markMessagesAsRead = useCallback(async () => {
-    try {
-      await messageService.markAllMessagesAsRead(chatId);
-      setRawMessages(prev => {
-        const updated = prev.map(msg =>
-          msg.chat_id === chatId && msg.sender_id !== currentUserId
-            ? { ...msg, is_read: true }
-            : msg
-        );
-        return updated;
-      });
-    } catch (error) {
-      console.error("Failed to mark messages as read:", error);
-    }
-  }, [chatId, currentUserId]);
+  // Throttled mark as read function - commented out as unused
+  // const markMessagesAsRead = useCallback(async () => {
+  //   try {
+  //     await messageService.markAllMessagesAsRead(chatId);
+  //     setRawMessages(prev => {
+  //       const updated = prev.map(msg =>
+  //         msg.chat_id === chatId && msg.sender_id !== currentUserId
+  //           ? { ...msg, is_read: true }
+  //           : msg
+  //       );
+  //       return updated;
+  //     });
+  //   } catch (error) {
+  //     console.error("Failed to mark messages as read:", error);
+  //   }
+  // }, [chatId, currentUserId]);
 
-  const throttledMarkAsRead = useCallback(
-    debounce(() => {
-      markMessagesAsRead();
-    }, 1000), // Only call once per second
-    [markMessagesAsRead]
-  );
+
 
   // Handle reply to message
   const handleReply = useCallback((message: MessageEntity) => {
@@ -503,22 +451,39 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
   const handleSend = useCallback(async () => {
     if (!newMessage.trim() || !currentUserId) return;
     
-    console.log(`📨 Sending message: "${newMessage}" to chat: ${chatId}`);
+    console.log(` Sending message: "${newMessage}" to chat: ${chatId}`);
     
     try {
-      const messageToSend = replyTo 
-        ? `⟪${replyTo.sender_username || 'Unknown'}⟫: ${replyTo.content}\n${newMessage}`
-        : newMessage;
+      let messageToSend = newMessage;
+      let replyToMessageId = undefined;
+      let replyToUsername = undefined;
+      let replyToContent = undefined;
       
-      console.log(`📨 Calling messageService.sendMessage with: content="${messageToSend}", chatId="${chatId}"`);
-      await messageService.sendMessage(messageToSend, chatId, replyTo?.message_id);
-      console.log(`📨 Message sent successfully`);
+      if (replyTo) {
+        // For one-on-one chats, use the chat name (which is the other participant's name)
+        // For group chats, use the sender's username from the message being replied to
+        if (chatData.isGroupChat) {
+          replyToUsername = replyTo.sender_username || 'Unknown';
+        } else {
+          // In one-on-one chats, the chat name is the other participant's name
+          replyToUsername = chatData.chatName;
+        }
+        replyToContent = replyTo.content;
+        replyToMessageId = replyTo.message_id;
+        
+        // Format the message with reply information
+        messageToSend = `⟪${replyToUsername}⟫: ${replyToContent}\n${newMessage}`;
+      }
+      
+      console.log(` Calling messageService.sendMessage with: content="${messageToSend}", chatId="${chatId}"`);
+      await messageService.sendMessage(messageToSend, chatId, replyToMessageId);
+      console.log(` Message sent successfully`);
       setNewMessage('');
       setReplyTo(null);
     } catch (error) {
       console.error("Failed to send message:", error);
     }
-  }, [newMessage, chatId, currentUserId, replyTo]);
+  }, [newMessage, chatId, currentUserId, replyTo, chatData]);
 
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -569,8 +534,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
         chatData={chatData}
         isSearching={isSearching}
         setIsSearching={setIsSearching}
-        searchText={searchText}
-        setSearchText={setSearchText}
+        searchText=""
+        setSearchText={() => {}}
         theme={theme}
       />
 
@@ -589,14 +554,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatId }) => {
         formatDate={formatDate}
       />
 
-      {/* Reply view */}
-      {replyTo && (
-        <ChatScreenReplyView
-          replyTo={replyTo}
-          onCancel={() => setReplyTo(null)}
-          theme={theme}
-        />
-      )}
+             {/* Reply view */}
+       {replyTo && (
+         <ChatScreenReplyView
+           replyTo={replyTo}
+           onCancel={() => setReplyTo(null)}
+           theme={theme}
+           chatData={chatData}
+         />
+       )}
 
       {/* Input */}
       <ChatScreenInput
@@ -643,13 +609,14 @@ const ChatScreenHeader: React.FC<{
   searchText: string;
   setSearchText: (text: string) => void;
   theme: any;
-}> = ({ chatData, isSearching, setIsSearching, searchText, setSearchText, theme }) => (
+}> = ({ chatData, isSearching, setIsSearching, theme }) => (
   <div style={{
     display: "flex",
     alignItems: "center",
     padding: "12px 16px",
     borderBottom: `1px solid ${theme.border}`,
-    backgroundColor: theme.surface
+    backgroundColor: theme.surface,
+    height: "56px"
   }}>
     <div style={{
       display: "flex",
@@ -695,15 +662,39 @@ const ChatScreenHeader: React.FC<{
       <button
         onClick={() => setIsSearching(!isSearching)}
         style={{
-          background: "none",
-          border: "none",
-          color: theme.textSecondary,
+          width: "32px",
+          height: "32px",
+          borderRadius: "8px",
+          border: `1px solid ${theme.border}`,
+          backgroundColor: isSearching ? theme.primary : "transparent",
+          color: isSearching ? "white" : theme.textSecondary,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           cursor: "pointer",
-          padding: "8px",
-          borderRadius: "4px"
+          fontSize: "16px",
+          transition: "all 0.2s ease"
+        }}
+        title="Search"
+        onMouseEnter={(e) => {
+          if (!isSearching) {
+            e.currentTarget.style.backgroundColor = theme.hover;
+            e.currentTarget.style.borderColor = theme.primary;
+            e.currentTarget.style.color = theme.primary;
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isSearching) {
+            e.currentTarget.style.backgroundColor = "transparent";
+            e.currentTarget.style.borderColor = theme.border;
+            e.currentTarget.style.color = theme.textSecondary;
+          }
         }}
       >
-        🔍
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <path d="m21 21-4.35-4.35"/>
+        </svg>
       </button>
     </div>
   </div>
@@ -722,8 +713,8 @@ const ChatScreenMessages: React.FC<{
   messagesContainerRef: React.RefObject<HTMLDivElement>;
   formatTime: (timestamp: number) => string;
   formatDate: (timestamp: number) => string;
-}> = ({ groupedMessages, currentUserId, chatData, theme, onReply, onResend, onScroll, messagesEndRef, messagesContainerRef, formatTime, formatDate }) => {
-  console.log("🔄 ChatScreenMessages rendering with:", {
+}> = ({ groupedMessages, currentUserId, chatData, theme, onReply, onResend, onScroll, messagesEndRef, messagesContainerRef, formatTime }) => {
+  console.log(" ChatScreenMessages rendering with:", {
     groupedMessagesCount: groupedMessages.length,
     currentUserId,
     chatData
@@ -769,30 +760,29 @@ const ChatScreenMessages: React.FC<{
              </span>
           </div>
           
-          {/* Messages for this date */}
-          {messages.map((message, index) => {
-            const isOwnMessage = message.sender_id === currentUserId;
-            const isFirstInGroup = index === 0 || messages[index - 1]?.sender_id !== message.sender_id;
-            
-            return (
-              <ChatMessageRow
-                key={message.client_message_id || message.message_id || index}
-                message={message}
-                isGroupChat={chatData.isGroupChat}
-                isCurrentUser={isOwnMessage}
-                isDarkMode={theme.isDark}
-                isFirstInGroup={isFirstInGroup}
-                onReply={onReply}
-                onResend={onResend}
-                onScrollToMessage={(messageId) => {
-                  // Handle scroll to message logic
-                  console.log("Scroll to message:", messageId);
-                }}
-                formatTime={formatTime}
-                theme={theme}
-              />
-            );
-          })}
+                     {/* Messages for this date */}
+           {messages.map((message, index) => {
+             const isOwnMessage = message.sender_id === currentUserId;
+             const isFirstInGroup = index === 0 || messages[index - 1]?.sender_id !== message.sender_id;
+             
+             return (
+               <ChatMessageRow
+                 key={message.client_message_id || message.message_id || index}
+                 message={message}
+                 isGroupChat={chatData.isGroupChat}
+                 isCurrentUser={isOwnMessage}
+                 isFirstInGroup={isFirstInGroup}
+                 onReply={onReply}
+                 onResend={onResend}
+                 onScrollToMessage={(messageId) => {
+                   // Handle scroll to message logic
+                   console.log("Scroll to message:", messageId);
+                 }}
+                 formatTime={formatTime}
+                 theme={theme}
+               />
+             );
+           })}
         </div>
       ))}
       
@@ -807,7 +797,8 @@ const ChatScreenReplyView: React.FC<{
   replyTo: MessageEntity;
   onCancel: () => void;
   theme: any;
-}> = ({ replyTo, onCancel, theme }) => (
+  chatData: ChatData;
+}> = ({ replyTo, onCancel, theme, chatData }) => (
   <div style={{
     padding: "8px 16px",
     backgroundColor: theme.surface,
@@ -822,7 +813,7 @@ const ChatScreenReplyView: React.FC<{
         color: theme.textSecondary,
         marginBottom: "2px"
       }}>
-        Replying to {replyTo.sender_username || 'Unknown'}
+        Replying to {chatData.isGroupChat ? (replyTo.sender_username || 'Unknown') : chatData.chatName}
       </div>
       <div style={{
         fontSize: "14px",
@@ -845,7 +836,7 @@ const ChatScreenReplyView: React.FC<{
         marginLeft: "8px"
       }}
     >
-      ✕
+      
     </button>
   </div>
 );
@@ -859,13 +850,13 @@ const ChatScreenInput: React.FC<{
   messageInputRef: React.RefObject<HTMLTextAreaElement>;
 }> = ({ newMessage, setNewMessage, onSend, theme, messageInputRef }) => (
   <div style={{
-    padding: "16px",
+    padding: "8px 12px",
     backgroundColor: theme.surface,
     borderTop: `1px solid ${theme.border}`
   }}>
     <div style={{
       display: "flex",
-      alignItems: "flex-end",
+      alignItems: "center",
       gap: "8px"
     }}>
       <textarea
@@ -881,14 +872,14 @@ const ChatScreenInput: React.FC<{
         placeholder="Type a message..."
         style={{
           flex: 1,
-          minHeight: "40px",
-          maxHeight: "120px",
-          padding: "8px 12px",
-          borderRadius: "20px",
+          minHeight: "32px",
+          maxHeight: "80px",
+          padding: "6px 10px",
+          borderRadius: "12px",
           border: `1px solid ${theme.border}`,
           backgroundColor: theme.background,
           color: theme.text,
-          fontSize: "14px",
+          fontSize: "12px",
           resize: "none",
           outline: "none",
           fontFamily: "inherit"
@@ -898,8 +889,8 @@ const ChatScreenInput: React.FC<{
         onClick={onSend}
         disabled={!newMessage.trim()}
         style={{
-          width: "40px",
-          height: "40px",
+          width: "32px",
+          height: "32px",
           borderRadius: "50%",
           backgroundColor: newMessage.trim() ? theme.primary : theme.border,
           color: "white",
@@ -908,10 +899,13 @@ const ChatScreenInput: React.FC<{
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "16px"
+          fontSize: "12px"
         }}
       >
-        →
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m22 2-7 20-4-9-9-4 20-7z"/>
+          <path d="M22 2 11 13"/>
+        </svg>
       </button>
     </div>
   </div>

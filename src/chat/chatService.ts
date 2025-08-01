@@ -1,5 +1,5 @@
 import { nativeApiService } from '../api/nativeApiService';
-import { Chat, ChatMember } from '../models/models';
+import { Chat } from '../models/models';
 
 // Helper function to convert NativeChat to Chat
 const convertNativeChatToChat = (nativeChat: any): Chat => ({

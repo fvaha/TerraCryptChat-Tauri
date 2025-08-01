@@ -3,12 +3,9 @@ import { useAppContext } from '../AppContext';
 
 import { useTheme } from '../components/ThemeContext';
 import ScreenHeader from '../components/ScreenHeader';
-import { chatService } from './chatService';
 import { friendService } from '../friend/friendService';
 import { participantService } from '../participant/participantService';
-import { invoke } from '@tauri-apps/api/core';
 import { nativeApiService } from '../api/nativeApiService';
-import { backgroundSyncManager } from '../services/backgroundSyncManager';
 
 interface ChatData {
   chat_id: string;
@@ -50,22 +47,24 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
   const [searchQuery, setSearchQuery] = useState('');
   const [friends, setFriends] = useState<Array<{ user_id: string; username: string; name: string; email: string; picture?: string }>>([]);
   const [filteredFriends, setFilteredFriends] = useState<Array<{ user_id: string; username: string; name: string; email: string; picture?: string }>>([]);
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   // Load chats function
   const loadChats = async () => {
     // Prevent multiple simultaneous loads
     if (isLoadingChats) {
-      console.log("⚠️ Chat loading already in progress, skipping...");
+      console.log(" Chat loading already in progress, skipping...");
       return;
     }
 
     setIsLoadingChats(true);
     try {
-      console.log("🔄 Loading chats from database...");
+      console.log(" Loading chats from database...");
       const chatsData = await nativeApiService.getCachedChatsOnly();
-      console.log("✅ Chats loaded from database:", chatsData);
+      console.log(" Chats loaded from database:", chatsData);
       
-      console.log("🔍 Raw chats data:", chatsData);
+      console.log(" Raw chats data:", chatsData);
       
       // Process chats and resolve participant names for direct chats
       const chatsWithNames = await Promise.all(
@@ -73,8 +72,8 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
           .filter((chat: any) => chat && chat.chat_id) // Filter out invalid chats
           .map(async (chat: any) => {
             try {
-              console.log(`🔍 Raw chat data:`, chat);
-              console.log(`🔍 Current user ID:`, user?.user_id);
+              console.log(` Raw chat data:`, chat);
+              console.log(` Current user ID:`, user?.user_id);
               
               // Resolve chat name using Swift pattern
               const displayName = await resolveChatName(chat, user?.user_id);
@@ -93,7 +92,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
               
               return chatData;
             } catch (error) {
-              console.error(`❌ Error processing chat ${chat.chat_id}:`, error);
+              console.error(` Error processing chat ${chat.chat_id}:`, error);
               return null;
             }
           })
@@ -104,10 +103,10 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
         .filter((chat): chat is ChatData => chat !== null)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       
-      console.log("✅ Processed chats:", validChats);
+      console.log(" Processed chats:", validChats);
       setChats(validChats);
     } catch (error) {
-      console.error("❌ Failed to load chats:", error);
+      console.error(" Failed to load chats:", error);
       setError("Failed to load chats");
     } finally {
       setIsLoading(false);
@@ -140,7 +139,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
     const cacheKey = `${chat.chat_id}_${currentUserId}`;
     if (chatNameCache.current.has(cacheKey)) {
       const cachedName = chatNameCache.current.get(cacheKey);
-      console.log(`✅ Using cached chat name for ${chat.chat_id}: ${cachedName}`);
+      console.log(` Using cached chat name for ${chat.chat_id}: ${cachedName}`);
       return cachedName!;
     }
     
@@ -154,20 +153,20 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
     // For direct chats, get participants from database
     if (currentUserId) {
       try {
-        console.log(`🔍 Resolving chat name for direct chat: ${chat.chat_id}, currentUserId: ${currentUserId}`);
+        console.log(` Resolving chat name for direct chat: ${chat.chat_id}, currentUserId: ${currentUserId}`);
         
         // First, check if API already provided a name (like "vaha")
         if (chat.name && chat.name !== `Chat ${chat.chat_id.slice(0, 8)}`) {
-          console.log(`✅ Using API-provided name: ${chat.name}`);
+          console.log(` Using API-provided name: ${chat.name}`);
           chatNameCache.current.set(cacheKey, chat.name);
           return chat.name;
         }
         
         // Get participants from database (fast)
         try {
-          console.log(`🔍 Getting cached participants for chat ${chat.chat_id}`);
+          console.log(` Getting cached participants for chat ${chat.chat_id}`);
           const participants = await participantService.getParticipantsForChat(chat.chat_id);
-          console.log(`🔍 Cached participants for chat ${chat.chat_id}:`, participants);
+          console.log(` Cached participants for chat ${chat.chat_id}:`, participants);
           
           if (participants && Array.isArray(participants)) {
             const otherParticipant = participants.find(
@@ -175,17 +174,17 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
             );
             
             if (otherParticipant && otherParticipant.username) {
-              console.log(`✅ Found other participant via cached data: ${otherParticipant.username}`);
+              console.log(` Found other participant via cached data: ${otherParticipant.username}`);
               chatNameCache.current.set(cacheKey, otherParticipant.username);
               return otherParticipant.username;
             }
           }
         } catch (dbError) {
-          console.warn(`⚠️ Failed to get cached participants for ${chat.chat_id}:`, dbError);
+          console.warn(` Failed to get cached participants for ${chat.chat_id}:`, dbError);
         }
         
       } catch (error) {
-        console.warn(`⚠️ All chat name resolution methods failed for ${chat.chat_id}:`, error);
+        console.warn(` All chat name resolution methods failed for ${chat.chat_id}:`, error);
       }
     }
     
@@ -215,6 +214,33 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
     setSelectedChatId(chatId);
     onSelect(chatId);
   };
+
+  // Handle search activation
+        const handleSearchClick = () => {
+        setIsSearchActive(!isSearchActive);
+        if (!isSearchActive) {
+          setSearchQuery('');
+        }
+      };
+
+  // Auto-close search after 3 seconds of inactivity
+  useEffect(() => {
+    if (isSearchActive && !searchQuery) {
+      const timeout = setTimeout(() => {
+        setIsSearchActive(false);
+      }, 2000);
+      setSearchTimeout(timeout);
+    } else if (searchTimeout) {
+      clearTimeout(searchTimeout);
+      setSearchTimeout(null);
+    }
+
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [isSearchActive, searchQuery, searchTimeout]);
 
 
 
@@ -269,13 +295,13 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
       const token = services.sessionManager.getToken();
       if (token) {
         try {
-          console.log("🔄 Triggering background chat sync...");
+          console.log(" Triggering background chat sync...");
           await nativeApiService.fetchAllChatsAndSave(token);
-          console.log("✅ Background chat sync completed");
+          console.log(" Background chat sync completed");
           // Reload chats from database after sync
           await loadChats();
         } catch (error) {
-          console.error("❌ Background chat sync failed:", error);
+          console.error(" Background chat sync failed:", error);
         }
       }
     };
@@ -440,6 +466,9 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
         onSearchChange={setSearchQuery}
         searchPlaceholder="Search chats..."
         addButtonTitle="Create chat"
+        showSearchButton={true}
+        onSearchClick={handleSearchClick}
+        isSearchActive={isSearchActive}
       />
 
       {/* Content */}
@@ -537,7 +566,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
               ))
             )}
           </div>
-        ) : filteredChats.length === 0 ? (
+        ) : (!isSearchActive || !searchQuery) && filteredChats.length === 0 ? (
           <div style={{
             display: "flex",
             alignItems: "center",
@@ -556,6 +585,28 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
               </h3>
               <p style={{ fontSize: "14px", color: theme.textSecondary }}>
                 Start a conversation to see your chats here
+              </p>
+            </div>
+          </div>
+        ) : isSearchActive && searchQuery && filteredChats.length === 0 ? (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            padding: "24px"
+          }}>
+            <div style={{ textAlign: "center" }}>
+              <h3 style={{ 
+                fontSize: "16px", 
+                fontWeight: "500", 
+                marginBottom: "8px",
+                color: theme.text
+              }}>
+                No chats found
+              </h3>
+              <p style={{ fontSize: "14px", color: theme.textSecondary }}>
+                Try a different search term
               </p>
             </div>
           </div>

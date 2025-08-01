@@ -138,7 +138,7 @@ export class WebSocketService {
   }
 
   private emitStatus() {
-    console.log("[WebSocketService] 🔥 Emitting status to handlers...");
+    console.log("[WebSocketService]  Emitting status to handlers...");
     console.log("[WebSocketService] Current connection state:", this.connectionState);
     console.log("[WebSocketService] Number of status handlers:", this.statusHandlers.length);
     

@@ -4,6 +4,7 @@ use tauri::State;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use crate::database_async::{self as db_async};
+use crate::modules::auth::get_current_user_with_token;
 
 // ======== FRIEND STRUCTURES ========
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -150,13 +151,35 @@ pub async fn get_chat_members_with_token(token: String, chat_id: String) -> Resu
 }
 
 #[tauri::command]
-pub async fn send_friend_request(token: String, user_id: String) -> Result<(), String> {
-    println!("Sending friend request to user: {}", user_id);
+pub async fn send_friend_request(token: String, receiver_id: String) -> Result<(), String> {
+    println!("Sending friend request to user: {}", receiver_id);
+    
+    // First, get the current user's ID from the token
+    let current_user = get_current_user_with_token(token.clone()).await
+        .map_err(|e| format!("Failed to get current user: {}", e))?;
+    
+    let sender_id = current_user.user_id;
+    println!("Sender ID: {}, Receiver ID: {}", sender_id, receiver_id);
     
     let client = reqwest::Client::new();
+    
+    // Create the request payload
+    #[derive(serde::Serialize)]
+    struct FriendRequestPayload {
+        receiver_id: String,
+        sender_id: String,
+    }
+    
+    let payload = FriendRequestPayload {
+        receiver_id: receiver_id.clone(),
+        sender_id: sender_id.clone(),
+    };
+    
     let res = client
-        .post(&format!("https://dev.v1.terracrypt.cc/api/v1/friends/requests/{}", user_id))
+        .post("https://dev.v1.terracrypt.cc/api/v1/friends/request")
         .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&payload)
         .send()
         .await
         .map_err(|e| format!("Request failed: {e}"))?;

@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { databaseServiceAsync, User } from './databaseServiceAsync';
 
 export interface UserEntity {

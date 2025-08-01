@@ -36,6 +36,9 @@ pub struct UserData {
     pub email: String,
     pub picture: Option<String>,
     pub verified: bool,
+    pub role: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -210,6 +213,9 @@ pub async fn get_current_user_with_token(token: String) -> Result<UserData, Stri
             email: String,
             picture: Option<String>,
             verified: bool,
+            role: Option<String>,
+            created_at: Option<String>,
+            updated_at: Option<String>,
         }
         
         let backend_response: BackendUserResponse = serde_json::from_str(&text)
@@ -222,6 +228,9 @@ pub async fn get_current_user_with_token(token: String) -> Result<UserData, Stri
             email: backend_response.email,
             picture: backend_response.picture,
             verified: backend_response.verified,
+            role: backend_response.role,
+            created_at: backend_response.created_at,
+            updated_at: backend_response.updated_at,
         };
         
         println!("Successfully retrieved current user: {}", user_data.username);
@@ -234,11 +243,15 @@ pub async fn get_current_user_with_token(token: String) -> Result<UserData, Stri
 
 #[tauri::command]
 pub async fn search_users(token: String, query: String) -> Result<Vec<UserData>, String> {
-    println!("Searching users with query: {}", query);
+    println!("Searching users with query: '{}'", query);
+    println!("Using token: {}", if token.len() > 10 { format!("{}...", &token[..10]) } else { token.clone() });
     
     let client = reqwest::Client::new();
+    let url = format!("https://dev.v1.terracrypt.cc/api/v1/users/search?username={}", query);
+    println!("Making request to: {}", url);
+    
     let res = client
-        .get(&format!("https://dev.v1.terracrypt.cc/api/v1/users/search?q={}", query))
+        .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -251,16 +264,25 @@ pub async fn search_users(token: String, query: String) -> Result<Vec<UserData>,
     println!("Search users response body: {}", text);
 
     if status.is_success() {
-        #[derive(serde::Deserialize)]
-        struct SearchResponse {
-            data: Vec<UserData>,
-        }
+        // Try different response formats
+        let users: Vec<UserData> = if text.trim().starts_with('[') {
+            // Direct array format
+            serde_json::from_str(&text)
+                .map_err(|e| format!("Invalid JSON array response: {e}"))?
+        } else {
+            // Try with data wrapper
+            #[derive(serde::Deserialize)]
+            struct SearchResponse {
+                data: Vec<UserData>,
+            }
+            
+            let search_response: SearchResponse = serde_json::from_str(&text)
+                .map_err(|e| format!("Invalid JSON response: {e}"))?;
+            search_response.data
+        };
         
-        let search_response: SearchResponse = serde_json::from_str(&text)
-            .map_err(|e| format!("Invalid JSON response: {e}"))?;
-        
-        println!("Successfully found {} users", search_response.data.len());
-        Ok(search_response.data)
+        println!("Successfully found {} users", users.len());
+        Ok(users)
     } else {
         println!("Failed to search users with status: {}", status);
         Err(format!("Failed to search users: {} - {}", status, text))
