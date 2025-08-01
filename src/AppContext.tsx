@@ -72,7 +72,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const initializeSession = async () => {
       try {
-        console.log('🔄 Initializing session...');
+        console.log('Initializing session...');
         const isLoggedIn = await sessionManager.initializeSession();
         
         if (isLoggedIn) {
@@ -82,18 +82,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (currentUser && currentToken) {
             setUser(currentUser);
             setToken(currentToken);
-            console.log('✅ Session restored successfully');
+            console.log('Session restored successfully');
           }
         }
         
         console.log('Session initialization completed');
         
         // Verify MessageService is initialized
-        console.log('🔍 Checking MessageService initialization...');
+        console.log('Checking MessageService initialization...');
         if (messageService.messageService) {
-          console.log('✅ MessageService is available');
+          console.log('MessageService is available');
         } else {
-          console.log('❌ MessageService is not available');
+          console.log('MessageService is not available');
         }
       } catch (error) {
         console.error('Session initialization failed:', error);
@@ -110,11 +110,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsLoading(true);
       setError(null);
       
-      console.log("🔄 Attempting login...");
+      console.log("Attempting login...");
       const result = await sessionManager.login(username, password);
       
       if (result.success) {
-        console.log("✅ Login successful");
+        console.log("Login successful");
         // Update state after successful login
         const currentUser = sessionManager.getCurrentUser();
         const currentToken = sessionManager.getToken();
@@ -194,4 +194,4 @@ export const useAppContext = (): AppContextType => {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error("useAppContext must be used inside AppProvider");
   return ctx;
-};
+}; 
