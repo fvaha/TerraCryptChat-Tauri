@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build
+name: Tauri Cross-Platform  9999
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  ubuntu-build:
-    name: Build on Ubuntu
+  linux-build:
+    name: Build on Linux
     runs-on: ubuntu-22.04
 
     steps:
@@ -19,12 +19,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install Linux dependencies
         run: |
@@ -36,27 +46,92 @@ jobs:
             libssl-dev \
             libgtk-3-dev \
             libwebkit2gtk-4.0-dev \
+            libwebkit2gtk-4.1-dev \
             libsoup2.4-dev \
+            libsoup-3.0-dev \
             libjavascriptcoregtk-4.0-dev \
+            libjavascriptcoregtk-4.1-dev \
             libayatana-appindicator3-dev \
-            libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            pkg-config
+            pkg-config \
+            libdbus-1-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxss-dev \
+            libxtst-dev \
+            libasound2-dev \
+            libpango1.0-dev \
+            libcairo2-dev \
+            libgdk-pixbuf2.0-dev \
+            libatk1.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev
+
+      - name: Setup library symlinks
+        run: |
+          echo "=== Setting up library symlinks for universal compatibility ==="
+          
+          # Create symlinks for webkit2gtk-4.1
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
+          
+          # Create symlinks for libsoup-3.0
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
+          
+          # Create symlinks for libjavascriptcoregtk-4.1
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
+          
+          # Update library cache
+          sudo ldconfig
+          
+          echo "=== Verifying symlinks ==="
+          ls -la /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || echo "webkit2gtk-4.1 symlink failed"
+          ls -la /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || echo "libsoup-3.0 symlink failed"
+          ls -la /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || echo "libjavascriptcoregtk-4.1 symlink failed"
 
       - name: Install npm dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Verify TypeScript setup
+        run: |
+          echo "Checking TypeScript configuration..."
+          npx tsc --version
+          echo "Current working directory:"
+          pwd
+          echo "Listing current directory contents:"
+          ls -la
+          echo "Checking if src directory exists:"
+          ls -la src/ || echo "src directory not found"
+          echo "Checking if chat files exist..."
+          ls -la src/chat/ || echo "chat directory not found"
+          echo "Checking TypeScript compilation..."
+          npx tsc --noEmit --skipLibCheck
+
+      - name: Clear TypeScript cache and build
+        run: |
+          echo "Clearing TypeScript build cache..."
+          rm -rf node_modules/.tmp
+          rm -rf .tsbuildinfo
+          echo "Building frontend..."
+          npm run build
 
       - name: Build Tauri app
-        run: npm run tauri build
+        run: |
+          echo "=== Building universal Linux application ==="
+          npm run tauri build
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
+          PKG_CONFIG_PATH: "/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+          LD_LIBRARY_PATH: "/usr/lib/x86_64-linux-gnu"
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-linux
+          name: tauri-linux-universal
           path: |
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.tar.gz
 
   macos-build:
     name: Build on macOS
@@ -66,10 +141,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug repository structure
+        run: |
+          echo "=== Repository Structure Debug ==="
+          echo "Current working directory:"
+          pwd
+          echo "Repository root contents:"
+          ls -la
+          echo "Checking for nested directories:"
+          find . -maxdepth 2 -type d -name "src" 2>/dev/null || echo "No src directories found"
+          echo "Checking for package.json files:"
+          find . -name "package.json" 2>/dev/null || echo "No package.json files found"
+          echo "Checking for tsconfig files:"
+          find . -name "tsconfig*.json" 2>/dev/null || echo "No tsconfig files found"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -77,17 +167,66 @@ jobs:
           toolchain: stable
           targets: x86_64-apple-darwin
 
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Install macOS dependencies
         run: |
           brew update
-          brew install cmake pkg-config gtk+3 libsoup
-          brew install libayatana-appindicator || true
+          brew install cmake pkg-config
+          # macOS has WebKit built-in, no need for webkitgtk
+          # macOS has GTK+3 available but Tauri uses native WebKit
+
+      - name: Verify macOS environment
+        run: |
+          echo "Checking installed versions:"
+          cmake --version || echo "CMake not found"
+          pkg-config --version || echo "pkg-config not found"
+          
+          echo "Checking system WebKit (macOS built-in):"
+          ls -la /System/Library/Frameworks/WebKit.framework/ || echo "WebKit framework not found"
+          
+          echo "Checking Homebrew packages:"
+          brew list | grep -E "(cmake|pkg-config)" || echo "No relevant packages found"
 
       - name: Install npm dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Verify TypeScript setup
+        run: |
+          echo "Checking TypeScript configuration..."
+          npx tsc --version
+          echo "Current working directory:"
+          pwd
+          echo "Listing current directory contents:"
+          ls -la
+          echo "Checking if src directory exists:"
+          ls -la src/ || echo "src directory not found"
+          echo "Checking if chat files exist..."
+          ls -la src/chat/ || echo "chat directory not found"
+          echo "Checking TypeScript compilation..."
+          npx tsc --noEmit --skipLibCheck
+
+      - name: Clear TypeScript cache and build
+        run: |
+          echo "Clearing TypeScript build cache..."
+          rm -rf node_modules/.tmp
+          rm -rf .tsbuildinfo
+          echo "Building frontend..."
+          npm run build
 
       - name: Build Tauri app
-        run: npm run tauri build
+        run: |
+          echo "=== Building macOS application ==="
+          npm run tauri build
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
@@ -96,6 +235,7 @@ jobs:
           path: |
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/osx/*.pkg
+            src-tauri/target/release/bundle/updater/*.app
 
   windows-build:
     name: Build on Windows
@@ -105,10 +245,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug repository structure
+        run: |
+          echo "=== Repository Structure Debug ==="
+          echo "Current working directory:"
+          pwd
+          echo "Repository root contents:"
+          Get-ChildItem
+          echo "Checking for nested directories:"
+          Get-ChildItem -Recurse -Directory -Name "src" -ErrorAction SilentlyContinue | Select-Object -First 5
+          echo "Checking for package.json files:"
+          Get-ChildItem -Recurse -Name "package.json" -ErrorAction SilentlyContinue
+          echo "Checking for tsconfig files:"
+          Get-ChildItem -Recurse -Name "tsconfig*.json" -ErrorAction SilentlyContinue
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -116,17 +271,69 @@ jobs:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
 
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Install Windows dependencies
         run: |
-          choco install -y nodejs-lts --version=18.17.1
+          # Install Visual Studio Build Tools if not already present
           choco install -y python --version=3.10.11
           choco install -y vcredist2015
+          choco install -y visualstudio2019buildtools || true
+          choco install -y visualstudio2019-workload-vctools || true
+
+      - name: Verify Windows environment
+        run: |
+          echo "Checking Python installation:"
+          python --version || echo "Python not found"
+          
+          echo "Checking Visual Studio tools:"
+          where cl || echo "MSVC compiler not found"
+          where link || echo "MSVC linker not found"
 
       - name: Install npm dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Verify TypeScript setup
+        run: |
+          echo "Checking TypeScript configuration..."
+          npx tsc --version
+          echo "Current working directory:"
+          pwd
+          echo "Listing current directory contents:"
+          Get-ChildItem
+          echo "Checking if src directory exists:"
+          Get-ChildItem src\ -ErrorAction SilentlyContinue || echo "src directory not found"
+          echo "Checking if chat files exist..."
+          Get-ChildItem src\chat\ -Recurse -ErrorAction SilentlyContinue || echo "chat directory not found"
+          echo "Checking TypeScript compilation..."
+          npx tsc --noEmit --skipLibCheck
+
+      - name: Clear TypeScript cache and build
+        run: |
+          echo "Clearing TypeScript build cache..."
+          Remove-Item -Recurse -Force node_modules\.tmp -ErrorAction SilentlyContinue
+          Remove-Item -Force .tsbuildinfo -ErrorAction SilentlyContinue
+          echo "Building frontend..."
+          npm run build
 
       - name: Build Tauri app
-        run: npm run tauri build
+        run: |
+          echo "Attempting to build with current setup..."
+          npm run tauri build || {
+            echo "First build attempt failed, trying with alternative setup..."
+            # Try with different environment setup
+            $env:CARGO_NET_GIT_FETCH_WITH_CLI="true"
+            npm run tauri build
+          }
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
@@ -134,10 +341,12 @@ jobs:
           name: tauri-windows
           path: |
             src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/updater/*.exe
 
   release:
     name: Create GitHub Release
-    needs: [ubuntu-build, macos-build, windows-build]
+    needs: [linux-build, macos-build, windows-build]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 
@@ -152,9 +361,9 @@ jobs:
         with:
           name: Release ${{ github.ref_name }}
           body: |
-            ### Release ${{ github.ref_name }}
-            - ✅ Cross-platform builds (Windows, macOS, Linux)
-            - 🔄 Built from tag ${{ github.ref_name }}
+            Release ${{ github.ref_name }}
+            - Cross-platform builds (Windows, macOS, Linux)
+            - Built from tag ${{ github.ref_name }}
           files: ./artifacts/**/*.*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
