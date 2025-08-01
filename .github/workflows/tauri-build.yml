@@ -40,7 +40,7 @@ jobs:
         run: |
           echo "Clearing Rust build cache..."
           rm -rf src-tauri/target
-          cargo clean
+          cd src-tauri && cargo clean
 
       - name: Install Linux dependencies
         run: |
@@ -186,7 +186,7 @@ jobs:
         run: |
           echo "Clearing Rust build cache..."
           rm -rf src-tauri/target
-          cargo clean
+          cd src-tauri && cargo clean
 
       - name: Install macOS dependencies
         run: |
