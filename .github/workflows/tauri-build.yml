@@ -57,7 +57,6 @@ jobs:
             libsoup2.4-dev \
             libsoup-3.0-dev \
             libsoup2.4-1 \
-            libsoup-3.0-1 \
             libjavascriptcoregtk-4.0-dev \
             libjavascriptcoregtk-4.1-dev \
             libayatana-appindicator3-dev \
