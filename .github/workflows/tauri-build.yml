@@ -296,7 +296,7 @@ jobs:
         run: |
           echo "Clearing Rust build cache..."
           Remove-Item -Recurse -Force src-tauri\target -ErrorAction SilentlyContinue
-          cargo clean
+          cd src-tauri && cargo clean
 
       - name: Install Windows dependencies
         run: |
