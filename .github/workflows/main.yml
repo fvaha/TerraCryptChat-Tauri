@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build 231321
+name: Tauri Cross-Platform Build 756456
 
 on:
   push:
@@ -9,15 +9,7 @@ on:
 jobs:
   linux-build:
     name: Build on Linux
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, ubuntu-20.04]
-        include:
-          - os: ubuntu-22.04
-            distro: ubuntu-22.04
-          - os: ubuntu-20.04
-            distro: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -60,7 +52,6 @@ jobs:
             libjavascriptcoregtk-4.0-dev \
             libjavascriptcoregtk-4.1-dev \
             libayatana-appindicator3-dev \
-            libappindicator3-dev \
             librsvg2-dev \
             patchelf \
             pkg-config \
@@ -75,84 +66,28 @@ jobs:
             libgdk-pixbuf2.0-dev \
             libatk1.0-dev \
             libgirepository1.0-dev \
-            libglib2.0-dev \
-            libgstreamer1.0-dev \
-            libgstreamer-plugins-base1.0-dev
+            libglib2.0-dev
 
-      - name: Create symlinks for missing libraries
+      - name: Setup library symlinks
         run: |
-          echo "=== Checking existing libraries ==="
-          echo "WebKit libraries:"
-          find /usr/lib -name "*webkit*" -type f 2>/dev/null | head -10
-          echo "Soup libraries:"
-          find /usr/lib -name "*soup*" -type f 2>/dev/null | head -10
-          echo "JavaScriptCore libraries:"
-          find /usr/lib -name "*javascript*" -type f 2>/dev/null | head -10
+          echo "=== Setting up library symlinks for universal compatibility ==="
           
-          echo "=== Creating symlinks ==="
+          # Create symlinks for webkit2gtk-4.1
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
           
-          # Create webkit2gtk-4.1 symlink - try multiple locations
-          WEBKIT_LIB=$(find /usr/lib -name "libwebkit2gtk-4*.so*" -type f 2>/dev/null | head -1)
-          if [ -n "$WEBKIT_LIB" ]; then
-            echo "Found webkit library: $WEBKIT_LIB"
-            sudo ln -sf "$WEBKIT_LIB" /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so
-            echo "Created symlink: /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so -> $WEBKIT_LIB"
-          else
-            echo "No webkit library found, trying alternative approach"
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
-          fi
+          # Create symlinks for libsoup-3.0
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
           
-          # Create libsoup-3.0 symlink - try multiple locations
-          SOUP_LIB=$(find /usr/lib -name "libsoup*.so*" -type f 2>/dev/null | head -1)
-          if [ -n "$SOUP_LIB" ]; then
-            echo "Found soup library: $SOUP_LIB"
-            sudo ln -sf "$SOUP_LIB" /usr/lib/x86_64-linux-gnu/libsoup-3.0.so
-            echo "Created symlink: /usr/lib/x86_64-linux-gnu/libsoup-3.0.so -> $SOUP_LIB"
-          else
-            echo "No soup library found, trying alternative approach"
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
-          fi
+          # Create symlinks for libjavascriptcoregtk-4.1
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
           
-          # Create libjavascriptcoregtk-4.1 symlink - try multiple locations
-          JSC_LIB=$(find /usr/lib -name "libjavascriptcore*.so*" -type f 2>/dev/null | head -1)
-          if [ -n "$JSC_LIB" ]; then
-            echo "Found javascriptcore library: $JSC_LIB"
-            sudo ln -sf "$JSC_LIB" /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so
-            echo "Created symlink: /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so -> $JSC_LIB"
-          else
-            echo "No javascriptcore library found, trying alternative approach"
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
-          fi
+          # Update library cache
+          sudo ldconfig
           
           echo "=== Verifying symlinks ==="
           ls -la /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || echo "webkit2gtk-4.1 symlink failed"
           ls -la /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || echo "libsoup-3.0 symlink failed"
           ls -la /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || echo "libjavascriptcoregtk-4.1 symlink failed"
-          
-          echo "=== Updating library cache ==="
-          sudo ldconfig
-          
-          echo "=== Checking pkg-config ==="
-          pkg-config --list-all | grep -i webkit || echo "No webkit pkg-config found"
-          pkg-config --list-all | grep -i soup || echo "No soup pkg-config found"
-          pkg-config --list-all | grep -i javascript || echo "No javascript pkg-config found"
-          
-          echo "=== Checking library availability ==="
-          ldconfig -p | grep webkit || echo "No webkit libraries in cache"
-          ldconfig -p | grep soup || echo "No soup libraries in cache"
-          ldconfig -p | grep javascript || echo "No javascript libraries in cache"
-          
-          echo "=== Final verification ==="
-          echo "Checking if required libraries exist:"
-          ls -la /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so 2>/dev/null && echo "✓ webkit2gtk-4.1 found" || echo "✗ webkit2gtk-4.1 missing"
-          ls -la /usr/lib/x86_64-linux-gnu/libsoup-3.0.so 2>/dev/null && echo "✓ libsoup-3.0 found" || echo "✗ libsoup-3.0 missing"
-          ls -la /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so 2>/dev/null && echo "✓ libjavascriptcoregtk-4.1 found" || echo "✗ libjavascriptcoregtk-4.1 missing"
-          
-          echo "=== Testing linker ==="
-          echo "Testing if linker can find the libraries:"
-          ld -lwebkit2gtk-4.1 --verbose 2>&1 | grep -q "found" && echo "✓ webkit2gtk-4.1 linkable" || echo "✗ webkit2gtk-4.1 not linkable"
-          ld -lsoup-3.0 --verbose 2>&1 | grep -q "found" && echo "✓ libsoup-3.0 linkable" || echo "✗ libsoup-3.0 not linkable"
-          ld -ljavascriptcoregtk-4.1 --verbose 2>&1 | grep -q "found" && echo "✓ libjavascriptcoregtk-4.1 linkable" || echo "✗ libjavascriptcoregtk-4.1 not linkable"
 
       - name: Install npm dependencies
         run: npm ci
@@ -162,38 +97,8 @@ jobs:
 
       - name: Build Tauri app
         run: |
-          echo "=== Attempting to build with current library setup ==="
-          npm run tauri build || {
-            echo "=== First build attempt failed, trying with alternative library setup ==="
-            
-            # Try to create additional symlinks for different library versions
-            echo "Creating additional symlinks..."
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
-            
-            # Try alternative library locations
-            sudo ln -sf /usr/lib/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
-            sudo ln -sf /usr/lib/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
-            sudo ln -sf /usr/lib/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
-            
-            sudo ldconfig
-            echo "=== Retrying build with alternative setup ==="
-            npm run tauri build || {
-              echo "=== Second build attempt failed, trying with environment variables ==="
-              # Try with explicit library paths
-              export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib:$LD_LIBRARY_PATH"
-              export PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH"
-              npm run tauri build || {
-                echo "=== Third build attempt failed, trying with different library versions ==="
-                # Try building with older library versions
-                export WEBKIT_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu"
-                export SOUP_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu"
-                export JAVASCRIPTCORE_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu"
-                npm run tauri build
-              }
-            }
-          }
+          echo "=== Building universal Linux application ==="
+          npm run tauri build
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: true
           PKG_CONFIG_PATH: "/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
@@ -202,7 +107,7 @@ jobs:
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-linux-${{ matrix.distro }}
+          name: tauri-linux-universal
           path: |
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
@@ -240,21 +145,21 @@ jobs:
       - name: Install macOS dependencies
         run: |
           brew update
-          brew install cmake pkg-config gtk+3 libsoup webkitgtk
-          brew install libayatana-appindicator || true
-          brew install libappindicator || true
-          brew install gstreamer gst-plugins-base || true
+          brew install cmake pkg-config
+          # macOS has WebKit built-in, no need for webkitgtk
+          # macOS has GTK+3 available but Tauri uses native WebKit
 
       - name: Verify macOS environment
         run: |
           echo "Checking installed versions:"
-          pkg-config --modversion gtk+-3.0 || echo "GTK not found"
-          pkg-config --modversion webkitgtk-4.0 || echo "WebKitGTK not found"
-          pkg-config --modversion libayatana-appindicator-3.0 || echo "AppIndicator not found"
+          cmake --version || echo "CMake not found"
+          pkg-config --version || echo "pkg-config not found"
           
-          echo "Library paths:"
-          ls -la /opt/homebrew/lib/pkgconfig/ | grep gtk || echo "No GTK pkgconfig found"
-          ls -la /opt/homebrew/lib/pkgconfig/ | grep webkit || echo "No WebKit pkgconfig found"
+          echo "Checking system WebKit (macOS built-in):"
+          ls -la /System/Library/Frameworks/WebKit.framework/ || echo "WebKit framework not found"
+          
+          echo "Checking Homebrew packages:"
+          brew list | grep -E "(cmake|pkg-config)" || echo "No relevant packages found"
 
       - name: Install npm dependencies
         run: npm ci
@@ -264,16 +169,10 @@ jobs:
 
       - name: Build Tauri app
         run: |
-          echo "Attempting to build with current setup..."
-          npm run tauri build || {
-            echo "First build attempt failed, trying with alternative setup..."
-            # Try with different environment variables
-            PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig" npm run tauri build
-          }
+          echo "=== Building macOS application ==="
+          npm run tauri build
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: true
-          PKG_CONFIG_PATH: "/opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig"
-          DYLD_LIBRARY_PATH: "/opt/homebrew/lib:/usr/local/lib"
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
@@ -332,6 +231,15 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify TypeScript setup
+        run: |
+          echo "Checking TypeScript configuration..."
+          npx tsc --version
+          echo "Checking if chat files exist..."
+          Get-ChildItem src/chat/ -Recurse
+          echo "Checking TypeScript compilation..."
+          npx tsc --noEmit --skipLibCheck
 
       - name: Build frontend
         run: npm run build
