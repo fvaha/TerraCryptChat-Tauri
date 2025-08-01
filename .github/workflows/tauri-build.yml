@@ -388,6 +388,9 @@ jobs:
     needs: [linux-build, macos-build, windows-build]
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
 
     steps:
       - name: Download all artifacts
@@ -404,5 +407,7 @@ jobs:
             - Cross-platform builds (Windows, macOS, Linux)
             - Built from tag ${{ github.ref_name }}
           files: ./artifacts/**/*.*
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
