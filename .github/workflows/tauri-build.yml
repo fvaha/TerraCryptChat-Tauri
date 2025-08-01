@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build
+name: Tauri Cross-Platform  Sa PC a
 
 on:
   push:
@@ -37,10 +37,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Clear Rust build cache
+        working-directory: src-tauri
         run: |
           echo "Clearing Rust build cache..."
-          rm -rf src-tauri/target
-          cd src-tauri && cargo clean
+          rm -rf target
+          cargo clean
 
       - name: Install Linux dependencies
         run: |
@@ -183,10 +184,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Clear Rust build cache
+        working-directory: src-tauri
         run: |
           echo "Clearing Rust build cache..."
-          rm -rf src-tauri/target
-          cd src-tauri && cargo clean
+          rm -rf target
+          cargo clean
 
       - name: Install macOS dependencies
         run: |
@@ -293,10 +295,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Clear Rust build cache
+        working-directory: src-tauri
         run: |
           echo "Clearing Rust build cache..."
-          Remove-Item -Recurse -Force src-tauri\target -ErrorAction SilentlyContinue
-          cd src-tauri && cargo clean
+          Remove-Item -Recurse -Force target -ErrorAction SilentlyContinue
+          cargo clean
 
       - name: Install Windows dependencies
         run: |
