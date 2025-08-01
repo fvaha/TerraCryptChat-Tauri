@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build 756456
+name: Tauri Cross-Platform Build 76870
 
 on:
   push:
@@ -92,8 +92,22 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Build frontend
-        run: npm run build
+      - name: Verify TypeScript setup
+        run: |
+          echo "Checking TypeScript configuration..."
+          npx tsc --version
+          echo "Checking if chat files exist..."
+          ls -la src/chat/
+          echo "Checking TypeScript compilation..."
+          npx tsc --noEmit --skipLibCheck
+
+      - name: Clear TypeScript cache and build
+        run: |
+          echo "Clearing TypeScript build cache..."
+          rm -rf node_modules/.tmp
+          rm -rf .tsbuildinfo
+          echo "Building frontend..."
+          npm run build
 
       - name: Build Tauri app
         run: |
@@ -164,8 +178,22 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Build frontend
-        run: npm run build
+      - name: Verify TypeScript setup
+        run: |
+          echo "Checking TypeScript configuration..."
+          npx tsc --version
+          echo "Checking if chat files exist..."
+          ls -la src/chat/
+          echo "Checking TypeScript compilation..."
+          npx tsc --noEmit --skipLibCheck
+
+      - name: Clear TypeScript cache and build
+        run: |
+          echo "Clearing TypeScript build cache..."
+          rm -rf node_modules/.tmp
+          rm -rf .tsbuildinfo
+          echo "Building frontend..."
+          npm run build
 
       - name: Build Tauri app
         run: |
@@ -237,12 +265,17 @@ jobs:
           echo "Checking TypeScript configuration..."
           npx tsc --version
           echo "Checking if chat files exist..."
-          Get-ChildItem src/chat/ -Recurse
+          Get-ChildItem src\chat\ -Recurse
           echo "Checking TypeScript compilation..."
           npx tsc --noEmit --skipLibCheck
 
-      - name: Build frontend
-        run: npm run build
+      - name: Clear TypeScript cache and build
+        run: |
+          echo "Clearing TypeScript build cache..."
+          Remove-Item -Recurse -Force node_modules\.tmp -ErrorAction SilentlyContinue
+          Remove-Item -Force .tsbuildinfo -ErrorAction SilentlyContinue
+          echo "Building frontend..."
+          npm run build
 
       - name: Build Tauri app
         run: |
