@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build 2425
+name: Tauri Cross-Platform Build 231321
 
 on:
   push:
@@ -79,7 +79,7 @@ jobs:
             libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev
 
-            - name: Create symlinks for missing libraries
+      - name: Create symlinks for missing libraries
         run: |
           echo "=== Checking existing libraries ==="
           echo "WebKit libraries:"
