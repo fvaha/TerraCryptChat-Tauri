@@ -5,6 +5,7 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+  # Remove push to main to prevent multiple triggers
 
 jobs:
   linux-build:
@@ -132,15 +133,16 @@ jobs:
           echo "Building frontend..."
           npm run build
 
-      - name: Build Tauri app
-        run: |
-          echo "=== Building universal Linux application ==="
-          npm run tauri build
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: true
-          PKG_CONFIG_PATH: "/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
-          LD_LIBRARY_PATH: "/usr/lib/x86_64-linux-gnu"
-          LIBSOUP_LIBS: "-lsoup-2.4"
+                    - name: Build Tauri app
+         run: |
+           echo "=== Building universal Linux application ==="
+           npm run tauri build
+         env:
+           CARGO_NET_GIT_FETCH_WITH_CLI: true
+           PKG_CONFIG_PATH: "/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+           LD_LIBRARY_PATH: "/usr/lib/x86_64-linux-gnu"
+           LIBSOUP_LIBS: "-lsoup-2.4"
+           LIBS: "-lsoup-2.4"
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
