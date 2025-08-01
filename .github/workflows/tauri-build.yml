@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform  Sa PC a
+name: Tauri Cross-Platform Build
 
 on:
   push:
@@ -43,69 +43,69 @@ jobs:
           rm -rf target
           cargo clean
 
-                           - name: Install Linux dependencies
-         run: |
-           sudo apt update
-           sudo apt install -y \
-             build-essential \
-             curl \
-             wget \
-             libssl-dev \
-             libgtk-3-dev \
-             libwebkit2gtk-4.0-dev \
-             libwebkit2gtk-4.1-dev \
-             libsoup2.4-dev \
-             libsoup-3.0-dev \
-             libsoup2.4-1 \
-             libsoup-3.0-1 \
-             libjavascriptcoregtk-4.0-dev \
-             libjavascriptcoregtk-4.1-dev \
-             libayatana-appindicator3-dev \
-             librsvg2-dev \
-             patchelf \
-             pkg-config \
-             libdbus-1-dev \
-             libx11-dev \
-             libxrandr-dev \
-             libxss-dev \
-             libxtst-dev \
-             libasound2-dev \
-             libpango1.0-dev \
-             libcairo2-dev \
-             libgdk-pixbuf2.0-dev \
-             libatk1.0-dev \
-             libgirepository1.0-dev \
-             libglib2.0-dev
+      - name: Install Linux dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential \
+            curl \
+            wget \
+            libssl-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libwebkit2gtk-4.1-dev \
+            libsoup2.4-dev \
+            libsoup-3.0-dev \
+            libsoup2.4-1 \
+            libsoup-3.0-1 \
+            libjavascriptcoregtk-4.0-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            pkg-config \
+            libdbus-1-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxss-dev \
+            libxtst-dev \
+            libasound2-dev \
+            libpango1.0-dev \
+            libcairo2-dev \
+            libgdk-pixbuf2.0-dev \
+            libatk1.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev
 
-                           - name: Setup library symlinks
-         run: |
-           echo "=== Setting up library symlinks for universal compatibility ==="
-           
-           # Create symlinks for webkit2gtk-4.1
-           sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
-           
-           # Create symlinks for libsoup-3.0
-           sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
-           
-           # Create additional libsoup symlinks for compatibility
-           sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so.0 /usr/lib/x86_64-linux-gnu/libsoup-2.4.so || true
-           sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-3.0.so.0 /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
-           
-           # Create symlinks for libjavascriptcoregtk-4.1
-           sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
-           
-           # Update library cache
-           sudo ldconfig
-           
-           echo "=== Verifying symlinks ==="
-           ls -la /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || echo "webkit2gtk-4.1 symlink failed"
-           ls -la /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || echo "libsoup-3.0 symlink failed"
-           ls -la /usr/lib/x86_64-linux-gnu/libsoup-2.4.so || echo "libsoup-2.4 symlink failed"
-           ls -la /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || echo "libjavascriptcoregtk-4.1 symlink failed"
-           
-           echo "=== Checking libsoup availability ==="
-           pkg-config --libs libsoup-2.4 || echo "libsoup-2.4 not found via pkg-config"
-           pkg-config --libs libsoup-3.0 || echo "libsoup-3.0 not found via pkg-config"
+      - name: Setup library symlinks
+        run: |
+          echo "=== Setting up library symlinks for universal compatibility ==="
+          
+          # Create symlinks for webkit2gtk-4.1
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
+          
+          # Create symlinks for libsoup-3.0
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
+          
+          # Create additional libsoup symlinks for compatibility
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so.0 /usr/lib/x86_64-linux-gnu/libsoup-2.4.so || true
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-3.0.so.0 /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
+          
+          # Create symlinks for libjavascriptcoregtk-4.1
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || true
+          
+          # Update library cache
+          sudo ldconfig
+          
+          echo "=== Verifying symlinks ==="
+          ls -la /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || echo "webkit2gtk-4.1 symlink failed"
+          ls -la /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || echo "libsoup-3.0 symlink failed"
+          ls -la /usr/lib/x86_64-linux-gnu/libsoup-2.4.so || echo "libsoup-2.4 symlink failed"
+          ls -la /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so || echo "libjavascriptcoregtk-4.1 symlink failed"
+          
+          echo "=== Checking libsoup availability ==="
+          pkg-config --libs libsoup-2.4 || echo "libsoup-2.4 not found via pkg-config"
+          pkg-config --libs libsoup-3.0 || echo "libsoup-3.0 not found via pkg-config"
 
       - name: Install npm dependencies
         run: npm ci
@@ -133,15 +133,15 @@ jobs:
           echo "Building frontend..."
           npm run build
 
-                           - name: Build Tauri app
-         run: |
-           echo "=== Building universal Linux application ==="
-           npm run tauri build
-         env:
-           CARGO_NET_GIT_FETCH_WITH_CLI: true
-           PKG_CONFIG_PATH: "/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
-           LD_LIBRARY_PATH: "/usr/lib/x86_64-linux-gnu"
-           LIBSOUP_LIBS: "-lsoup-2.4"
+      - name: Build Tauri app
+        run: |
+          echo "=== Building universal Linux application ==="
+          npm run tauri build
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
+          PKG_CONFIG_PATH: "/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+          LD_LIBRARY_PATH: "/usr/lib/x86_64-linux-gnu"
+          LIBSOUP_LIBS: "-lsoup-2.4"
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
@@ -180,11 +180,11 @@ jobs:
           node-version: 18
           cache: 'npm'
 
-                           - name: Setup Rust
-         uses: dtolnay/rust-toolchain@stable
-         with:
-           toolchain: stable
-           targets: x86_64-apple-darwin, aarch64-apple-darwin
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
 
       - name: Cache Rust dependencies
         uses: actions/cache@v3
@@ -247,19 +247,19 @@ jobs:
           echo "Building frontend..."
           npm run build
 
-                           - name: Build Tauri app
-         run: |
-           echo "=== Building macOS application ==="
-           npm run tauri build
-           echo "=== Building universal binary ==="
-           # Create universal binary if both architectures are available
-           if [ -f "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/TerraCrypt Chat_0.5.0_aarch64.dmg" ] && [ -f "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/TerraCrypt Chat_0.5.0_x64.dmg" ]; then
-             echo "Both architectures built successfully"
-           else
-             echo "Single architecture build completed"
-           fi
-         env:
-           CARGO_NET_GIT_FETCH_WITH_CLI: true
+      - name: Build Tauri app
+        run: |
+          echo "=== Building macOS application ==="
+          npm run tauri build
+          echo "=== Building universal binary ==="
+          # Create universal binary if both architectures are available
+          if [ -f "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/TerraCrypt Chat_0.5.0_aarch64.dmg" ] && [ -f "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/TerraCrypt Chat_0.5.0_x64.dmg" ]; then
+            echo "Both architectures built successfully"
+          else
+            echo "Single architecture build completed"
+          fi
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
