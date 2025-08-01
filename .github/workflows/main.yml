@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build 76870
+name: Tauri Cross-Platform  9999
 
 on:
   push:
@@ -96,8 +96,14 @@ jobs:
         run: |
           echo "Checking TypeScript configuration..."
           npx tsc --version
+          echo "Current working directory:"
+          pwd
+          echo "Listing current directory contents:"
+          ls -la
+          echo "Checking if src directory exists:"
+          ls -la src/ || echo "src directory not found"
           echo "Checking if chat files exist..."
-          ls -la src/chat/
+          ls -la src/chat/ || echo "chat directory not found"
           echo "Checking TypeScript compilation..."
           npx tsc --noEmit --skipLibCheck
 
@@ -134,6 +140,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Debug repository structure
+        run: |
+          echo "=== Repository Structure Debug ==="
+          echo "Current working directory:"
+          pwd
+          echo "Repository root contents:"
+          ls -la
+          echo "Checking for nested directories:"
+          find . -maxdepth 2 -type d -name "src" 2>/dev/null || echo "No src directories found"
+          echo "Checking for package.json files:"
+          find . -name "package.json" 2>/dev/null || echo "No package.json files found"
+          echo "Checking for tsconfig files:"
+          find . -name "tsconfig*.json" 2>/dev/null || echo "No tsconfig files found"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -182,8 +202,14 @@ jobs:
         run: |
           echo "Checking TypeScript configuration..."
           npx tsc --version
+          echo "Current working directory:"
+          pwd
+          echo "Listing current directory contents:"
+          ls -la
+          echo "Checking if src directory exists:"
+          ls -la src/ || echo "src directory not found"
           echo "Checking if chat files exist..."
-          ls -la src/chat/
+          ls -la src/chat/ || echo "chat directory not found"
           echo "Checking TypeScript compilation..."
           npx tsc --noEmit --skipLibCheck
 
@@ -218,6 +244,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Debug repository structure
+        run: |
+          echo "=== Repository Structure Debug ==="
+          echo "Current working directory:"
+          pwd
+          echo "Repository root contents:"
+          Get-ChildItem
+          echo "Checking for nested directories:"
+          Get-ChildItem -Recurse -Directory -Name "src" -ErrorAction SilentlyContinue | Select-Object -First 5
+          echo "Checking for package.json files:"
+          Get-ChildItem -Recurse -Name "package.json" -ErrorAction SilentlyContinue
+          echo "Checking for tsconfig files:"
+          Get-ChildItem -Recurse -Name "tsconfig*.json" -ErrorAction SilentlyContinue
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -264,8 +304,14 @@ jobs:
         run: |
           echo "Checking TypeScript configuration..."
           npx tsc --version
+          echo "Current working directory:"
+          pwd
+          echo "Listing current directory contents:"
+          Get-ChildItem
+          echo "Checking if src directory exists:"
+          Get-ChildItem src\ -ErrorAction SilentlyContinue || echo "src directory not found"
           echo "Checking if chat files exist..."
-          Get-ChildItem src\chat\ -Recurse
+          Get-ChildItem src\chat\ -Recurse -ErrorAction SilentlyContinue || echo "chat directory not found"
           echo "Checking TypeScript compilation..."
           npx tsc --noEmit --skipLibCheck
 
