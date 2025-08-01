@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build 99
+name: Tauri Cross-Platform Build 2425
 
 on:
   push:
@@ -7,9 +7,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  ubuntu-build:
-    name: Build on Ubuntu
-    runs-on: ubuntu-22.04
+  linux-build:
+    name: Build on Linux
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-20.04]
+        include:
+          - os: ubuntu-22.04
+            distro: ubuntu-22.04
+          - os: ubuntu-20.04
+            distro: ubuntu-20.04
 
     steps:
       - name: Checkout code
@@ -71,7 +79,7 @@ jobs:
             libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev
 
-      - name: Create symlinks for missing libraries
+            - name: Create symlinks for missing libraries
         run: |
           echo "=== Checking existing libraries ==="
           echo "WebKit libraries:"
@@ -83,7 +91,7 @@ jobs:
           
           echo "=== Creating symlinks ==="
           
-          # Create webkit2gtk-4.1 symlink
+          # Create webkit2gtk-4.1 symlink - try multiple locations
           WEBKIT_LIB=$(find /usr/lib -name "libwebkit2gtk-4*.so*" -type f 2>/dev/null | head -1)
           if [ -n "$WEBKIT_LIB" ]; then
             echo "Found webkit library: $WEBKIT_LIB"
@@ -94,7 +102,7 @@ jobs:
             sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so || true
           fi
           
-          # Create libsoup-3.0 symlink
+          # Create libsoup-3.0 symlink - try multiple locations
           SOUP_LIB=$(find /usr/lib -name "libsoup*.so*" -type f 2>/dev/null | head -1)
           if [ -n "$SOUP_LIB" ]; then
             echo "Found soup library: $SOUP_LIB"
@@ -105,7 +113,7 @@ jobs:
             sudo ln -sf /usr/lib/x86_64-linux-gnu/libsoup-2.4.so /usr/lib/x86_64-linux-gnu/libsoup-3.0.so || true
           fi
           
-          # Create libjavascriptcoregtk-4.1 symlink
+          # Create libjavascriptcoregtk-4.1 symlink - try multiple locations
           JSC_LIB=$(find /usr/lib -name "libjavascriptcore*.so*" -type f 2>/dev/null | head -1)
           if [ -n "$JSC_LIB" ]; then
             echo "Found javascriptcore library: $JSC_LIB"
@@ -134,17 +142,17 @@ jobs:
           ldconfig -p | grep soup || echo "No soup libraries in cache"
           ldconfig -p | grep javascript || echo "No javascript libraries in cache"
           
-                     echo "=== Final verification ==="
-           echo "Checking if required libraries exist:"
-           ls -la /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so 2>/dev/null && echo "✓ webkit2gtk-4.1 found" || echo "✗ webkit2gtk-4.1 missing"
-           ls -la /usr/lib/x86_64-linux-gnu/libsoup-3.0.so 2>/dev/null && echo "✓ libsoup-3.0 found" || echo "✗ libsoup-3.0 missing"
-           ls -la /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so 2>/dev/null && echo "✓ libjavascriptcoregtk-4.1 found" || echo "✗ libjavascriptcoregtk-4.1 missing"
-           
-           echo "=== Testing linker ==="
-           echo "Testing if linker can find the libraries:"
-           ld -lwebkit2gtk-4.1 --verbose 2>&1 | grep -q "found" && echo "✓ webkit2gtk-4.1 linkable" || echo "✗ webkit2gtk-4.1 not linkable"
-           ld -lsoup-3.0 --verbose 2>&1 | grep -q "found" && echo "✓ libsoup-3.0 linkable" || echo "✗ libsoup-3.0 not linkable"
-           ld -ljavascriptcoregtk-4.1 --verbose 2>&1 | grep -q "found" && echo "✓ libjavascriptcoregtk-4.1 linkable" || echo "✗ libjavascriptcoregtk-4.1 not linkable"
+          echo "=== Final verification ==="
+          echo "Checking if required libraries exist:"
+          ls -la /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so 2>/dev/null && echo "✓ webkit2gtk-4.1 found" || echo "✗ webkit2gtk-4.1 missing"
+          ls -la /usr/lib/x86_64-linux-gnu/libsoup-3.0.so 2>/dev/null && echo "✓ libsoup-3.0 found" || echo "✗ libsoup-3.0 missing"
+          ls -la /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so 2>/dev/null && echo "✓ libjavascriptcoregtk-4.1 found" || echo "✗ libjavascriptcoregtk-4.1 missing"
+          
+          echo "=== Testing linker ==="
+          echo "Testing if linker can find the libraries:"
+          ld -lwebkit2gtk-4.1 --verbose 2>&1 | grep -q "found" && echo "✓ webkit2gtk-4.1 linkable" || echo "✗ webkit2gtk-4.1 not linkable"
+          ld -lsoup-3.0 --verbose 2>&1 | grep -q "found" && echo "✓ libsoup-3.0 linkable" || echo "✗ libsoup-3.0 not linkable"
+          ld -ljavascriptcoregtk-4.1 --verbose 2>&1 | grep -q "found" && echo "✓ libjavascriptcoregtk-4.1 linkable" || echo "✗ libjavascriptcoregtk-4.1 not linkable"
 
       - name: Install npm dependencies
         run: npm ci
@@ -176,7 +184,14 @@ jobs:
               # Try with explicit library paths
               export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib:$LD_LIBRARY_PATH"
               export PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH"
-              npm run tauri build
+              npm run tauri build || {
+                echo "=== Third build attempt failed, trying with different library versions ==="
+                # Try building with older library versions
+                export WEBKIT_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu"
+                export SOUP_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu"
+                export JAVASCRIPTCORE_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu"
+                npm run tauri build
+              }
             }
           }
         env:
@@ -187,7 +202,7 @@ jobs:
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-linux
+          name: tauri-linux-${{ matrix.distro }}
           path: |
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
@@ -344,7 +359,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [ubuntu-build, macos-build, windows-build]
+    needs: [linux-build, macos-build, windows-build]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 
