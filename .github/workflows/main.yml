@@ -1,4 +1,4 @@
-name: Tauri Cross-Platform Build FInal
+name: Tauri Cross-Platform Build 111111
 
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
         run: |
           echo "Clearing Rust build cache..."
           rm -rf src-tauri/target
-          cargo clean
+          cd src-tauri && cargo clean
 
       - name: Install Linux dependencies
         run: |
@@ -186,7 +186,7 @@ jobs:
         run: |
           echo "Clearing Rust build cache..."
           rm -rf src-tauri/target
-          cargo clean
+          cd src-tauri && cargo clean
 
       - name: Install macOS dependencies
         run: |
@@ -296,7 +296,7 @@ jobs:
         run: |
           echo "Clearing Rust build cache..."
           Remove-Item -Recurse -Force src-tauri\target -ErrorAction SilentlyContinue
-          cargo clean
+          cd src-tauri && cargo clean
 
       - name: Install Windows dependencies
         run: |
