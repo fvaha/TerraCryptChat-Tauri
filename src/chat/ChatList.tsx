@@ -51,7 +51,6 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
   const [showCreateChat, setShowCreateChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [friends, setFriends] = useState<Array<{ user_id: string; username: string; name: string; email: string; picture?: string }>>([]);
-  const [filteredFriends, setFilteredFriends] = useState<Array<{ user_id: string; username: string; name: string; email: string; picture?: string }>>([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
   
@@ -84,11 +83,11 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
       
       console.log(" Raw chats data:", chatsData);
       
-      // Process chats and resolve participant names for direct chats
-      const chatsWithNames = await Promise.all(
-        chatsData
-          .filter((chat: any) => chat && chat.chat_id) // Filter out invalid chats
-          .map(async (chat: any) => {
+             // Process chats and resolve participant names for direct chats
+       const chatsWithNames = await Promise.all(
+         chatsData
+           .filter((chat: any) => chat && chat.chat_id) // Filter out invalid chats
+           .map(async (chat: any) => {
             try {
               console.log(` Raw chat data:`, chat);
               console.log(` Current user ID:`, user?.user_id);
@@ -317,28 +316,36 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
       // Check if current user is the creator
       const isCreator = contextMenu.chat.creator_id === user?.user_id;
       
-      if (isCreator) {
+      if (!isCreator) {
+        // Show toast notification for non-creators
+        console.log("[ChatList] User is not creator, showing notification");
+        // You can implement a toast notification system here
+        // For now, we'll just show an alert
+        alert("You can only delete chats that you created.");
+        handleContextMenuClose();
+        return;
+      }
+      
+      // User is creator, proceed with deletion
+      try {
         // Try to delete from server first
-        try {
-          await nativeApiService.deleteChat(contextMenu.chat.chat_id, token);
-          console.log("[ChatList] Successfully deleted chat from server");
-        } catch (error: any) {
-          console.error("[ChatList] Server delete failed:", error);
-          
-          // If it's a 403, try to leave the chat instead
-          if (error.message?.includes('403')) {
-            try {
-              await nativeApiService.leaveChat(contextMenu.chat.chat_id, token);
-              console.log("[ChatList] Successfully left chat instead of deleting");
-            } catch (leaveError) {
-              console.error("[ChatList] Leave failed but proceeding with cleanup:", leaveError);
-            }
+        await nativeApiService.deleteChat(contextMenu.chat.chat_id, token);
+        console.log("[ChatList] Successfully deleted chat from server");
+                        } catch (error: unknown) {
+           console.error("[ChatList] Server delete failed:", error);
+           
+           // If it's a 403, try to leave the chat instead
+           if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' && error.message.includes('403')) {
+          try {
+            await nativeApiService.leaveChat(contextMenu.chat.chat_id, token);
+            console.log("[ChatList] Successfully left chat instead of deleting");
+          } catch (leaveError) {
+            console.error("[ChatList] Leave failed but proceeding with cleanup:", leaveError);
           }
+        } else {
+          // Re-throw the error if it's not a 403
+          throw error;
         }
-      } else {
-        // If not creator, just leave the chat
-        await nativeApiService.leaveChat(contextMenu.chat.chat_id, token);
-        console.log("[ChatList] Successfully left chat (not creator)");
       }
       
       // Remove from local database
@@ -386,68 +393,23 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
 
 
 
-  // Load friends for create chat functionality
-  useEffect(() => {
-    const loadFriends = async () => {
-      try {
-        const friendsData = await friendService.getCachedFriendsForCurrentUser();
-        setFriends(friendsData || []);
-        setFilteredFriends(friendsData || []);
-      } catch (error) {
-        console.error("Failed to load friends:", error);
-      }
-    };
+     // Load friends for create chat functionality
+   useEffect(() => {
+     const loadFriends = async () => {
+       try {
+         const friendsData = await friendService.getCachedFriendsForCurrentUser();
+         setFriends(friendsData || []);
+       } catch (error) {
+         console.error("Failed to load friends:", error);
+       }
+     };
 
-    if (showCreateChat) {
-      loadFriends();
-    }
-  }, [showCreateChat]);
+     if (showCreateChat) {
+       loadFriends();
+     }
+   }, [showCreateChat]);
 
-  // Filter friends based on search query
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredFriends(friends);
-    } else {
-      const filtered = friends.filter(friend => 
-        friend.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        friend.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredFriends(filtered);
-    }
-  }, [searchQuery, friends]);
 
-  const handleCreateChatWithFriend = async (friend: { user_id: string; username: string; name: string; email: string; picture?: string }) => {
-    try {
-      console.log("Creating chat with friend:", friend);
-      
-      // Get current user token
-      const token = services.sessionManager.getToken();
-      if (!token) {
-        throw new Error("No token available");
-      }
-      
-      // Create one-to-one chat
-      const chatName = `Direct message with ${friend.username}`;
-      const members = [
-        { user_id: friend.user_id, is_admin: false }
-      ];
-      
-      const chatId = await nativeApiService.createChat(chatName, false, members);
-      
-      console.log("Chat created successfully with ID:", chatId);
-      setShowCreateChat(false);
-      
-      // Reload chats to show the new chat
-      await loadChats();
-      
-      // Open the newly created chat
-      onSelect(chatId);
-      
-    } catch (error) {
-      console.error("Failed to create chat:", error);
-      // You might want to show an error message to the user here
-    }
-  };
 
   // Load chats on mount
   useEffect(() => {
@@ -819,80 +781,82 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
         )}
       </div>
 
-      {/* Context Menu */}
-      {contextMenu.visible && (
-        <div
-          style={{
-            position: 'fixed',
-            top: contextMenu.y,
-            left: contextMenu.x,
-            backgroundColor: theme.background,
-            border: `1px solid ${theme.border}`,
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            zIndex: 1000,
-            minWidth: '160px'
-          }}
-          onClick={handleContextMenuClose}
-        >
-          <div
-            onClick={handleOpenChatOptions}
-            style={{
-              padding: '12px 16px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              color: theme.text,
-              borderBottom: `1px solid ${theme.border}`,
-              transition: 'background-color 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = theme.hover;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            Chat Info
-          </div>
-          <div
-            onClick={handleLeaveChat}
-            style={{
-              padding: '12px 16px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              color: theme.text,
-              borderBottom: `1px solid ${theme.border}`,
-              transition: 'background-color 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = theme.hover;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            Leave Chat
-          </div>
-          <div
-            onClick={handleDeleteChat}
-            style={{
-              padding: '12px 16px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              color: '#EF4444',
-              transition: 'background-color 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = theme.hover;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            Delete Chat
-          </div>
-        </div>
-      )}
+             {/* Context Menu */}
+       {contextMenu.visible && (
+         <div
+           style={{
+             position: 'fixed',
+             top: contextMenu.y,
+             left: contextMenu.x,
+             backgroundColor: theme.background,
+             border: `1px solid ${theme.border}`,
+             borderRadius: '8px',
+             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+             zIndex: 1000,
+             minWidth: '160px'
+           }}
+           onClick={handleContextMenuClose}
+         >
+           <div
+             onClick={handleOpenChatOptions}
+             style={{
+               padding: '12px 16px',
+               cursor: 'pointer',
+               fontSize: '14px',
+               color: theme.text,
+               borderBottom: `1px solid ${theme.border}`,
+               transition: 'background-color 0.2s ease'
+             }}
+             onMouseEnter={(e) => {
+               e.currentTarget.style.backgroundColor = theme.hover;
+             }}
+             onMouseLeave={(e) => {
+               e.currentTarget.style.backgroundColor = 'transparent';
+             }}
+           >
+             Chat Info
+           </div>
+           <div
+             onClick={handleLeaveChat}
+             style={{
+               padding: '12px 16px',
+               cursor: 'pointer',
+               fontSize: '14px',
+               color: theme.text,
+               borderBottom: `1px solid ${theme.border}`,
+               transition: 'background-color 0.2s ease'
+             }}
+             onMouseEnter={(e) => {
+               e.currentTarget.style.backgroundColor = theme.hover;
+             }}
+             onMouseLeave={(e) => {
+               e.currentTarget.style.backgroundColor = 'transparent';
+             }}
+           >
+             Leave Chat
+           </div>
+           {contextMenu.chat && contextMenu.chat.creator_id === user?.user_id && (
+             <div
+               onClick={handleDeleteChat}
+               style={{
+                 padding: '12px 16px',
+                 cursor: 'pointer',
+                 fontSize: '14px',
+                 color: '#EF4444',
+                 transition: 'background-color 0.2s ease'
+               }}
+               onMouseEnter={(e) => {
+                 e.currentTarget.style.backgroundColor = theme.hover;
+               }}
+               onMouseLeave={(e) => {
+                 e.currentTarget.style.backgroundColor = 'transparent';
+               }}
+             >
+               Delete Chat
+             </div>
+           )}
+         </div>
+       )}
 
       {/* Click outside to close context menu */}
       {contextMenu.visible && (
