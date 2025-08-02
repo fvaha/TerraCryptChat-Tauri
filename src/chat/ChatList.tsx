@@ -275,28 +275,38 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
   const handleLeaveChat = async () => {
     if (!contextMenu.chat) return;
     
+    const chatId = contextMenu.chat.chat_id;
+    console.log("[ChatList] Leaving chat:", chatId);
+    
     try {
       const token = services.sessionManager.getToken();
-      if (!token) {
-        throw new Error("No token available");
+      
+      // Try to leave chat from server (but don't fail if it doesn't exist)
+      if (token) {
+        try {
+          await nativeApiService.leaveChat(chatId, token);
+          console.log("[ChatList] Successfully left chat from server:", chatId);
+        } catch (serverError) {
+          console.warn("[ChatList] Server leave failed (chat may not exist):", serverError);
+          // Continue with local cleanup even if server operation fails
+        }
       }
-
-      console.log("[ChatList] Leaving chat:", contextMenu.chat.chat_id);
       
-      // Call the leave chat API
-      await nativeApiService.leaveChat(contextMenu.chat.chat_id, token);
-      
-      // Remove from local database
-      await nativeApiService.deleteChatFromDatabase(contextMenu.chat.chat_id);
-      
-      console.log("[ChatList] Successfully left chat:", contextMenu.chat.chat_id);
+      // Always remove from local database regardless of server response
+      try {
+        await nativeApiService.deleteChatFromDatabase(chatId);
+        console.log("[ChatList] Successfully removed chat from local database:", chatId);
+      } catch (dbError) {
+        console.error("[ChatList] Failed to remove chat from local database:", dbError);
+        // Even if database cleanup fails, we should still reload chats
+      }
       
       // Reload chats to reflect the change
       await loadChats();
       
     } catch (error) {
-      console.error("[ChatList] Leave chat failed:", error);
-      setError("Failed to leave chat. Please try again.");
+      console.error("[ChatList] Leave chat operation failed:", error);
+      // Don't show error to user, just log it and continue
     }
     
     handleContextMenuClose();
@@ -305,60 +315,59 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
   const handleDeleteChat = async () => {
     if (!contextMenu.chat) return;
     
+    const chatId = contextMenu.chat.chat_id;
+    console.log("[ChatList] Deleting chat:", chatId);
+    
+    // Check if current user is the creator
+    const isCreator = contextMenu.chat.creator_id === user?.user_id;
+    
+    if (!isCreator) {
+      console.log("[ChatList] User is not creator, showing notification");
+      alert("You can only delete chats that you created.");
+      handleContextMenuClose();
+      return;
+    }
+    
     try {
       const token = services.sessionManager.getToken();
-      if (!token) {
-        throw new Error("No token available");
-      }
-
-      console.log("[ChatList] Deleting chat:", contextMenu.chat.chat_id);
-      
-      // Check if current user is the creator
-      const isCreator = contextMenu.chat.creator_id === user?.user_id;
-      
-      if (!isCreator) {
-        // Show toast notification for non-creators
-        console.log("[ChatList] User is not creator, showing notification");
-        // You can implement a toast notification system here
-        // For now, we'll just show an alert
-        alert("You can only delete chats that you created.");
-        handleContextMenuClose();
-        return;
-      }
       
       // User is creator, proceed with deletion
-      try {
-        // Try to delete from server first
-        await nativeApiService.deleteChat(contextMenu.chat.chat_id, token);
-        console.log("[ChatList] Successfully deleted chat from server");
-                        } catch (error: unknown) {
-           console.error("[ChatList] Server delete failed:", error);
-           
-           // If it's a 403, try to leave the chat instead
-           if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' && error.message.includes('403')) {
-          try {
-            await nativeApiService.leaveChat(contextMenu.chat.chat_id, token);
-            console.log("[ChatList] Successfully left chat instead of deleting");
-          } catch (leaveError) {
-            console.error("[ChatList] Leave failed but proceeding with cleanup:", leaveError);
+      if (token) {
+        try {
+          // Try to delete from server first
+          await nativeApiService.deleteChat(chatId, token);
+          console.log("[ChatList] Successfully deleted chat from server");
+        } catch (serverError: unknown) {
+          console.warn("[ChatList] Server delete failed:", serverError);
+          
+          // If it's a 403, try to leave the chat instead
+          if (serverError && typeof serverError === 'object' && 'message' in serverError && typeof serverError.message === 'string' && serverError.message.includes('403')) {
+            try {
+              await nativeApiService.leaveChat(chatId, token);
+              console.log("[ChatList] Successfully left chat instead of deleting");
+            } catch (leaveError) {
+              console.warn("[ChatList] Leave failed but proceeding with cleanup:", leaveError);
+            }
           }
-        } else {
-          // Re-throw the error if it's not a 403
-          throw error;
+          // Continue with local cleanup even if server operations fail
         }
       }
       
-      // Remove from local database
-      await nativeApiService.deleteChatFromDatabase(contextMenu.chat.chat_id);
-      
-      console.log("[ChatList] Successfully removed chat from local database");
+      // Always remove from local database regardless of server response
+      try {
+        await nativeApiService.deleteChatFromDatabase(chatId);
+        console.log("[ChatList] Successfully removed chat from local database");
+      } catch (dbError) {
+        console.error("[ChatList] Failed to remove chat from local database:", dbError);
+        // Even if database cleanup fails, we should still reload chats
+      }
       
       // Reload chats to reflect the change
       await loadChats();
       
     } catch (error) {
-      console.error("[ChatList] Delete chat failed:", error);
-      setError("Failed to delete chat. Please try again.");
+      console.error("[ChatList] Delete chat operation failed:", error);
+      // Don't show error to user, just log it and continue
     }
     
     handleContextMenuClose();
