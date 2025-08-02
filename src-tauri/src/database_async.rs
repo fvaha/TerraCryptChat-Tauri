@@ -368,23 +368,35 @@ pub async fn get_chat_by_id(chat_id: &str) -> Result<Option<Chat>, SqlxError> {
 pub async fn get_all_chats() -> Result<Vec<Chat>, SqlxError> {
     let pool = get_pool().await?;
     
+    println!("[Database] Loading all chats from database...");
+    
     let rows = sqlx::query("SELECT * FROM chat ORDER BY last_message_timestamp DESC NULLS LAST")
         .fetch_all(&pool)
         .await?;
     
-    let chats: Vec<Chat> = rows.iter().map(|row| Chat {
-        chat_id: row.get("chat_id"),
-        name: row.get("name"),
-        created_at: row.get("created_at"),
-        creator_id: row.get("creator_id"),
-        is_group: row.get("is_group"),
-        group_name: row.get("group_name"),
-        description: row.get("description"),
-        unread_count: row.get("unread_count"),
-        last_message_content: row.get("last_message_content"),
-        last_message_timestamp: row.get("last_message_timestamp"),
-        participants: row.get("participants"),
+    println!("[Database] Found {} chats in database", rows.len());
+    
+    let chats: Vec<Chat> = rows.iter().map(|row| {
+        let chat_id: String = row.get("chat_id");
+        let name: Option<String> = row.get("name");
+        println!("[Database] Loading chat: id={}, name={:?}", chat_id, name);
+        
+        Chat {
+            chat_id,
+            name,
+            created_at: row.get("created_at"),
+            creator_id: row.get("creator_id"),
+            is_group: row.get("is_group"),
+            group_name: row.get("group_name"),
+            description: row.get("description"),
+            unread_count: row.get("unread_count"),
+            last_message_content: row.get("last_message_content"),
+            last_message_timestamp: row.get("last_message_timestamp"),
+            participants: row.get("participants"),
+        }
     }).collect();
+    
+    println!("[Database] Successfully loaded {} chats", chats.len());
     
     Ok(chats)
 }
@@ -417,10 +429,29 @@ pub async fn update_chat_last_message(chat_id: &str, content: Option<&str>, time
 pub async fn delete_chat(chat_id: &str) -> Result<(), SqlxError> {
     let pool = get_pool().await?;
     
-    sqlx::query("DELETE FROM chat WHERE chat_id = ?")
+    println!("[Database] Attempting to delete chat: {}", chat_id);
+    
+    // First check if the chat exists
+    let chat_exists = sqlx::query("SELECT COUNT(*) as count FROM chat WHERE chat_id = ?")
+        .bind(chat_id)
+        .fetch_one(&pool)
+        .await?;
+    
+    let count: i64 = chat_exists.get("count");
+    println!("[Database] Found {} chat(s) with chat_id: {}", count, chat_id);
+    
+    if count == 0 {
+        println!("[Database] Warning: No chat found with chat_id: {}", chat_id);
+        return Ok(());
+    }
+    
+    // Delete the chat
+    let result = sqlx::query("DELETE FROM chat WHERE chat_id = ?")
         .bind(chat_id)
         .execute(&pool)
         .await?;
+    
+    println!("[Database] Successfully deleted {} row(s) from chat table for chat_id: {}", result.rows_affected(), chat_id);
     
     Ok(())
 }
