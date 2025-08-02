@@ -39,7 +39,7 @@ export default function CreateChatForm({ onCreated, onCancel }: CreateChatFormPr
   const [isLoadingFriends, setIsLoadingFriends] = useState(true);
   const [error, setError] = useState("");
   const { theme } = useTheme();
-  const { services } = useAppContext();
+  const { services, token } = useAppContext();
 
   // Load friends on component mount
   useEffect(() => {
@@ -96,7 +96,6 @@ export default function CreateChatForm({ onCreated, onCancel }: CreateChatFormPr
       const selectedFriend = selectedFriends[0];
       
       // Get current user token
-      const token = services.sessionManager.getToken();
       if (!token) {
         throw new Error("No token available");
       }

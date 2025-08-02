@@ -187,6 +187,12 @@ pub async fn get_chats_with_token(token: String) -> Result<Vec<Chat>, String> {
     println!("Get chats response body: {}", text);
 
     if status.is_success() {
+        // Handle case where API returns null or empty response
+        if text.trim().is_empty() || text == "null" {
+            println!("API returned empty response, returning empty chat list");
+            return Ok(Vec::new());
+        }
+        
         let chat_list_response: ChatListResponse = serde_json::from_str(&text)
             .map_err(|e| format!("Invalid JSON response: {e}"))?;
         
