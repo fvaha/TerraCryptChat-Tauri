@@ -83,36 +83,36 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
       
       console.log(" Raw chats data:", chatsData);
       
-             // Process chats and resolve participant names for direct chats
-       const chatsWithNames = await Promise.all(
-         chatsData
-           .filter((chat: any) => chat && chat.chat_id) // Filter out invalid chats
-           .map(async (chat: any) => {
-            try {
-              console.log(` Raw chat data:`, chat);
-              console.log(` Current user ID:`, user?.user_id);
-              
-              // Resolve chat name using Swift pattern
-              const displayName = await resolveChatName(chat, user?.user_id);
-              
-              // Convert the native API response to the expected format
-              const chatData: ChatData = {
-                chat_id: chat.chat_id,
-                name: chat.name || null,
-                chat_type: chat.is_group ? "group" : "direct",
-                is_group: Boolean(chat.is_group),
-                created_at: new Date(chat.created_at * 1000).toISOString(), // Convert timestamp to ISO string
-                creator_id: chat.creator_id || "",
-                participants: Array.isArray(chat.participants) ? chat.participants : [],
-                display_name: displayName
-              };
-              
-              return chatData;
-            } catch (error) {
-              console.error(` Error processing chat ${chat.chat_id}:`, error);
-              return null;
-            }
-          })
+      // Process chats and resolve participant names for direct chats
+      const chatsWithNames = await Promise.all(
+        chatsData
+          .filter((chat: any) => chat && chat.chat_id) // Filter out invalid chats
+          .map(async (chat: any) => {
+           try {
+             console.log(` Raw chat data:`, chat);
+             console.log(` Current user ID:`, user?.user_id);
+             
+             // Resolve chat name using Swift pattern
+             const displayName = await resolveChatName(chat, user?.user_id);
+             
+             // Convert the native API response to the expected format
+             const chatData: ChatData = {
+               chat_id: chat.chat_id,
+               name: chat.name || null,
+               chat_type: chat.is_group ? "group" : "direct",
+               is_group: Boolean(chat.is_group),
+               created_at: new Date(chat.created_at * 1000).toISOString(), // Convert timestamp to ISO string
+               creator_id: chat.creator_id || "",
+               participants: Array.isArray(chat.participants) ? chat.participants : [],
+               display_name: displayName
+             };
+             
+             return chatData;
+           } catch (error) {
+             console.error(` Error processing chat ${chat.chat_id}:`, error);
+             return null;
+           }
+         })
       );
       
       // Filter out null results and sort by creation date (newest first)
@@ -129,7 +129,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
       setIsLoading(false);
       setIsLoadingChats(false);
     }
-  }, []);
+  }, [user?.user_id]);
 
   const formatTime = (timestamp: string) => {
     try {
@@ -301,8 +301,15 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
         // Even if database cleanup fails, we should still reload chats
       }
       
-      // Reload chats to reflect the change
+      // Clear chat name cache for this chat
+      chatNameCache.current.delete(`${chatId}_${user?.user_id}`);
+      
+      // Force reload chats to reflect the change
+      setIsLoadingChats(false); // Reset loading state
       await loadChats();
+      
+      // Also remove from current state immediately for instant UI update
+      setChats(prevChats => prevChats.filter(chat => chat.chat_id !== chatId));
       
     } catch (error) {
       console.error("[ChatList] Leave chat operation failed:", error);
@@ -362,8 +369,15 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
         // Even if database cleanup fails, we should still reload chats
       }
       
-      // Reload chats to reflect the change
+      // Clear chat name cache for this chat
+      chatNameCache.current.delete(`${chatId}_${user?.user_id}`);
+      
+      // Force reload chats to reflect the change
+      setIsLoadingChats(false); // Reset loading state
       await loadChats();
+      
+      // Also remove from current state immediately for instant UI update
+      setChats(prevChats => prevChats.filter(chat => chat.chat_id !== chatId));
       
     } catch (error) {
       console.error("[ChatList] Delete chat operation failed:", error);
