@@ -21,8 +21,11 @@ export class ChatService {
   }
 
   private setupChatNotifications() {
+    console.log("[ChatService] Setting up chat notifications...");
     websocketService.onMessage((message) => {
+      console.log("[ChatService] Received WebSocket message:", message);
       if (message.type === 'chat-notification') {
+        console.log("[ChatService] Processing chat notification:", message);
         this.handleChatNotification(message);
       }
     });
@@ -30,7 +33,10 @@ export class ChatService {
 
   private async handleChatNotification(message: { type: string; message: { action: string; chat_id: string; members: string[] } }) {
     try {
+      console.log("[ChatService] Starting to handle chat notification...");
       const { action, chat_id, members } = message.message;
+      
+      console.log("[ChatService] Parsed message:", { action, chat_id, members });
       
       if (!action || !chat_id || !members) {
         console.warn("[ChatService] Invalid chat-notification format:", message);
@@ -38,6 +44,8 @@ export class ChatService {
       }
 
       const currentUserId = await sessionManager.getCurrentUserId();
+      console.log("[ChatService] Current user ID:", currentUserId);
+      
       if (!currentUserId) {
         console.warn("[ChatService] No current user ID available");
         return;
@@ -46,6 +54,10 @@ export class ChatService {
       const isMember = members.some((memberId: string) => 
         memberId.toLowerCase() === currentUserId.toLowerCase()
       );
+      
+      console.log("[ChatService] Is user a member?", isMember);
+      console.log("[ChatService] Members:", members);
+      console.log("[ChatService] Current user ID:", currentUserId);
 
       if (!isMember) {
         console.log("[ChatService] User is not a member of this chat, ignoring notification");
