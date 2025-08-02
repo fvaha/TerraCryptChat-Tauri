@@ -87,16 +87,39 @@ export class ChatService {
     try {
       console.log("[ChatService] Chat created - syncing now");
       
-      // Sync the new chat from server
-      await this.syncChatsFromServer();
+      // Get token for API call
+      const token = await this.getToken();
+      if (!token) {
+        console.warn("[ChatService] No token available for chat sync");
+        return;
+      }
       
-      // Check if chat was successfully added
+      // Fetch the specific chat from server and save to local database
+      try {
+        await invoke("fetch_all_chats_and_save", { token });
+        console.log("[ChatService] Successfully synced chats from server after creation");
+      } catch (error) {
+        console.error("[ChatService] Failed to sync chats from server:", error);
+        return;
+      }
+      
+      // Check if chat was successfully added locally
       const newChat = await this.getChatById(chatId);
       if (newChat) {
         console.log("[ChatService] Chat is now saved locally:", newChat.name);
         this.notifyChatCreated();
       } else {
         console.warn("[ChatService] Warning: Chat still not found locally after sync");
+        // Try to fetch it again after a short delay
+        setTimeout(async () => {
+          const retryChat = await this.getChatById(chatId);
+          if (retryChat) {
+            console.log("[ChatService] Chat found on retry:", retryChat.name);
+            this.notifyChatCreated();
+          } else {
+            console.error("[ChatService] Chat still not found after retry");
+          }
+        }, 1000);
       }
     } catch (error) {
       console.error("[ChatService] Error handling chat created:", error);
@@ -223,9 +246,8 @@ export class ChatService {
 
   private async getToken(): Promise<string | null> {
     try {
-      // This would need to be implemented based on your token management
-      // For now, return null - the actual implementation should get the token from your session manager
-      return null;
+      // Get token from session manager
+      return sessionManager.getToken();
     } catch (error) {
       console.error("[ChatService] Failed to get token:", error);
       return null;
