@@ -19,11 +19,11 @@ pub struct Friend {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct FriendRequest {
-    pub user_id: String,
-    pub username: String,
-    pub name: String,
-    pub email: String,
-    pub picture: Option<String>,
+    pub request_id: String,
+    pub receiver_id: String,
+    pub status: String,
+    pub created_at: Option<String>,
+    pub sender: Friend,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -104,16 +104,24 @@ pub async fn get_friend_requests_with_token(token: String) -> Result<Vec<FriendR
     println!("Get friend requests response body: {}", text);
 
     if status.is_success() {
-        #[derive(serde::Deserialize)]
-        struct FriendRequestsResponse {
-            data: Vec<FriendRequest>,
-        }
+        // Try to parse as direct array first (fallback)
+        let friend_requests: Vec<FriendRequest> = if text.trim().starts_with('[') {
+            serde_json::from_str(&text)
+                .map_err(|e| format!("Invalid JSON array response: {e}"))?
+        } else {
+            // Try with data wrapper
+            #[derive(serde::Deserialize)]
+            struct FriendRequestsResponse {
+                data: Vec<FriendRequest>,
+            }
+            
+            let friend_requests_response: FriendRequestsResponse = serde_json::from_str(&text)
+                .map_err(|e| format!("Invalid JSON response: {e}"))?;
+            friend_requests_response.data
+        };
         
-        let friend_requests_response: FriendRequestsResponse = serde_json::from_str(&text)
-            .map_err(|e| format!("Invalid JSON response: {e}"))?;
-        
-        println!("Successfully retrieved {} friend requests", friend_requests_response.data.len());
-        Ok(friend_requests_response.data)
+        println!("Successfully retrieved {} friend requests", friend_requests.len());
+        Ok(friend_requests)
     } else {
         println!("Failed to get friend requests with status: {}", status);
         Err(format!("Failed to get friend requests: {} - {}", status, text))

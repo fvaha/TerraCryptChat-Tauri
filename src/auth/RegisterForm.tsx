@@ -62,8 +62,11 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onBackToLogin })
       // Call registration service
       const response = await services.authService.register(username, email, password);
 
-      // TODO: Handle successful registration
+      // Handle successful registration - same flow as login
       console.log("Registration successful:", response.access_token);
+      
+      // Handle successful registration the same way as login
+      await services.sessionManager.handleSuccessfulLogin(response.access_token, username, password);
       
       onSuccess();
     } catch (err) {

@@ -8,8 +8,8 @@ export async function login(username: string, password: string): Promise<LoginRe
   return await invoke<LoginResponse>("login", { username, password });
 }
 
-export async function register(name: string, email: string, password: string): Promise<LoginResponse> {
-  return await invoke<LoginResponse>("register", { name, email, password });
+export async function register(username: string, email: string, password: string): Promise<LoginResponse> {
+  return await invoke<LoginResponse>("register", { username, email, password });
 }
 
 export async function logout(token: string): Promise<void> {

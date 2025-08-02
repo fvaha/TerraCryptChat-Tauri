@@ -1,3 +1,4 @@
+// SECOND WINDOW: ChatList component - displays list of chats in the second window
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../AppContext';
 
@@ -6,6 +7,8 @@ import ScreenHeader from '../components/ScreenHeader';
 import { friendService } from '../friend/friendService';
 import { participantService } from '../participant/participantService';
 import { nativeApiService } from '../api/nativeApiService';
+import CreateChatForm from './CreateChatForm';
+import { Chat } from '../models/models';
 
 interface ChatData {
   chat_id: string;
@@ -27,11 +30,12 @@ interface ChatData {
 
 interface ChatListProps {
   onSelect: (chatId: string) => void;
+  onOpenChatOptions: (chat: Chat) => void;
   onToggleSidebar: () => void;
   sidebarCollapsed: boolean;
 }
 
-const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarCollapsed }) => {
+const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onToggleSidebar, sidebarCollapsed }) => {
   const { user, services } = useAppContext();
   
   // Simple cache for chat names to avoid repeated API calls
@@ -49,6 +53,19 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
   const [filteredFriends, setFilteredFriends] = useState<Array<{ user_id: string; username: string; name: string; email: string; picture?: string }>>([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    chat: ChatData | null;
+  }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    chat: null
+  });
 
   // Load chats function
   const loadChats = useCallback(async () => {
@@ -215,6 +232,46 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
     onSelect(chatId);
   };
 
+  const handleContextMenu = (e: React.MouseEvent, chat: ChatData) => {
+    e.preventDefault();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      chat
+    });
+  };
+
+  const handleContextMenuClose = () => {
+    setContextMenu({
+      visible: false,
+      x: 0,
+      y: 0,
+      chat: null
+    });
+  };
+
+  const handleOpenChatOptions = () => {
+    if (contextMenu.chat) {
+      // Convert ChatData to Chat format
+      const chat: Chat = {
+        chat_id: contextMenu.chat.chat_id,
+        name: contextMenu.chat.name || '',
+        creator_id: contextMenu.chat.creator_id || '',
+        is_group: contextMenu.chat.is_group,
+        description: contextMenu.chat.description,
+        group_name: contextMenu.chat.group_name,
+        last_message_content: contextMenu.chat.last_message_content,
+        last_message_timestamp: contextMenu.chat.last_message_timestamp,
+        unread_count: contextMenu.chat.unread_count || 0,
+        created_at: new Date(contextMenu.chat.created_at).getTime() / 1000,
+        participants: contextMenu.chat.participants?.map(p => p.user_id) || []
+      };
+      onOpenChatOptions(chat);
+    }
+    handleContextMenuClose();
+  };
+
   // Handle search activation
         const handleSearchClick = () => {
         setIsSearchActive(!isSearchActive);
@@ -277,11 +334,33 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
   const handleCreateChatWithFriend = async (friend: { user_id: string; username: string; name: string; email: string; picture?: string }) => {
     try {
       console.log("Creating chat with friend:", friend);
-      // TODO: Implement chat creation logic
+      
+      // Get current user token
+      const token = services.sessionManager.getToken();
+      if (!token) {
+        throw new Error("No token available");
+      }
+      
+      // Create one-to-one chat
+      const chatName = `Direct message with ${friend.username}`;
+      const members = [
+        { user_id: friend.user_id, is_admin: false }
+      ];
+      
+      const chatId = await nativeApiService.createChat(chatName, false, members);
+      
+      console.log("Chat created successfully with ID:", chatId);
       setShowCreateChat(false);
+      
+      // Reload chats to show the new chat
       await loadChats();
+      
+      // Open the newly created chat
+      onSelect(chatId);
+      
     } catch (error) {
       console.error("Failed to create chat:", error);
+      // You might want to show an error message to the user here
     }
   };
 
@@ -474,98 +553,15 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
         {showCreateChat ? (
-          <div style={{ padding: "16px" }}>
-            <h3 style={{
-              fontSize: "16px",
-              fontWeight: "600",
-              color: theme.text,
-              marginBottom: "16px"
-            }}>
-              Create New Chat
-            </h3>
-            
-            {filteredFriends.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "24px" }}>
-                <p style={{ fontSize: "14px", color: theme.textSecondary }}>
-                  {searchQuery ? "Try a different search term" : "Add friends to start chatting"}
-                </p>
-              </div>
-            ) : (
-              filteredFriends.map((friend) => (
-                <div
-                  key={friend.user_id}
-                  onClick={() => handleCreateChatWithFriend(friend)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "12px 16px",
-                    cursor: "pointer",
-                    backgroundColor: "transparent",
-                    borderLeft: "3px solid transparent",
-                    transition: "all 0.2s ease"
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = theme.hover;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                  }}
-                >
-                  {/* Avatar */}
-                  <div style={{ 
-                    width: "48px", 
-                    height: "48px", 
-                    borderRadius: "50%",
-                    backgroundColor: theme.primary,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "white",
-                    fontWeight: "600",
-                    fontSize: "18px",
-                    marginRight: "12px"
-                  }}>
-                    {friend.username.charAt(0).toUpperCase()}
-                  </div>
-                  
-                  {/* Friend Info */}
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      fontSize: "16px",
-                      fontWeight: "600",
-                      color: theme.text,
-                      marginBottom: "4px"
-                    }}>
-                      {friend.username}
-                    </div>
-                    <div style={{
-                      fontSize: "14px",
-                      color: theme.textSecondary
-                    }}>
-                      {friend.name}
-                    </div>
-                  </div>
-
-                  {/* Chat Icon */}
-                  <div style={{
-                    width: "32px",
-                    height: "32px",
-                    borderRadius: "50%",
-                    backgroundColor: theme.primary,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "white",
-                    fontSize: "16px"
-                  }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    </svg>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <CreateChatForm
+            onCreated={(chatId: string) => {
+              setShowCreateChat(false);
+              loadChats();
+              // Open the newly created chat
+              onSelect(chatId);
+            }}
+            onCancel={() => setShowCreateChat(false)}
+          />
         ) : (!isSearchActive || !searchQuery) && filteredChats.length === 0 ? (
           <div style={{
             display: "flex",
@@ -615,6 +611,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
             <div
               key={chat.chat_id}
               onClick={() => handleChatSelect(chat.chat_id)}
+              onContextMenu={(e) => handleContextMenu(e, chat)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -720,6 +717,94 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onToggleSidebar, sidebarC
           ))
         )}
       </div>
+
+      {/* Context Menu */}
+      {contextMenu.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            backgroundColor: theme.background,
+            border: `1px solid ${theme.border}`,
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            zIndex: 1000,
+            minWidth: '160px'
+          }}
+          onClick={handleContextMenuClose}
+        >
+          <div
+            onClick={handleOpenChatOptions}
+            style={{
+              padding: '12px 16px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: theme.text,
+              borderBottom: `1px solid ${theme.border}`,
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = theme.hover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            Chat Info
+          </div>
+          <div
+            style={{
+              padding: '12px 16px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: theme.text,
+              borderBottom: `1px solid ${theme.border}`,
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = theme.hover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            Leave Chat
+          </div>
+          <div
+            style={{
+              padding: '12px 16px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: '#EF4444',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = theme.hover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            Delete Chat
+          </div>
+        </div>
+      )}
+
+      {/* Click outside to close context menu */}
+      {contextMenu.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 999
+          }}
+          onClick={handleContextMenuClose}
+        />
+      )}
     </div>
   );
 };

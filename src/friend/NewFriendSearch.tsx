@@ -21,7 +21,7 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
     return () => {
       // Clear all timeouts when component unmounts
       Object.values(userTimeouts).forEach(timeout => {
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
       });
     };
   }, [userTimeouts]);
@@ -120,7 +120,7 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
           delete newTimeouts[userId];
           return newTimeouts;
         });
-      }, 2000);
+      }, 1500);
       
       // Store timeout reference
       setUserTimeouts(prev => ({ ...prev, [userId]: timeout }));
@@ -133,12 +133,28 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
       // Handle specific error cases gracefully
       let errorMessage = "Failed to send friend request";
       if (typeof error === 'string') {
-        if (error.includes("already exists") || error.includes("409")) {
+        if (error.includes("already exists") || error.includes("409") || error.includes("Conflict")) {
           errorMessage = "Friend request already sent";
         } else if (error.includes("not found") || error.includes("404")) {
           errorMessage = "User not found";
         } else if (error.includes("unauthorized") || error.includes("401")) {
           errorMessage = "Session expired, please login again";
+        } else if (error.includes("already your friend")) {
+          errorMessage = "User is already your friend";
+        } else if (error.includes("already sent")) {
+          errorMessage = "Friend request already sent";
+        }
+      } else if (error instanceof Error) {
+        if (error.message.includes("already exists") || error.message.includes("409") || error.message.includes("Conflict")) {
+          errorMessage = "Friend request already sent";
+        } else if (error.message.includes("not found") || error.message.includes("404")) {
+          errorMessage = "User not found";
+        } else if (error.message.includes("unauthorized") || error.message.includes("401")) {
+          errorMessage = "Session expired, please login again";
+        } else if (error.message.includes("already your friend")) {
+          errorMessage = "User is already your friend";
+        } else if (error.message.includes("already sent")) {
+          errorMessage = "Friend request already sent";
         }
       }
       

@@ -123,46 +123,76 @@ interface ThemeProviderProps {
 }
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
+  console.log('[ThemeProvider] Rendering ThemeProvider');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [colorScheme, setColorSchemeState] = useState<ColorScheme>('blue');
 
-  // Load theme preference from database on mount
+  // Load theme preference from localStorage and system preference on mount
   useEffect(() => {
     const loadThemePreference = async () => {
       try {
         setIsLoading(true);
-        console.log("[ThemeContext] Loading theme preference from database...");
+        console.log("[ThemeContext] Loading theme preference...");
         
-        // Get most recent user from database
-        const currentUser = await invoke<any>('db_get_most_recent_user');
+        // Try to get from localStorage first
+        const storedDarkMode = localStorage.getItem('darkMode');
+        const storedColorScheme = localStorage.getItem('colorScheme') as ColorScheme;
         
-        if (currentUser && currentUser.user_id) {
-          console.log("[ThemeContext] Found user, loading theme preference...");
-          const userTheme = await invoke<boolean>('db_get_dark_mode', { 
-            user_id: currentUser.user_id 
-          });
-          console.log("[ThemeContext] User theme preference:", userTheme);
-          setIsDarkMode(userTheme);
-
-          // Load color scheme preference
-          try {
-            const userColorScheme = await invoke<string>('db_get_color_scheme', { 
-              user_id: currentUser.user_id 
-            });
-            if (userColorScheme && ['blue', 'green', 'purple', 'orange', 'red'].includes(userColorScheme)) {
-              setColorSchemeState(userColorScheme as ColorScheme);
-              console.log("[ThemeContext] User color scheme preference:", userColorScheme);
-            }
-          } catch (colorError) {
-            console.warn('[ThemeContext] Failed to load color scheme preference, using default:', colorError);
-          }
+        let initialDarkMode = false;
+        let initialColorScheme: ColorScheme = 'blue';
+        
+        if (storedDarkMode !== null) {
+          initialDarkMode = storedDarkMode === 'true';
+          console.log("[ThemeContext] Using stored dark mode preference:", initialDarkMode);
         } else {
-          console.log("[ThemeContext] No user found, using system preference");
           // Default to system preference
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          setIsDarkMode(prefersDark);
+          initialDarkMode = prefersDark;
+          console.log("[ThemeContext] Using system preference:", prefersDark);
         }
+        
+        if (storedColorScheme && ['blue', 'green', 'purple', 'orange', 'red'].includes(storedColorScheme)) {
+          initialColorScheme = storedColorScheme;
+          console.log("[ThemeContext] Using stored color scheme:", initialColorScheme);
+        }
+        
+        setIsDarkMode(initialDarkMode);
+        setColorSchemeState(initialColorScheme);
+        
+        // Try to sync with backend later (non-blocking)
+        setTimeout(async () => {
+          try {
+            const currentUser = await invoke<any>('db_get_most_recent_user');
+            if (currentUser && currentUser.user_id) {
+              const userTheme = await invoke<boolean>('db_get_dark_mode', { 
+                user_id: currentUser.user_id 
+              });
+              console.log("[ThemeContext] Backend theme preference:", userTheme);
+              
+              // Only update if backend has a different preference
+              if (userTheme !== initialDarkMode) {
+                setIsDarkMode(userTheme);
+                localStorage.setItem('darkMode', userTheme.toString());
+              }
+              
+              try {
+                const userColorScheme = await invoke<string>('db_get_color_scheme', { 
+                  user_id: currentUser.user_id 
+                });
+                if (userColorScheme && ['blue', 'green', 'purple', 'orange', 'red'].includes(userColorScheme)) {
+                  setColorSchemeState(userColorScheme as ColorScheme);
+                  localStorage.setItem('colorScheme', userColorScheme);
+                }
+              } catch (colorError) {
+                console.warn('[ThemeContext] Failed to load color scheme from backend:', colorError);
+              }
+            }
+          } catch (error) {
+            console.warn('[ThemeContext] Failed to sync with backend:', error);
+          }
+        }, 1000); // Wait 1 second before trying to sync with backend
+        
       } catch (error) {
         console.error('[ThemeContext] Failed to load theme preference:', error);
         // Default to system preference
@@ -241,44 +271,40 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const setTheme = async (isDark: boolean) => {
     console.log(`[ThemeContext] Setting theme to ${isDark ? 'dark' : 'light'}`);
     setIsDarkMode(isDark);
+    localStorage.setItem('darkMode', isDark.toString());
     
     try {
-      // Get most recent user from database
+      // Try to save to backend (non-blocking)
       const currentUser = await invoke<any>('db_get_most_recent_user');
-      
       if (currentUser && currentUser.user_id) {
         await invoke('db_update_dark_mode', { 
           user_id: currentUser.user_id, 
           is_dark_mode: isDark 
         });
         console.log(`[ThemeContext] Theme preference saved to database`);
-      } else {
-        console.warn('[ThemeContext] No user found, cannot save theme preference');
       }
     } catch (error) {
-      console.error('[ThemeContext] Failed to save theme preference:', error);
+      console.warn('[ThemeContext] Failed to save theme preference to backend:', error);
     }
   };
 
   const setColorScheme = async (scheme: ColorScheme) => {
     console.log(`[ThemeContext] Setting color scheme to ${scheme}`);
     setColorSchemeState(scheme);
+    localStorage.setItem('colorScheme', scheme);
     
     try {
-      // Get most recent user from database
+      // Try to save to backend (non-blocking)
       const currentUser = await invoke<any>('db_get_most_recent_user');
-      
       if (currentUser && currentUser.user_id) {
         await invoke('db_update_color_scheme', { 
           user_id: currentUser.user_id, 
           color_scheme: scheme 
         });
         console.log(`[ThemeContext] Color scheme preference saved to database`);
-      } else {
-        console.warn('[ThemeContext] No user found, cannot save color scheme preference');
       }
     } catch (error) {
-      console.error('[ThemeContext] Failed to save color scheme preference:', error);
+      console.warn('[ThemeContext] Failed to save color scheme preference to backend:', error);
     }
   };
 

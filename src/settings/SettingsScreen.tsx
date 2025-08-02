@@ -1,4 +1,5 @@
-import React from 'react';
+// SECOND WINDOW: SettingsScreen component - displays settings categories in the second window
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../AppContext';
 import { useTheme } from '../components/ThemeContext';
 import ScreenHeader from '../components/ScreenHeader';

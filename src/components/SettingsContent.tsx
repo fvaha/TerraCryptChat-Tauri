@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// THIRD WINDOW: SettingsContent component - displays settings content in the third window
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../AppContext';
 import { useTheme } from './ThemeContext';
 import { ColorScheme } from './ThemeContext';

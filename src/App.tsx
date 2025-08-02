@@ -5,6 +5,7 @@ import LoginScreen from './auth/LoginScreen';
 import RegisterForm from './auth/RegisterForm';
 import ChatList from './chat/ChatList';
 import ChatScreen from './chat/ChatScreen';
+import ChatOptionsScreen from './chat/ChatOptionsScreen';
 import FriendsScreen from './friend/FriendsScreen';
 import SettingsScreen from './settings/SettingsScreen';
 import ErrorBoundary from './ErrorBoundary';
@@ -17,9 +18,15 @@ import SettingsContent from './components/SettingsContent';
 import { nativeApiService } from './api/nativeApiService';
 import { Chat } from './models/models';
 
+
+
+
+
 const ChatApp: React.FC = () => {
-  const { user, token } = useAppContext();
+  const { user, token, sessionState } = useAppContext();
   const { theme, isLoading: themeLoading } = useTheme();
+  
+  // Minimal logging for performance
   const [chats, setChats] = useState<Chat[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -29,26 +36,29 @@ const ChatApp: React.FC = () => {
   const [showRegister, setShowRegister] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isSessionChecking, setIsSessionChecking] = useState(true);
+  
+  // Chat options screen state
+  const [showChatOptions, setShowChatOptions] = useState(false);
+  const [selectedChatForOptions, setSelectedChatForOptions] = useState<Chat | null>(null);
 
-  // Define loadChats and loadFriends functions with useCallback to prevent infinite loops
+  // Load data from database instantly, update in background
   const loadChats = useCallback(async () => {
     try {
-      console.log('Loading chats...');
-      
-      // First try to get cached chats
-      let chatsData = await nativeApiService.getCachedChatsOnly();
-      console.log('Cached chats loaded:', chatsData);
-      
-      // Then try to fetch fresh data from API and save to database
-      try {
-        const freshChats = await nativeApiService.fetchAllChatsAndSave(token!);
-        console.log('Fresh chats loaded and saved:', freshChats);
-        chatsData = freshChats;
-      } catch (error) {
-        console.warn('Failed to fetch fresh chats, using cached data:', error);
-      }
-      
+      // Load from database instantly
+      const chatsData = await nativeApiService.getCachedChatsOnly();
       setChats(Array.isArray(chatsData) ? chatsData : []);
+      
+      // Update from API in background (non-blocking)
+      setTimeout(async () => {
+        try {
+          await nativeApiService.fetchAllChatsAndSave(token!);
+          const updatedChats = await nativeApiService.getCachedChatsOnly();
+          setChats(Array.isArray(updatedChats) ? updatedChats : []);
+        } catch (error) {
+          // Silent fail - user already has data from database
+        }
+      }, 100);
     } catch (error) {
       console.error('Failed to load chats:', error);
     }
@@ -56,54 +66,35 @@ const ChatApp: React.FC = () => {
 
   const loadFriends = useCallback(async () => {
     try {
-      console.log('Loading friends...');
+      // Load from database instantly
+      const friendsData = await nativeApiService.getCachedFriendsOnly();
       
-      // First try to get cached friends
-      let friendsData = await nativeApiService.getCachedFriendsOnly();
-      console.log('Cached friends loaded:', friendsData);
-      
-      // Then try to fetch fresh data from API and save to database
-      try {
-        const freshFriends = await nativeApiService.fetchAllFriendsAndSave(token!);
-        console.log('Fresh friends loaded and saved:', freshFriends);
-        friendsData = freshFriends;
-      } catch (error) {
-        console.warn('Failed to fetch fresh friends, using cached data:', error);
-      }
-      
-      // setFriends(Array.isArray(friendsData) ? friendsData : []); // This line was removed
+      // Update from API in background (non-blocking)
+      setTimeout(async () => {
+        try {
+          await nativeApiService.fetchAllFriendsAndSave(token!);
+        } catch (error) {
+          // Silent fail - user already has data from database
+        }
+      }, 100);
     } catch (error) {
       console.error('Failed to load friends:', error);
     }
   }, [token]);
 
-  // Initialize app and handle errors
+  // Initialize app instantly
   useEffect(() => {
-    const initializeApp = async () => {
-      try {
-        setIsInitializing(true);
-        setAppError(null);
-        
-        // Test native API connection
-        try {
-          await nativeApiService.resizeWindow(800, 600);
-          console.log('Native API connection successful');
-        } catch (error) {
-          console.error('Native API connection failed:', error);
-          setAppError('Failed to connect to native backend. Please restart the application.');
-          return;
-        }
-        
-        setIsInitializing(false);
-      } catch (error) {
-        console.error('App initialization failed:', error);
-        setAppError('Failed to initialize application. Please restart the application.');
-        setIsInitializing(false);
-      }
-    };
-
-    initializeApp();
+    setIsInitializing(false);
   }, []);
+
+  // Handle session checking - instant
+  useEffect(() => {
+    if (user && token) {
+      setIsSessionChecking(false);
+    } else if (sessionState.isSessionInitialized) {
+      setIsSessionChecking(false);
+    }
+  }, [user, token, sessionState.isSessionInitialized]);
 
   // Load chats when user is logged in
   useEffect(() => {
@@ -113,7 +104,7 @@ const ChatApp: React.FC = () => {
     }
   }, [user, token, loadChats, loadFriends]);
 
-  // Auto-resize window based on content
+  // Auto-resize window based on content (non-blocking)
   useEffect(() => {
     const resizeWindow = async () => {
       if (!token || !user) {
@@ -175,6 +166,16 @@ const ChatApp: React.FC = () => {
     document.body.style.zoom = newZoom.toString();
   };
 
+  const handleOpenChatOptions = (chat: Chat) => {
+    setSelectedChatForOptions(chat);
+    setShowChatOptions(true);
+  };
+
+  const handleCloseChatOptions = () => {
+    setShowChatOptions(false);
+    setSelectedChatForOptions(null);
+  };
+
   // Show error screen if app failed to initialize
   if (appError) {
     return (
@@ -211,8 +212,8 @@ const ChatApp: React.FC = () => {
     );
   }
 
-  // Show loading screen while initializing
-  if (isInitializing) {
+  // Show loading screen while initializing or checking session
+  if (isInitializing || isSessionChecking) {
     return (
       <div style={{
         height: '100vh',
@@ -239,7 +240,7 @@ const ChatApp: React.FC = () => {
             animation: 'spin 1s linear infinite'
           }} />
           <span style={{ fontSize: '14px', color: '#9ca3af' }}>
-            Initializing application...
+            {isInitializing ? 'Initializing application...' : 'Checking session...'}
           </span>
         </div>
       </div>
@@ -283,27 +284,26 @@ const ChatApp: React.FC = () => {
 
   // Show login/register screens
   if (!token || !user) {
+    
     return (
       <div style={{
         height: '100vh',
         width: '100vw',
         backgroundColor: theme.background,
         color: theme.text,
-        fontFamily: 'Inter, system-ui, sans-serif'
+        fontFamily: 'Inter, system-ui, sans-serif',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
       }}>
         {showRegister ? (
-          <RegisterForm
-            onSuccess={() => {
-              console.log('Registration successful');
-              setShowRegister(false);
-            }}
+          <RegisterForm 
+            onSuccess={() => setShowRegister(false)}
             onBackToLogin={() => setShowRegister(false)}
           />
         ) : (
-          <LoginScreen
-            onSuccess={() => {
-              console.log('Login successful');
-            }}
+          <LoginScreen 
+            onSuccess={() => setShowRegister(false)}
             onShowRegister={() => setShowRegister(true)}
           />
         )}
@@ -341,29 +341,32 @@ const ChatApp: React.FC = () => {
         display: 'flex',
         overflow: 'hidden'
       }}>
-        {/* Sidebar */}
+        {/* FIRST WINDOW: Sidebar */}
         <div style={{
-          width: sidebarCollapsed ? '0px' : '72px',
-          backgroundColor: theme.sidebar,
-          borderRight: `1px solid ${theme.sidebarBorder}`,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: '16px 0',
-          flexShrink: 0,
-          transition: 'width 0.3s ease-in-out',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          <Sidebar
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            isCollapsed={sidebarCollapsed}
-            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          />
-        </div>
+           width: sidebarCollapsed ? '0px' : '72px',
+           backgroundColor: theme.sidebar,
+           borderRight: `1px solid ${theme.sidebarBorder}`,
+           display: 'flex',
+           flexDirection: 'column',
+           alignItems: 'center',
+           padding: '16px 0',
+           flexShrink: 0,
+           transition: 'width 0.2s ease-in-out',
+           position: 'relative',
+           overflow: 'hidden',
+           opacity: sidebarCollapsed ? 0 : 1
+         }}>
+           <Sidebar
+             activeTab={activeTab}
+             onTabChange={setActiveTab}
+             isCollapsed={sidebarCollapsed}
+             onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+           />
+         </div>
+        
+        
 
-        {/* Content Area */}
+        {/* SECOND & THIRD WINDOW: Content Area */}
         <div style={{
           flex: 1,
           display: 'flex',
@@ -375,7 +378,7 @@ const ChatApp: React.FC = () => {
 
           {activeTab === 'chats' && (
             <>
-              {/* Chat List Panel */}
+              {/* SECOND WINDOW: ChatList */}
               <div style={{
                 width: '280px', // Reduced from 350px (-20%)
                 backgroundColor: theme.sidebar,
@@ -387,19 +390,27 @@ const ChatApp: React.FC = () => {
               }}>
                 <ChatList
                   onSelect={setSelectedChatId}
+                  onOpenChatOptions={handleOpenChatOptions}
                   onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                   sidebarCollapsed={sidebarCollapsed}
                 />
               </div>
 
-              {/* Chat Screen Panel */}
+              {/* THIRD WINDOW: ChatScreen/ChatOptionsScreen */}
               <div style={{
                 flex: 1,
                 backgroundColor: theme.background,
                 overflow: 'hidden',
                 position: 'relative'
               }}>
-                {selectedChatId ? (
+                {showChatOptions && selectedChatForOptions ? (
+                  <ChatOptionsScreen
+                    chat={selectedChatForOptions}
+                    onClose={handleCloseChatOptions}
+                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                    sidebarCollapsed={sidebarCollapsed}
+                  />
+                ) : selectedChatId ? (
                   <ChatScreen chatId={selectedChatId} />
                 ) : (
                   <div style={{
@@ -419,7 +430,7 @@ const ChatApp: React.FC = () => {
 
           {activeTab === 'friends' && (
             <>
-              {/* Friends Sidebar */}
+              {/* SECOND WINDOW: FriendsScreen */}
               <div style={{
                 width: '280px', // Reduced from 350px (-20%)
                 backgroundColor: theme.sidebar,
@@ -451,14 +462,21 @@ const ChatApp: React.FC = () => {
                 />
               </div>
 
-              {/* Friend Chat Screen Panel */}
+              {/* THIRD WINDOW: ChatScreen/ChatOptionsScreen */}
               <div style={{
                 flex: 1,
                 backgroundColor: theme.background,
                 overflow: 'hidden',
                 position: 'relative'
               }}>
-                {selectedChatId ? (
+                {showChatOptions && selectedChatForOptions ? (
+                  <ChatOptionsScreen
+                    chat={selectedChatForOptions}
+                    onClose={handleCloseChatOptions}
+                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                    sidebarCollapsed={sidebarCollapsed}
+                  />
+                ) : selectedChatId ? (
                   <ChatScreen chatId={selectedChatId} />
                 ) : (
                   <div style={{
@@ -478,7 +496,7 @@ const ChatApp: React.FC = () => {
 
           {activeTab === 'settings' && (
             <>
-              {/* Settings Sidebar */}
+              {/* SECOND WINDOW: SettingsScreen */}
               <div style={{
                 width: '250px',
                 backgroundColor: theme.sidebar,
@@ -496,7 +514,7 @@ const ChatApp: React.FC = () => {
                 />
               </div>
               
-              {/* Settings Content Panel */}
+              {/* THIRD WINDOW: SettingsContent */}
               <SettingsContent 
                 selectedCategory={selectedSettingsCategory} 
                 zoomLevel={zoomLevel}
@@ -517,6 +535,35 @@ const App = () => {
         <ChatApp />
       </ErrorBoundary>
     </ThemeProvider>
+  );
+};
+
+// Fallback component in case everything fails
+const FallbackApp = () => {
+  return (
+    <div style={{
+      height: '100vh',
+      width: '100vw',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#1a1a1a',
+      color: '#ffffff',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      flexDirection: 'column',
+      gap: '20px'
+    }}>
+      <h1 style={{ fontSize: '24px', margin: 0 }}>TerraCrypt Chat</h1>
+      <p style={{ fontSize: '16px', margin: 0 }}>Loading application...</p>
+      <div style={{
+        width: '32px',
+        height: '32px',
+        border: '3px solid #404040',
+        borderTop: '3px solid #3b82f6',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite'
+      }} />
+    </div>
   );
 };
 

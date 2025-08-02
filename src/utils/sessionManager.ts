@@ -1,5 +1,6 @@
 import { nativeApiService } from '../api/nativeApiService';
 import { invoke } from '@tauri-apps/api/core';
+import { websocketService } from '../websocket/websocketService';
 
 export interface SessionState {
   isLoggedIn: boolean;
@@ -37,64 +38,67 @@ export class SessionManager {
 
   private emitStateChange(): void {
     const state = this.getState();
+    console.log(' [SessionManager] Emitting state change:', state);
+    console.log(' [SessionManager] Number of listeners:', this.stateListeners.length);
     this.stateListeners.forEach(listener => listener(state));
   }
 
   async initializeSession(): Promise<boolean> {
     try {
-      console.log(' Initializing session...');
-      
-      // Ensure database is initialized
-      try {
-        console.log(' Ensuring database is initialized...');
-        await invoke('db_ensure_initialized');
-        console.log(' Database initialization completed');
-      } catch (initError) {
-        console.error(' Failed to initialize database:', initError);
-        // Continue anyway, the database might already be initialized
-      }
-      
-      // Database-first approach like Kotlin app
-      const cachedUser = await invoke<any>('db_get_most_recent_user');
-      console.log('Cached user from database:', cachedUser ? 'Found' : 'None');
-      
-      if (cachedUser && cachedUser.token_hash) {
-        // Check if token is expired (like Kotlin app)
-        if (this.isTokenExpired(cachedUser.token_hash)) {
-          console.log('Token is expired, attempting silent relogin...');
-          // Try silent relogin with stored credentials
-          const success = await this.attemptSilentRelogin();
-          if (!success) {
-            console.log('Silent relogin failed, resetting database and logging out');
-            // Reset database on failed session restoration
-            try {
-              await invoke('db_clear_all_data');
-              console.log(' Database cleared after failed session restoration');
-            } catch (resetError) {
-              console.error(' Failed to clear database after session restoration error:', resetError);
-            }
-            await this.logOut();
-            this.isInitialized = true;
-            this.emitStateChange();
-            return false;
-          }
-        } else {
-          // Token is valid, restore session
-          await this.updateTokenAndState(cachedUser.token_hash, cachedUser);
-          
-          // Data is already stored locally in SQLite database
-          console.log('Using locally stored data from SQLite database');
-        }
-      } else {
-        console.log('No cached user found, starting fresh');
-        await this.logOut();
-      }
-
+      // Set initialized to true immediately to avoid blocking
       this.isInitialized = true;
       this.emitStateChange();
-      return this.isLoggedIn();
+      
+      // Initialize database and check session immediately
+      try {
+        await invoke('db_ensure_initialized');
+        
+        // Database-first approach like Kotlin app
+        const cachedUser = await invoke<any>('db_get_most_recent_user');
+        
+        if (cachedUser && cachedUser.token_hash) {
+          // Check if token is expired (like Kotlin app)
+          if (this.isTokenExpired(cachedUser.token_hash)) {
+            // Try silent relogin with stored credentials
+            const success = await this.attemptSilentRelogin();
+            if (!success) {
+              // Reset database on failed session restoration
+              try {
+                await invoke('db_clear_all_data');
+              } catch (resetError) {
+                // Silent fail
+              }
+              await this.logOut();
+              this.emitStateChange();
+              return false;
+            }
+          } else {
+            // Token is valid, restore session immediately
+            await this.updateTokenAndState(cachedUser.token_hash, cachedUser);
+            
+            // Connect WebSocket in background
+            setTimeout(async () => {
+              try {
+                await websocketService.connect(cachedUser.token_hash);
+              } catch (error) {
+                // Silent fail - user already has data
+              }
+            }, 100);
+            
+            this.emitStateChange();
+            return true; // User is logged in
+          }
+        } else {
+          await this.logOut();
+        }
+        
+        this.emitStateChange();
+        return false; // No user found
+      } catch (error) {
+        // Don't set error state, just return false
+        return false;
+      }
     } catch (error) {
-      console.error('Session initialization failed:', error);
       this.isInitialized = true;
       this.emitStateChange();
       return false;
@@ -110,10 +114,8 @@ export class SessionManager {
       const exp = payload.exp;
       const now = Math.floor(Date.now() / 1000);
       
-      console.log(`Token exp: ${exp}, now: ${now}`);
       return exp <= now;
     } catch (error) {
-      console.error('Failed to parse token:', error);
       return true;
     }
   }
@@ -146,20 +148,25 @@ export class SessionManager {
 
   private async updateTokenAndState(token: string, user: any) {
     console.log(' Updating token and state...');
+    console.log(' Token:', token ? token.substring(0, 20) + '...' : 'null');
+    console.log(' User:', user ? 'has user data' : 'null');
+    
     this.token = token;
     this.currentUser = user;
     
     // Connect WebSocket after successful login
     try {
       console.log(' Connecting WebSocket...');
-      await invoke('connect_socket', { token });
+      await websocketService.connect(token);
       console.log(' WebSocket connected successfully');
     } catch (error) {
       console.error(' Failed to connect WebSocket:', error);
       // Don't fail the login if WebSocket fails
     }
     
+    console.log(' Emitting state change...');
     this.emitStateChange();
+    console.log(' State change emitted. Current state:', this.getState());
   }
 
   async login(username: string, password: string): Promise<{ success: boolean; error?: string }> {
@@ -291,7 +298,7 @@ export class SessionManager {
         // Connect WebSocket after successful login
         try {
           console.log(' Connecting WebSocket...');
-          await invoke('connect_socket', { token: accessToken });
+          await websocketService.connect(accessToken);
           console.log(' WebSocket connected successfully');
         } catch (error) {
           console.error(' Failed to connect WebSocket:', error);
@@ -317,6 +324,14 @@ export class SessionManager {
     try {
       console.log(' Starting logout process...');
       
+      // Disconnect WebSocket
+      try {
+        await websocketService.disconnect();
+        console.log(' WebSocket disconnected successfully');
+      } catch (error) {
+        console.error(' Failed to disconnect WebSocket:', error);
+      }
+      
       // Clear token from native API service
       nativeApiService.clearToken();
       
@@ -339,7 +354,13 @@ export class SessionManager {
   }
 
   isLoggedIn(): boolean {
-    return !!this.token && !!this.currentUser;
+    const isLoggedIn = !!this.token && !!this.currentUser;
+    console.log('[SessionManager] isLoggedIn() called:', {
+      hasToken: !!this.token,
+      hasUser: !!this.currentUser,
+      result: isLoggedIn
+    });
+    return isLoggedIn;
   }
 
   async refreshToken(): Promise<boolean> {

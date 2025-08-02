@@ -1,3 +1,4 @@
+// THIRD WINDOW: ChatScreen component - displays chat messages in the third window
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 // Debounce utility function - commented out as unused

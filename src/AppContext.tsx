@@ -52,13 +52,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isLoading, setIsLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [error, setError] = useState<string | null>(null);
-  const [sessionState] = useState<SessionState>({
+  const [sessionState, setSessionState] = useState<SessionState>({
     isLoggedIn: false,
     currentUser: null,
     isSessionInitialized: false,
     isDarkModeEnabled: false
   });
-  const [websocketStatus] = useState<WebSocketStatus>({
+  const [websocketStatus, setWebsocketStatus] = useState<WebSocketStatus>({
     connection_state: ConnectionState.Disconnected,
     is_connected: false,
     is_connecting: false,
@@ -68,40 +68,98 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     heartbeat_interval: 30,
   });
 
-  // Initialize session on mount
+  // Initialize session on mount and listen to session changes
   useEffect(() => {
     const initializeSession = async () => {
       try {
         console.log('Initializing session...');
-        const isLoggedIn = await sessionManager.initializeSession();
         
-        if (isLoggedIn) {
-          const currentUser = sessionManager.getCurrentUser();
-          const currentToken = sessionManager.getToken();
+        // Set up WebSocket status listener first
+        const handleWebSocketStatusChange = (status: WebSocketStatus) => {
+          console.log('WebSocket status changed:', status);
+          setWebsocketStatus(status);
+        };
+
+        websocketService.onStatusChange(handleWebSocketStatusChange);
+
+        // Initialize session immediately
+        try {
+          const isLoggedIn = await sessionManager.initializeSession();
           
-          if (currentUser && currentToken) {
-            setUser(currentUser);
-            setToken(currentToken);
-            console.log('Session restored successfully');
+          if (isLoggedIn) {
+            const currentUser = sessionManager.getCurrentUser();
+            const currentToken = sessionManager.getToken();
+            
+            console.log('[AppContext] Session manager reports logged in');
+            console.log('[AppContext] Current user:', currentUser ? 'has user' : 'no user');
+            console.log('[AppContext] Current token:', currentToken ? 'has token' : 'no token');
+            
+            if (currentUser && currentToken) {
+              setUser(currentUser);
+              setToken(currentToken);
+              console.log('[AppContext] Session restored successfully');
+            } else {
+              console.log('[AppContext] Session restoration failed - missing user or token');
+            }
+          } else {
+            console.log('[AppContext] Session manager reports not logged in');
           }
+          
+          console.log('Session initialization completed');
+          
+          // Verify MessageService is initialized
+          console.log('Checking MessageService initialization...');
+          if (messageService.messageService) {
+            console.log('MessageService is available');
+          } else {
+            console.log('MessageService is not available');
+          }
+
+          // Debug: Log current session state
+          console.log('[AppContext] Session initialization completed. Current state:', {
+            isLoggedIn: sessionManager.isLoggedIn(),
+            currentUser: sessionManager.getCurrentUser(),
+            token: sessionManager.getToken() ? 'has token' : 'no token'
+          });
+        } catch (error) {
+          console.error('Session initialization failed:', error);
+          setError('Failed to initialize session. Please restart the application.');
         }
         
-        console.log('Session initialization completed');
-        
-        // Verify MessageService is initialized
-        console.log('Checking MessageService initialization...');
-        if (messageService.messageService) {
-          console.log('MessageService is available');
-        } else {
-          console.log('MessageService is not available');
-        }
       } catch (error) {
-        console.error('Session initialization failed:', error);
-        setError('Failed to initialize session. Please restart the application.');
+        console.error('AppContext initialization failed:', error);
+        setError('Failed to initialize application. Please restart the application.');
       }
     };
 
+    // Listen to session manager state changes
+    const unsubscribe = sessionManager.onStateChange((newState) => {
+      console.log('[AppContext] Session state changed:', newState);
+      setSessionState(newState);
+      
+      // Update user and token based on session state
+      if (newState.isLoggedIn && newState.currentUser) {
+        console.log('[AppContext] Setting user and token from session state');
+        setUser(newState.currentUser);
+        setToken(sessionManager.getToken());
+      } else {
+        console.log('[AppContext] Clearing user and token');
+        setUser(null);
+        setToken(null);
+      }
+    });
+
     initializeSession();
+
+    // Cleanup listeners on unmount
+    return () => {
+      unsubscribe();
+      // Remove the WebSocket status listener
+      websocketService.offStatusChange((status: WebSocketStatus) => {
+        console.log('WebSocket status changed:', status);
+        setWebsocketStatus(status);
+      });
+    };
   }, []);
 
   // Updated login function to handle new response format

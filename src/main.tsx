@@ -39,6 +39,12 @@ console.error = (...args) => {
   }
 };
 
+// Remove loading screen when React app starts
+const loadingScreen = document.getElementById('loading-screen');
+if (loadingScreen) {
+  loadingScreen.remove();
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AppProvider>

@@ -78,16 +78,64 @@ pub struct ChatMessage {
 }
 
 // ======== CHAT COMMANDS ========
+#[derive(serde::Deserialize)]
+struct CreateChatResponse {
+    pub chat_id: String,
+}
+
 #[tauri::command]
 pub async fn create_chat(
-    _token: String,
+    token: String,
     name: String,
-    _is_group: bool,
+    is_group: bool,
     members: Vec<ParticipantSimple>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     println!("Creating chat with name: {}", name);
     println!("Members count: {}", members.len());
-    Ok(())
+    println!("Is group: {}", is_group);
+    
+    let client = reqwest::Client::new();
+    
+    // Prepare the request body
+    let request_body = serde_json::json!({
+        "name": name,
+        "is_group": is_group,
+        "members": members.iter().map(|m| {
+            serde_json::json!({
+                "user_id": m.user_id,
+                "is_admin": m.is_admin
+            })
+        }).collect::<Vec<_>>()
+    });
+    
+    println!("Request body: {}", serde_json::to_string_pretty(&request_body).unwrap());
+    
+    let res = client
+        .post("https://dev.v1.terracrypt.cc/api/v1/chats")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let status = res.status();
+    let text = res.text().await.unwrap_or_else(|_| "<no body>".into());
+    
+    println!("Create chat response status: {}", status);
+    println!("Create chat response body: {}", text);
+
+    if status.is_success() {
+        // Parse the response to get the chat_id
+        let response: CreateChatResponse = serde_json::from_str(&text)
+            .map_err(|e| format!("Failed to parse response: {e}"))?;
+        
+        println!("Successfully created chat with ID: {}", response.chat_id);
+        Ok(response.chat_id)
+    } else {
+        println!("Failed to create chat with status: {}", status);
+        Err(format!("Failed to create chat: {} - {}", status, text))
+    }
 }
 
 #[tauri::command]

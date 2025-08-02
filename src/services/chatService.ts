@@ -1,6 +1,6 @@
 import { databaseServiceAsync, Chat } from './databaseServiceAsync';
 import { invoke } from "@tauri-apps/api/core";
-import { nativeApiService } from './nativeApiService';
+import { nativeApiService } from '../api/nativeApiService';
 
 export class ChatService {
   async getAllChats(): Promise<Chat[]> {

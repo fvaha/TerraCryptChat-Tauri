@@ -3,8 +3,79 @@ import { databaseServiceAsync } from '../services/databaseServiceAsync';
 import { Friend } from '../services/databaseServiceAsync';
 import { sessionManager } from '../utils/sessionManager';
 import { nativeApiService } from '../api/nativeApiService';
+import { websocketService } from '../websocket/websocketService';
 
 export class FriendService {
+  private pendingRequestCount: number = 0;
+  private requestNotificationHandlers: Set<() => void> = new Set();
+
+  constructor() {
+    this.setupWebSocketListeners();
+  }
+
+  private setupWebSocketListeners() {
+    // Listen for friend request notifications
+    websocketService.onMessage((message: any) => {
+      if (message.type === 'request-notification') {
+        this.handleRequestNotification(message);
+      }
+    });
+  }
+
+  private async handleRequestNotification(message: any) {
+    console.log('[FriendService] Received friend request notification:', message);
+    
+    const { status } = message.message;
+    
+    switch (status) {
+      case 'pending':
+        await this.updatePendingRequestCount();
+        this.notifyRequestHandlers();
+        break;
+      case 'accepted':
+        await this.performDeltaFriendSyncAndRefresh();
+        break;
+      case 'declined':
+        // Handle declined request if needed
+        break;
+    }
+  }
+
+  private async updatePendingRequestCount() {
+    try {
+      const requests = await this.getFriendRequests();
+      this.pendingRequestCount = requests.length;
+      console.log(`[FriendService] Updated pending request count: ${this.pendingRequestCount}`);
+    } catch (error) {
+      console.error('[FriendService] Failed to update pending request count:', error);
+    }
+  }
+
+  private async performDeltaFriendSyncAndRefresh() {
+    try {
+      await this.syncFriendsFromServer();
+      this.notifyRequestHandlers();
+    } catch (error) {
+      console.error('[FriendService] Failed to perform delta friend sync:', error);
+    }
+  }
+
+  private notifyRequestHandlers() {
+    this.requestNotificationHandlers.forEach(handler => handler());
+  }
+
+  // Public methods for components to listen to request changes
+  onRequestChange(handler: () => void): void {
+    this.requestNotificationHandlers.add(handler);
+  }
+
+  offRequestChange(handler: () => void): void {
+    this.requestNotificationHandlers.delete(handler);
+  }
+
+  getPendingRequestCount(): number {
+    return this.pendingRequestCount;
+  }
   async getAllFriends(): Promise<Friend[]> {
     try {
       const localFriends = await databaseServiceAsync.getAllFriends();
@@ -88,13 +159,38 @@ export class FriendService {
     }
   }
 
-  async deleteFriend(friendId: string): Promise<void> {
+  async deleteFriend(friendId: string): Promise<boolean> {
     try {
+      console.log(`[FriendService] Deleting friend: ${friendId}`);
+      
+      const token = sessionManager.getToken();
+      
+      if (!token) {
+        console.error("No token available for deleting friend");
+        return false;
+      }
+      
+      // Call the API to delete the friend
+      const response = await fetch(`https://dev.v1.terracrypt.cc/api/v1/friends/${friendId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`[FriendService] Failed to delete friend: ${response.status}`);
+        return false;
+      }
+
+      // Remove from local database
       await databaseServiceAsync.deleteFriend(friendId);
       console.log(`[FriendService] Friend deleted successfully: ${friendId}`);
+      return true;
     } catch (error) {
       console.error(`[FriendService] Failed to delete friend:`, error);
-      throw error;
+      return false;
     }
   }
 
@@ -212,6 +308,23 @@ export class FriendService {
         throw new Error("No token available for sending friend request");
       }
       
+      // Check if we already have a pending request or are already friends
+      const [friends, friendRequests] = await Promise.all([
+        this.getCachedFriendsForCurrentUser().catch(() => []),
+        this.getFriendRequests().catch(() => [])
+      ]);
+      
+      const friendIds = new Set(friends.map(friend => friend.user_id));
+      const requestIds = new Set(friendRequests.map(request => request.user_id));
+      
+      if (friendIds.has(userId)) {
+        throw new Error("User is already your friend");
+      }
+      
+      if (requestIds.has(userId)) {
+        throw new Error("Friend request already sent");
+      }
+      
       // Use nativeApiService instead of direct invoke
       await nativeApiService.sendFriendRequest(userId, token);
       console.log(`[FriendService] Friend request sent successfully!`);
@@ -221,39 +334,103 @@ export class FriendService {
     }
   }
 
-  async acceptFriendRequest(requestId: string): Promise<void> {
+  async acceptFriendRequest(requestId: string, senderId?: string): Promise<boolean> {
     try {
       console.log(`[FriendService] Accepting friend request: ${requestId}`);
       
       const token = sessionManager.getToken();
       
       if (!token) {
-        throw new Error("No token available for accepting friend request");
+        console.error("No token available for accepting friend request");
+        return false;
       }
       
-      await nativeApiService.acceptFriendRequest(requestId, token);
+      // Call the API to accept the friend request
+      const response = await fetch(`https://dev.v1.terracrypt.cc/api/v1/friends/request/${requestId}/accept`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`[FriendService] Failed to accept friend request: ${response.status}`);
+        return false;
+      }
+
+              // If senderId is provided, add the friend to the database
+        if (senderId) {
+          await this.addFriendToDatabase(senderId);
+        }
+
       console.log("[FriendService] Friend request accepted successfully");
+      return true;
     } catch (error) {
       console.error("[FriendService] Failed to accept friend request:", error);
-      throw error;
+      return false;
     }
   }
 
-  async rejectFriendRequest(requestId: string): Promise<void> {
+  private async addFriendToDatabase(senderId: string): Promise<void> {
+    try {
+      // Get user details from the server
+      const userDetails = await this.getUserDetails(senderId);
+      if (!userDetails) {
+        console.error('[FriendService] Could not get user details for friend');
+        return;
+      }
+
+      const newFriend: Friend = {
+        id: userDetails.id || generateUUID(),
+        user_id: userDetails.user_id || senderId,
+        username: userDetails.username || 'Unknown',
+        name: userDetails.name || 'Unknown',
+        email: userDetails.email || '',
+        picture: userDetails.picture || '',
+        status: 'accepted',
+        is_favorite: false,
+        created_at: Date.now(),
+        updated_at: Date.now()
+      };
+
+      await this.addFriend(newFriend);
+      console.log(`[FriendService] Friend added to database: ${newFriend.username}`);
+    } catch (error) {
+      console.error('[FriendService] Failed to add friend to database:', error);
+    }
+  }
+
+  async rejectFriendRequest(requestId: string): Promise<boolean> {
     try {
       console.log(`[FriendService] Rejecting friend request: ${requestId}`);
       
       const token = sessionManager.getToken();
       
       if (!token) {
-        throw new Error("No token available for rejecting friend request");
+        console.error("No token available for rejecting friend request");
+        return false;
       }
       
-      await nativeApiService.rejectFriendRequest(requestId, token);
+      // Call the API to decline the friend request
+      const response = await fetch(`https://dev.v1.terracrypt.cc/api/v1/friends/request/${requestId}/decline`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`[FriendService] Failed to reject friend request: ${response.status}`);
+        return false;
+      }
+
       console.log("[FriendService] Friend request rejected successfully");
+      return true;
     } catch (error) {
       console.error("[FriendService] Failed to reject friend request:", error);
-      throw error;
+      return false;
     }
   }
 
@@ -292,24 +469,29 @@ export class FriendService {
 
   async getFriendRequests(): Promise<any[]> {
     try {
-      console.log("[FriendService] Getting friend requests...");
+      console.log("[FriendService] Getting friend requests from local database...");
       
-      const token = sessionManager.getToken();
+      // Use local pending requests instead of API call since the endpoint doesn't exist yet
+      const pendingRequests = await this.getPendingRequests();
       
-      if (!token) {
-        console.error("[FriendService] No token available for getting friend requests");
-        return [];
-      }
+      // Convert to the expected format for friend requests
+      const friendRequests = pendingRequests.map(friend => ({
+        request_id: friend.id,
+        receiver_id: friend.user_id,
+        status: friend.status,
+        created_at: friend.created_at?.toString(),
+        sender: {
+          user_id: friend.user_id,
+          username: friend.username,
+          name: friend.name,
+          email: friend.email,
+          picture: friend.picture,
+          is_favorite: friend.is_favorite
+        }
+      }));
       
-      const response = await invoke<{ data: any[] }>("get_friend_requests", { token });
-      
-      if (!response || !response.data) {
-        console.warn("[FriendService] No friend requests received");
-        return [];
-      }
-      
-      console.log(`[FriendService] Found ${response.data.length} friend requests`);
-      return response.data;
+      console.log(`[FriendService] Found ${friendRequests.length} friend requests from local database`);
+      return friendRequests;
     } catch (error) {
       console.error("[FriendService] Failed to get friend requests:", error);
       return [];
@@ -390,6 +572,8 @@ export class FriendService {
       throw error;
     }
   }
+
+
 }
 
 // Helper function to generate UUID
@@ -401,4 +585,5 @@ function generateUUID(): string {
   });
 }
 
+// Create singleton instance
 export const friendService = new FriendService();

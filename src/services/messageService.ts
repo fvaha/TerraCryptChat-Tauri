@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Message as MessageEntity, MessageStatusMessage, RequestNotificationWrapper, ChatNotificationWrapper, MessageSendStatus } from "../services/databaseServiceAsync";
+import { Message as MessageEntity, MessageStatusMessage, MessageSendStatus } from "../services/databaseServiceAsync";
 import { encryptionService } from "../encrypt/encryptionService";
 import { messageLinkingManager } from "../linking/messageLinkingManager";
 import { databaseServiceAsync } from "./databaseServiceAsync";
@@ -18,6 +18,7 @@ function generateUUID(): string {
 export class MessageService {
   private messageFlow: ((message: MessageEntity) => void) | null = null;
   private cachedMessages: MessageEntity[] = [];
+  private static localDeletes: Set<string> = new Set();
 
   constructor() {
     console.log("[MessageService]  Constructor called - initializing MessageService");
@@ -76,13 +77,6 @@ export class MessageService {
         }
       }).catch(error => {
         console.error("[MessageService]  Failed to set up message listener:", error);
-      });
-
-      // Listen for ALL events to debug what's being received
-      listen<any>("*", async (event) => {
-        console.log("[MessageService]  Received ANY event:", event.event, event.payload);
-      }).catch(error => {
-        console.error("[MessageService]  Failed to set up wildcard listener:", error);
       });
 
       // Listen for test events to verify event system
@@ -902,21 +896,7 @@ export class MessageService {
     }
   }
 
-  private async handleChatNotification(rawMessage: string) {
-    const wrapper = this.parseJson<ChatNotificationWrapper>(rawMessage);
-    if (!wrapper) return;
 
-    console.log("[MessageService] Chat notification:", wrapper.message);
-    // Handle chat notifications (new chat, participant updates, etc.)
-  }
-
-  private handleRequestNotification(rawMessage: string) {
-    const wrapper = this.parseJson<RequestNotificationWrapper>(rawMessage);
-    if (!wrapper) return;
-
-    console.log("[MessageService] Request notification:", wrapper.message);
-    // Handle friend requests, etc.
-  }
 
   private handleConnectionStatus(rawMessage: string) {
     console.log("[MessageService] Connection status:", rawMessage);
@@ -1009,6 +989,8 @@ export class MessageService {
       return null;
     }
   }
+
+
 }
 
 // Export singleton instance

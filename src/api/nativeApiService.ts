@@ -214,12 +214,24 @@ class NativeApiService {
   // Additional methods needed by ChatService
   async deleteChat(chatId: string, token: string): Promise<void> {
     console.log(`Deleting chat ${chatId} from server...`);
-    return this.makeRequest<void>('delete_chat', { chat_id: chatId, token });
+    try {
+      const result = await invoke('delete_chat', { chat_id: chatId, token });
+      return result as void;
+    } catch (error) {
+      console.error('Delete chat failed:', error);
+      throw error;
+    }
   }
 
   async leaveChat(chatId: string, token: string): Promise<void> {
     console.log(`Leaving chat ${chatId}...`);
-    return this.makeRequest<void>('leave_chat', { chat_id: chatId, token });
+    try {
+      const result = await invoke('leave_chat', { chat_id: chatId, token });
+      return result as void;
+    } catch (error) {
+      console.error('Leave chat failed:', error);
+      throw error;
+    }
   }
 
   async resetUnreadCount(chatId: string): Promise<void> {
@@ -230,27 +242,57 @@ class NativeApiService {
   // Additional methods needed by FriendService
   async deleteFriend(userId: string, token: string): Promise<void> {
     console.log(`Deleting friend ${userId} from server...`);
-    return this.makeRequest<void>('delete_friend', { user_id: userId, token });
+    try {
+      const result = await invoke('delete_friend', { user_id: userId, token });
+      return result as void;
+    } catch (error) {
+      console.error('Delete friend failed:', error);
+      throw error;
+    }
   }
 
   async searchFriends(query: string, token: string): Promise<Friend[]> {
     console.log(`Searching friends with query: ${query}...`);
-    return this.makeRequest<Friend[]>('search_friends', { query, token });
+    try {
+      const result = await invoke('search_friends', { query, token });
+      return result as Friend[];
+    } catch (error) {
+      console.error('Search friends failed:', error);
+      throw error;
+    }
   }
 
   async sendFriendRequest(userId: string, token: string): Promise<void> {
     console.log(`Sending friend request to ${userId}...`);
-    return this.makeRequest<void>('send_friend_request', { user_id: userId, token });
+    try {
+      const result = await invoke('send_friend_request', { receiverId: userId, token });
+      return result as void;
+    } catch (error) {
+      console.error('Send friend request failed:', error);
+      throw error;
+    }
   }
 
   async acceptFriendRequest(requestId: string, token: string): Promise<void> {
     console.log(`Accepting friend request ${requestId}...`);
-    return this.makeRequest<void>('accept_friend_request', { request_id: requestId, token });
+    try {
+      const result = await invoke('accept_friend_request', { userId: requestId, token });
+      return result as void;
+    } catch (error) {
+      console.error('Accept friend request failed:', error);
+      throw error;
+    }
   }
 
   async rejectFriendRequest(requestId: string, token: string): Promise<void> {
     console.log(`Rejecting friend request ${requestId}...`);
-    return this.makeRequest<void>('reject_friend_request', { request_id: requestId, token });
+    try {
+      const result = await invoke('reject_friend_request', { userId: requestId, token });
+      return result as void;
+    } catch (error) {
+      console.error('Reject friend request failed:', error);
+      throw error;
+    }
   }
 
 
@@ -260,14 +302,35 @@ class NativeApiService {
     return this.makeRequest<any>('get_chat_by_id', { chat_id: chatId });
   }
 
+  async createChat(name: string, isGroup: boolean, members: Array<{ user_id: string; is_admin: boolean }>): Promise<string> {
+    console.log(`Creating chat with name: ${name}, isGroup: ${isGroup}, members: ${members.length}...`);
+    return this.makeRequest<string>('create_chat', { 
+      name, 
+      is_group: isGroup, 
+      members 
+    });
+  }
+
   async addChatMember(chatId: string, userId: string, isAdmin: boolean, token: string): Promise<void> {
     console.log(`Adding chat member ${userId} to chat ${chatId}...`);
-    return this.makeRequest<void>('add_chat_member', { chat_id: chatId, user_id: userId, is_admin: isAdmin, token });
+    try {
+      const result = await invoke('add_chat_member', { chat_id: chatId, user_id: userId, is_admin: isAdmin, token });
+      return result as void;
+    } catch (error) {
+      console.error('Add chat member failed:', error);
+      throw error;
+    }
   }
 
   async removeChatMember(chatId: string, userId: string, token: string): Promise<void> {
     console.log(`Removing chat member ${userId} from chat ${chatId}...`);
-    return this.makeRequest<void>('remove_chat_member', { chat_id: chatId, user_id: userId, token });
+    try {
+      const result = await invoke('remove_chat_member', { chat_id: chatId, user_id: userId, token });
+      return result as void;
+    } catch (error) {
+      console.error('Remove chat member failed:', error);
+      throw error;
+    }
   }
 
   async insertOrUpdateParticipant(participant: any): Promise<void> {
@@ -345,7 +408,13 @@ class NativeApiService {
 
   async getFriendRequests(): Promise<FriendRequest[]> {
     console.log('Getting friend requests via native API...');
-    return this.makeRequest<FriendRequest[]>('get_friend_requests_with_token');
+    try {
+      const result = await invoke('get_friend_requests_with_token', { token: this.token });
+      return result as FriendRequest[];
+    } catch (error) {
+      console.error('Get friend requests failed:', error);
+      throw error;
+    }
   }
 
   async getChatMembers(chatId: string): Promise<ChatMemberResponse> {

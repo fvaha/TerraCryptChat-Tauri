@@ -385,15 +385,7 @@ export interface ChatMessageWrapper {
   client_message_id?: string;
 }
 
-export interface RequestNotificationWrapper {
-  type: string;
-  message: any;
-}
 
-export interface ChatNotificationWrapper {
-  type: string;
-  message: any;
-}
 
 export enum MessageSendStatus {
   PENDING = "pending",

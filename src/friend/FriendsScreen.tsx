@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// SECOND WINDOW: FriendsScreen component - displays friends list in the second window
+import React, { useState, useEffect, useRef } from 'react';
 
 import { useTheme } from '../components/ThemeContext';
 import ScreenHeader from '../components/ScreenHeader';
@@ -29,6 +30,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load friends
   const loadFriends = async () => {
@@ -59,19 +61,21 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
     try {
       console.log(" Adding friend:", username);
       
-      await friendService.sendFriendRequest(userId);
-      console.log(" Friend request sent successfully");
+      // Don't send friend request again - it was already sent in NewFriendSearch
+      // await friendService.sendFriendRequest(userId);
+      console.log(" Friend request already sent in NewFriendSearch");
       
-      // Don't immediately close the search screen - let the success message show first
-      // The NewFriendSearch component will handle showing the success message
-      // We'll reload friends after a delay to give the success message time to show
-      setTimeout(async () => {
-        // Close the search screen
-        setShowFriendSearch(false);
-        
-        // Reload friends to show the new friend
-        await loadFriends();
-      }, 2500); // Wait 2.5 seconds to allow the success message to show for 2 seconds
+      // Close the search screen immediately after successful request
+      setShowFriendSearch(false);
+      
+      // Reload friends after a short delay to ensure the request is processed
+      reloadTimeoutRef.current = setTimeout(async () => {
+        try {
+          await loadFriends();
+        } catch (error) {
+          console.error(" Failed to reload friends after adding friend:", error);
+        }
+      }, 1000);
     } catch (error) {
       console.error(" Failed to add friend:", error);
       setError("Failed to add friend");
@@ -85,6 +89,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
       const requests = await friendService.getFriendRequests();
       setFriendRequests(requests);
       setFriendRequestsCount(requests.length);
+      
+      // Also update the pending request count from the service
+      const pendingCount = friendService.getPendingRequestCount();
+      setFriendRequestsCount(pendingCount);
     } catch (error) {
       console.error("Failed to load friend requests:", error);
     } finally {
@@ -122,10 +130,14 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
   // Handle friend request actions
   const handleAcceptRequest = async (requestId: string) => {
     try {
-      await friendService.acceptFriendRequest(requestId);
-      console.log(" Friend request accepted");
-      await loadFriendRequests(); // Reload requests
-      await loadFriends(); // Reload friends list
+      const success = await friendService.acceptFriendRequest(requestId);
+      if (success) {
+        console.log(" Friend request accepted");
+        await loadFriendRequests(); // Reload requests
+        await loadFriends(); // Reload friends list
+      } else {
+        setError("Failed to accept friend request");
+      }
     } catch (error) {
       console.error(" Failed to accept friend request:", error);
       setError("Failed to accept friend request");
@@ -134,9 +146,13 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
 
   const handleDeclineRequest = async (requestId: string) => {
     try {
-      await friendService.rejectFriendRequest(requestId);
-      console.log(" Friend request declined");
-      await loadFriendRequests(); // Reload requests
+      const success = await friendService.rejectFriendRequest(requestId);
+      if (success) {
+        console.log(" Friend request declined");
+        await loadFriendRequests(); // Reload requests
+      } else {
+        setError("Failed to decline friend request");
+      }
     } catch (error) {
       console.error(" Failed to decline friend request:", error);
       setError("Failed to decline friend request");
@@ -153,11 +169,28 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
     initializeScreen();
   }, []);
 
-  // Cleanup search timeout
+  // Listen for friend request notifications
+  useEffect(() => {
+    const handleRequestChange = () => {
+      loadFriendRequests();
+      loadFriends();
+    };
+
+    friendService.onRequestChange(handleRequestChange);
+
+    return () => {
+      friendService.offRequestChange(handleRequestChange);
+    };
+  }, []);
+
+  // Cleanup timeouts
   useEffect(() => {
     return () => {
       if (searchTimeout) {
         clearTimeout(searchTimeout);
+      }
+      if (reloadTimeoutRef.current) {
+        clearTimeout(reloadTimeoutRef.current);
       }
     };
   }, [searchTimeout]);

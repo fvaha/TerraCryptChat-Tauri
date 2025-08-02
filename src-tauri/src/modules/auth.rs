@@ -23,7 +23,7 @@ struct BackendLoginResponse {
 
 #[derive(serde::Serialize)]
 struct RegisterRequest {
-    name: String,
+    username: String,
     email: String,
     password: String,
 }
@@ -99,12 +99,12 @@ pub async fn login(username: String, password: String) -> Result<LoginResponse, 
 }
 
 #[tauri::command]
-pub async fn register(name: String, email: String, password: String) -> Result<LoginResponse, String> {
+pub async fn register(username: String, email: String, password: String) -> Result<LoginResponse, String> {
     println!("Registering user: {}", email);
     
     let client = reqwest::Client::new();
     let register_request = RegisterRequest {
-        name: name.clone(),
+        username: username.clone(),
         email: email.clone(),
         password,
     };
@@ -131,7 +131,7 @@ pub async fn register(name: String, email: String, password: String) -> Result<L
             access_token: backend_response.access_token,
         };
         
-        println!("Successfully registered user: {}", name);
+        println!("Successfully registered user: {}", username);
         Ok(response)
     } else {
         println!("Failed to register with status: {}", status);

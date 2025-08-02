@@ -53,6 +53,25 @@ export interface ConnectionStatusMessage {
   };
 }
 
+export interface FriendRequestNotification {
+  type: "request-notification";
+  message: {
+    request_id: string;
+    sender_id: string;
+    receiver_id: string;
+    status: "pending" | "accepted" | "declined";
+    timestamp: number;
+    sender: {
+      user_id: string;
+      username: string;
+      name: string;
+      email: string;
+      picture?: string;
+      is_favorite: boolean;
+    };
+  };
+}
+
 export class WebSocketService {
   private static instance: WebSocketService;
   private statusHandlers: Array<(status: WebSocketStatus) => void> = [];
@@ -310,6 +329,14 @@ export class WebSocketService {
     if (index > -1) {
       this.statusHandlers.splice(index, 1);
     }
+  }
+
+  onMessage(handler: (message: any) => void): void {
+    this.messageHandlers.add(handler);
+  }
+
+  offMessage(handler: (message: any) => void): void {
+    this.messageHandlers.delete(handler);
   }
 
   // Utility methods
