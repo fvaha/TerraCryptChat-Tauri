@@ -44,3 +44,4 @@ src-tauri/chat.db
 
 # Kotlin reference folder
 chat/
+!src/chat/
