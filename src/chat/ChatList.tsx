@@ -298,20 +298,25 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
       }
       
       // Always remove from local database regardless of server response
+      console.log("[ChatList] Starting local database cleanup for chat:", chatId);
       try {
         // Clear messages first
+        console.log("[ChatList] Clearing messages for chat:", chatId);
         await nativeApiService.clearMessagesForChat(chatId);
         console.log("[ChatList] Successfully cleared messages for chat:", chatId);
         
         // Clear participants
+        console.log("[ChatList] Clearing participants for chat:", chatId);
         await nativeApiService.removeAllParticipantsForChat(chatId);
         console.log("[ChatList] Successfully cleared participants for chat:", chatId);
         
         // Finally delete the chat
+        console.log("[ChatList] Deleting chat from database:", chatId);
         await nativeApiService.deleteChatFromDatabase(chatId);
         console.log("[ChatList] Successfully removed chat from local database:", chatId);
       } catch (dbError) {
         console.error("[ChatList] Failed to remove chat from local database:", dbError);
+        console.error("[ChatList] Database error details:", JSON.stringify(dbError, null, 2));
         // Even if database cleanup fails, we should still reload chats
       }
       
