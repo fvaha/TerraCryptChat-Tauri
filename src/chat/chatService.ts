@@ -4,7 +4,7 @@ import { Chat } from '../models/models';
 // Helper function to convert NativeChat to Chat
 const convertNativeChatToChat = (nativeChat: any): Chat => ({
   chat_id: nativeChat.chat_id,
-  chat_name: nativeChat.chat_name || nativeChat.name || '', // Map chat_name to chat_name, provide fallback
+  name: nativeChat.chat_name || nativeChat.name || 'Unnamed Chat',
   creator_id: nativeChat.creator_id,
   is_group: nativeChat.is_group,
   description: nativeChat.description,
@@ -199,7 +199,7 @@ export class ChatService {
 
     // MARK: - Get Last Message Content
     getLastMessageContent(forUsername: string, chats: Chat[]): string | undefined {
-        return chats.find(chat => !chat.is_group && chat.chat_name === forUsername)?.last_message_content;
+        return chats.find(chat => !chat.is_group && chat.name === forUsername)?.last_message_content;
     }
 
     // MARK: - Getters
