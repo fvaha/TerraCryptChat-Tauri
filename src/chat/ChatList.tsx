@@ -244,6 +244,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
   };
 
   const handleContextMenuClose = () => {
+    console.log("[ChatList] Context menu closing");
     setContextMenu({
       visible: false,
       x: 0,
@@ -861,25 +862,29 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
            >
              Chat Info
            </div>
-           <div
-             onClick={handleLeaveChat}
-             style={{
-               padding: '12px 16px',
-               cursor: 'pointer',
-               fontSize: '14px',
-               color: theme.text,
-               borderBottom: `1px solid ${theme.border}`,
-               transition: 'background-color 0.2s ease'
-             }}
-             onMouseEnter={(e) => {
-               e.currentTarget.style.backgroundColor = theme.hover;
-             }}
-             onMouseLeave={(e) => {
-               e.currentTarget.style.backgroundColor = 'transparent';
-             }}
-           >
-             Leave Chat
-           </div>
+                       <div
+              onClick={(e) => {
+                console.log("[ChatList] Leave Chat button clicked!");
+                e.stopPropagation();
+                handleLeaveChat();
+              }}
+              style={{
+                padding: '12px 16px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                color: theme.text,
+                borderBottom: `1px solid ${theme.border}`,
+                transition: 'background-color 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme.hover;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              Leave Chat
+            </div>
            {contextMenu.chat && contextMenu.chat.creator_id === user?.user_id && (
              <div
                onClick={handleDeleteChat}
