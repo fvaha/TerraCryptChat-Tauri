@@ -208,12 +208,12 @@ class NativeApiService {
 
   async clearMessagesForChat(chatId: string): Promise<void> {
     console.log(`Clearing messages for chat ${chatId}...`);
-    return this.makeRequest<void>('db_async_clear_messages_for_chat', { chat_id: chatId });
+    return this.makeRequest<void>('db_async_clear_messages_for_chat', { chatId });
   }
 
   async removeAllParticipantsForChat(chatId: string): Promise<void> {
     console.log(`Removing all participants for chat ${chatId}...`);
-    return this.makeRequest<void>('db_async_remove_all_participants_for_chat', { chat_id: chatId });
+    return this.makeRequest<void>('db_async_remove_all_participants_for_chat', { chatId });
   }
 
   async deleteFriendFromDatabase(userId: string): Promise<void> {
@@ -236,7 +236,7 @@ class NativeApiService {
   async leaveChat(chatId: string, token: string): Promise<void> {
     console.log(`Leaving chat ${chatId}...`);
     try {
-      const result = await invoke('leave_chat', { chat_id: chatId, token });
+      const result = await invoke('leave_chat', { chatId, token });
       return result as void;
     } catch (error) {
       console.error('Leave chat failed:', error);
