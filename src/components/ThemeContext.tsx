@@ -166,7 +166,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
             const currentUser = await invoke<any>('db_get_most_recent_user');
             if (currentUser && currentUser.user_id) {
               const userTheme = await invoke<boolean>('db_get_dark_mode', { 
-                user_id: currentUser.user_id 
+                userId: currentUser.user_id 
               });
               console.log("[ThemeContext] Backend theme preference:", userTheme);
               
@@ -178,7 +178,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
               
               try {
                 const userColorScheme = await invoke<string>('db_get_color_scheme', { 
-                  user_id: currentUser.user_id 
+                  userId: currentUser.user_id 
                 });
                 if (userColorScheme && ['blue', 'green', 'purple', 'orange', 'red'].includes(userColorScheme)) {
                   setColorSchemeState(userColorScheme as ColorScheme);
@@ -278,8 +278,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
       const currentUser = await invoke<any>('db_get_most_recent_user');
       if (currentUser && currentUser.user_id) {
         await invoke('db_update_dark_mode', { 
-          user_id: currentUser.user_id, 
-          is_dark_mode: isDark 
+          userId: currentUser.user_id, 
+          isDarkMode: isDark 
         });
         console.log(`[ThemeContext] Theme preference saved to database`);
       }
@@ -298,8 +298,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
       const currentUser = await invoke<any>('db_get_most_recent_user');
       if (currentUser && currentUser.user_id) {
         await invoke('db_update_color_scheme', { 
-          user_id: currentUser.user_id, 
-          color_scheme: scheme 
+          userId: currentUser.user_id, 
+          colorScheme: scheme 
         });
         console.log(`[ThemeContext] Color scheme preference saved to database`);
       }
