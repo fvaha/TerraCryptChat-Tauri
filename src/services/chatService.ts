@@ -28,7 +28,7 @@ export class ChatService {
     });
   }
 
-  private async handleChatNotification(message: any) {
+  private async handleChatNotification(message: { type: string; message: { action: string; chat_id: string; members: string[] } }) {
     try {
       const { action, chat_id, members } = message.message;
       
@@ -145,10 +145,8 @@ export class ChatService {
       
       return localChats.map(chat => ({
         chat_id: chat.chat_id,
-        chat_type: chat.chat_type,
-        name: chat.name,
+        name: chat.name || 'Unnamed Chat',
         created_at: chat.created_at,
-        admin_id: chat.admin_id,
         unread_count: chat.unread_count,
         description: chat.description,
         group_name: chat.group_name,
@@ -171,7 +169,7 @@ export class ChatService {
 
       return {
         chat_id: chat.chat_id,
-        name: chat.name,
+        name: chat.name || 'Unnamed Chat',
         created_at: chat.created_at,
         unread_count: chat.unread_count,
         description: chat.description,
@@ -199,7 +197,7 @@ export class ChatService {
         return;
       }
       
-      const chats = await invoke<any[]>("fetch_all_chats_and_save", { token });
+      const chats = await invoke<Chat[]>("fetch_all_chats_and_save", { token });
       console.log(`[ChatService] Synced ${chats.length} chats with participants from server`);
       
     } catch (error) {
