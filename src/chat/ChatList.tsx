@@ -234,6 +234,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
 
   const handleContextMenu = (e: React.MouseEvent, chat: ChatData) => {
     e.preventDefault();
+    console.log("[ChatList] Context menu opened for chat:", chat.chat_id);
     setContextMenu({
       visible: true,
       x: e.clientX,
@@ -273,7 +274,10 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
   };
 
   const handleLeaveChat = async () => {
-    if (!contextMenu.chat) return;
+    if (!contextMenu.chat) {
+      console.log("[ChatList] No chat in context menu");
+      return;
+    }
     
     const chatId = contextMenu.chat.chat_id;
     console.log("[ChatList] Leaving chat:", chatId);
