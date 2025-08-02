@@ -206,6 +206,16 @@ class NativeApiService {
     return this.makeRequest<void>('delete_chat_from_database', { chat_id: chatId });
   }
 
+  async clearMessagesForChat(chatId: string): Promise<void> {
+    console.log(`Clearing messages for chat ${chatId}...`);
+    return this.makeRequest<void>('db_async_clear_messages_for_chat', { chat_id: chatId });
+  }
+
+  async removeAllParticipantsForChat(chatId: string): Promise<void> {
+    console.log(`Removing all participants for chat ${chatId}...`);
+    return this.makeRequest<void>('db_async_remove_all_participants_for_chat', { chat_id: chatId });
+  }
+
   async deleteFriendFromDatabase(userId: string): Promise<void> {
     console.log(`Deleting friend ${userId} from database...`);
     return this.makeRequest<void>('delete_friend_from_database', { user_id: userId });

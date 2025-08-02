@@ -461,6 +461,18 @@ pub async fn db_async_clear_message_data() -> Result<(), String> {
     database_async::clear_message_data().await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn db_async_clear_messages_for_chat(chat_id: String) -> Result<(), String> {
+    println!("[Database] Clearing messages for chat (async): {}", chat_id);
+    database_async::clear_messages_for_chat(&chat_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn db_async_remove_all_participants_for_chat(chat_id: String) -> Result<(), String> {
+    println!("[Database] Removing all participants for chat (async): {}", chat_id);
+    database_async::remove_all_participants_for_chat(&chat_id).await.map_err(|e| e.to_string())
+}
+
 // ======== FRIEND COMMANDS ========
 
 #[tauri::command]

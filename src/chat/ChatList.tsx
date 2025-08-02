@@ -294,6 +294,15 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
       
       // Always remove from local database regardless of server response
       try {
+        // Clear messages first
+        await nativeApiService.clearMessagesForChat(chatId);
+        console.log("[ChatList] Successfully cleared messages for chat:", chatId);
+        
+        // Clear participants
+        await nativeApiService.removeAllParticipantsForChat(chatId);
+        console.log("[ChatList] Successfully cleared participants for chat:", chatId);
+        
+        // Finally delete the chat
         await nativeApiService.deleteChatFromDatabase(chatId);
         console.log("[ChatList] Successfully removed chat from local database:", chatId);
       } catch (dbError) {
@@ -362,6 +371,15 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
       
       // Always remove from local database regardless of server response
       try {
+        // Clear messages first
+        await nativeApiService.clearMessagesForChat(chatId);
+        console.log("[ChatList] Successfully cleared messages for chat:", chatId);
+        
+        // Clear participants
+        await nativeApiService.removeAllParticipantsForChat(chatId);
+        console.log("[ChatList] Successfully cleared participants for chat:", chatId);
+        
+        // Finally delete the chat
         await nativeApiService.deleteChatFromDatabase(chatId);
         console.log("[ChatList] Successfully removed chat from local database");
       } catch (dbError) {

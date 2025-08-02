@@ -1165,4 +1165,28 @@ pub async fn ensure_database_initialized() -> Result<(), SqlxError> {
 pub async fn initialize_database_legacy() -> Result<(), SqlxError> {
     let _pool = get_pool().await?;
     Ok(())
+}
+
+// Clear all messages for a specific chat
+pub async fn clear_messages_for_chat(chat_id: &str) -> Result<(), SqlxError> {
+    let pool = get_pool().await?;
+    
+    sqlx::query("DELETE FROM message WHERE chat_id = ?")
+        .bind(chat_id)
+        .execute(&pool)
+        .await?;
+    
+    Ok(())
+}
+
+// Remove all participants for a specific chat
+pub async fn remove_all_participants_for_chat(chat_id: &str) -> Result<(), SqlxError> {
+    let pool = get_pool().await?;
+    
+    sqlx::query("DELETE FROM participant WHERE chat_id = ?")
+        .bind(chat_id)
+        .execute(&pool)
+        .await?;
+    
+    Ok(())
 } 

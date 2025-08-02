@@ -146,6 +146,8 @@ pub fn run() {
             db_async_delete_message_by_id,
             db_async_delete_message_by_client_id,
             db_async_clear_message_data,
+            db_async_clear_messages_for_chat,
+            db_async_remove_all_participants_for_chat,
 
             // Friend management
             get_friends,
