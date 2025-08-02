@@ -273,6 +273,90 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
     handleContextMenuClose();
   };
 
+  const handleLeaveChat = async () => {
+    if (!contextMenu.chat) return;
+    
+    try {
+      const token = services.sessionManager.getToken();
+      if (!token) {
+        throw new Error("No token available");
+      }
+
+      console.log("[ChatList] Leaving chat:", contextMenu.chat.chat_id);
+      
+      // Call the leave chat API
+      await nativeApiService.leaveChat(contextMenu.chat.chat_id, token);
+      
+      // Remove from local database
+      await nativeApiService.deleteChatFromDatabase(contextMenu.chat.chat_id);
+      
+      console.log("[ChatList] Successfully left chat:", contextMenu.chat.chat_id);
+      
+      // Reload chats to reflect the change
+      await loadChats();
+      
+    } catch (error) {
+      console.error("[ChatList] Leave chat failed:", error);
+      setError("Failed to leave chat. Please try again.");
+    }
+    
+    handleContextMenuClose();
+  };
+
+  const handleDeleteChat = async () => {
+    if (!contextMenu.chat) return;
+    
+    try {
+      const token = services.sessionManager.getToken();
+      if (!token) {
+        throw new Error("No token available");
+      }
+
+      console.log("[ChatList] Deleting chat:", contextMenu.chat.chat_id);
+      
+      // Check if current user is the creator
+      const isCreator = contextMenu.chat.creator_id === user?.user_id;
+      
+      if (isCreator) {
+        // Try to delete from server first
+        try {
+          await nativeApiService.deleteChat(contextMenu.chat.chat_id, token);
+          console.log("[ChatList] Successfully deleted chat from server");
+        } catch (error: any) {
+          console.error("[ChatList] Server delete failed:", error);
+          
+          // If it's a 403, try to leave the chat instead
+          if (error.message?.includes('403')) {
+            try {
+              await nativeApiService.leaveChat(contextMenu.chat.chat_id, token);
+              console.log("[ChatList] Successfully left chat instead of deleting");
+            } catch (leaveError) {
+              console.error("[ChatList] Leave failed but proceeding with cleanup:", leaveError);
+            }
+          }
+        }
+      } else {
+        // If not creator, just leave the chat
+        await nativeApiService.leaveChat(contextMenu.chat.chat_id, token);
+        console.log("[ChatList] Successfully left chat (not creator)");
+      }
+      
+      // Remove from local database
+      await nativeApiService.deleteChatFromDatabase(contextMenu.chat.chat_id);
+      
+      console.log("[ChatList] Successfully removed chat from local database");
+      
+      // Reload chats to reflect the change
+      await loadChats();
+      
+    } catch (error) {
+      console.error("[ChatList] Delete chat failed:", error);
+      setError("Failed to delete chat. Please try again.");
+    }
+    
+    handleContextMenuClose();
+  };
+
   // Handle search activation
         const handleSearchClick = () => {
         setIsSearchActive(!isSearchActive);
@@ -771,6 +855,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
             Chat Info
           </div>
           <div
+            onClick={handleLeaveChat}
             style={{
               padding: '12px 16px',
               cursor: 'pointer',
@@ -789,6 +874,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
             Leave Chat
           </div>
           <div
+            onClick={handleDeleteChat}
             style={{
               padding: '12px 16px',
               cursor: 'pointer',
