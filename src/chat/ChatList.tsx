@@ -9,6 +9,7 @@ import { participantService } from '../participant/participantService';
 import { nativeApiService } from '../api/nativeApiService';
 import CreateChatForm from './CreateChatForm';
 import { Chat } from '../models/models';
+import { ChatService } from '../services/chatService';
 
 interface ChatData {
   chat_id: string;
@@ -386,6 +387,22 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
     };
     
     initializeChatList();
+  }, []);
+
+  // Listen for chat notifications
+  useEffect(() => {
+    const chatService = ChatService.getInstance();
+    
+    const handleChatNotification = () => {
+      console.log("[ChatList] Chat notification received, reloading chats...");
+      loadChats();
+    };
+
+    chatService.onChatNotification(handleChatNotification);
+
+    return () => {
+      chatService.offChatNotification(handleChatNotification);
+    };
   }, []);
 
   if (isLoading) {

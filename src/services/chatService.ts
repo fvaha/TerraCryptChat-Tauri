@@ -1,8 +1,139 @@
-import { databaseServiceAsync, Chat } from './databaseServiceAsync';
+import { databaseServiceAsync } from './databaseServiceAsync';
 import { invoke } from "@tauri-apps/api/core";
 import { nativeApiService } from '../api/nativeApiService';
+import { websocketService } from '../websocket/websocketService';
+import { sessionManager } from '../utils/sessionManager';
+import { Chat } from '../models/models';
 
 export class ChatService {
+  private static instance: ChatService;
+  private chatNotificationHandlers: Set<() => void> = new Set();
+
+  constructor() {
+    this.setupChatNotifications();
+  }
+
+  static getInstance(): ChatService {
+    if (!ChatService.instance) {
+      ChatService.instance = new ChatService();
+    }
+    return ChatService.instance;
+  }
+
+  private setupChatNotifications() {
+    websocketService.onMessage((message) => {
+      if (message.type === 'chat-notification') {
+        this.handleChatNotification(message);
+      }
+    });
+  }
+
+  private async handleChatNotification(message: any) {
+    try {
+      const { action, chat_id, members } = message.message;
+      
+      if (!action || !chat_id || !members) {
+        console.warn("[ChatService] Invalid chat-notification format:", message);
+        return;
+      }
+
+      const currentUserId = await sessionManager.getCurrentUserId();
+      if (!currentUserId) {
+        console.warn("[ChatService] No current user ID available");
+        return;
+      }
+
+      const isMember = members.some((memberId: string) => 
+        memberId.toLowerCase() === currentUserId.toLowerCase()
+      );
+
+      if (!isMember) {
+        console.log("[ChatService] User is not a member of this chat, ignoring notification");
+        return;
+      }
+
+      switch (action) {
+        case "created":
+          await this.handleChatCreated(chat_id);
+          break;
+        case "deleted":
+          await this.handleChatDeleted(chat_id);
+          break;
+        default:
+          console.warn("[ChatService] Unknown chat action:", action);
+      }
+    } catch (error) {
+      console.error("[ChatService] Error handling chat notification:", error);
+    }
+  }
+
+  private async handleChatCreated(chatId: string) {
+    try {
+      console.log("[ChatService] Chat created - syncing now");
+      
+      // Sync the new chat from server
+      await this.syncChatsFromServer();
+      
+      // Check if chat was successfully added
+      const newChat = await this.getChatById(chatId);
+      if (newChat) {
+        console.log("[ChatService] Chat is now saved locally:", newChat.name);
+        this.notifyChatCreated();
+      } else {
+        console.warn("[ChatService] Warning: Chat still not found locally after sync");
+      }
+    } catch (error) {
+      console.error("[ChatService] Error handling chat created:", error);
+    }
+  }
+
+  private async handleChatDeleted(chatId: string) {
+    try {
+      console.log("[ChatService] Chat deleted - cleaning local");
+      
+      // Clear messages for this chat
+      await databaseServiceAsync.clearMessagesForChat(chatId);
+      
+      // Remove participants for this chat
+      await databaseServiceAsync.removeAllParticipantsForChat(chatId);
+      
+      // Delete the chat
+      await databaseServiceAsync.deleteChat(chatId);
+      
+      this.notifyChatDeleted();
+    } catch (error) {
+      console.error("[ChatService] Error handling chat deleted:", error);
+    }
+  }
+
+  private notifyChatCreated() {
+    this.chatNotificationHandlers.forEach(handler => {
+      try {
+        handler();
+      } catch (error) {
+        console.error("[ChatService] Error in chat created handler:", error);
+      }
+    });
+  }
+
+  private notifyChatDeleted() {
+    this.chatNotificationHandlers.forEach(handler => {
+      try {
+        handler();
+      } catch (error) {
+        console.error("[ChatService] Error in chat deleted handler:", error);
+      }
+    });
+  }
+
+  onChatNotification(handler: () => void): void {
+    this.chatNotificationHandlers.add(handler);
+  }
+
+  offChatNotification(handler: () => void): void {
+    this.chatNotificationHandlers.delete(handler);
+  }
+
   async getAllChats(): Promise<Chat[]> {
     try {
       const localChats = await databaseServiceAsync.getAllChats();
@@ -15,7 +146,7 @@ export class ChatService {
       return localChats.map(chat => ({
         chat_id: chat.chat_id,
         chat_type: chat.chat_type,
-        chat_name: chat.chat_name,
+        name: chat.name,
         created_at: chat.created_at,
         admin_id: chat.admin_id,
         unread_count: chat.unread_count,
@@ -23,7 +154,7 @@ export class ChatService {
         group_name: chat.group_name,
         last_message_content: chat.last_message_content,
         last_message_timestamp: chat.last_message_timestamp,
-        participants: chat.participants,
+        participants: chat.participants ? JSON.parse(chat.participants) : [],
         is_group: chat.is_group,
         creator_id: chat.creator_id
       }));
@@ -40,16 +171,14 @@ export class ChatService {
 
       return {
         chat_id: chat.chat_id,
-        chat_type: chat.chat_type,
-        chat_name: chat.chat_name,
+        name: chat.name,
         created_at: chat.created_at,
-        admin_id: chat.admin_id,
         unread_count: chat.unread_count,
         description: chat.description,
         group_name: chat.group_name,
         last_message_content: chat.last_message_content,
         last_message_timestamp: chat.last_message_timestamp,
-        participants: chat.participants,
+        participants: chat.participants ? JSON.parse(chat.participants) : [],
         is_group: chat.is_group,
         creator_id: chat.creator_id
       };
@@ -145,7 +274,6 @@ export const chatService = {
         created_at: chat.created_at,
         creator_id: chat.creator_id,
         is_group: chat.is_group,
-        participants: chat.participants || [],
         unread_count: chat.unread_count,
         last_message_content: chat.last_message_content,
         last_message_timestamp: chat.last_message_timestamp
@@ -168,17 +296,21 @@ export const chatService = {
 
   async createChat(name: string, isGroup: boolean, participants: string[]): Promise<Chat> {
     try {
-      const chat = await nativeApiService.createChat(name, isGroup, participants);
+      // Convert string[] to the expected format
+      const members = participants.map(userId => ({ user_id: userId, is_admin: false }));
+      const chatId = await nativeApiService.createChat(name, isGroup, members);
+      
+      // Create a basic chat object since createChat only returns the chat_id
       return {
-        chat_id: chat.chat_id,
-        name: chat.name,
-        created_at: chat.created_at,
-        creator_id: chat.creator_id,
-        is_group: chat.is_group,
-        participants: chat.participants || [],
-        unread_count: chat.unread_count,
-        last_message_content: chat.last_message_content,
-        last_message_timestamp: chat.last_message_timestamp
+        chat_id: chatId,
+        name: name,
+        created_at: Date.now(),
+        creator_id: '', // Will be filled by the server
+        is_group: isGroup,
+
+        unread_count: 0,
+        last_message_content: undefined,
+        last_message_timestamp: undefined
       };
     } catch (error) {
       console.error('Failed to create chat:', error);

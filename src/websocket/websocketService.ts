@@ -72,6 +72,16 @@ export interface FriendRequestNotification {
   };
 }
 
+export interface ChatNotification {
+  type: "chat-notification";
+  message: {
+    action: "created" | "deleted";
+    chat_id: string;
+    members: string[];
+    timestamp: number;
+  };
+}
+
 export class WebSocketService {
   private static instance: WebSocketService;
   private statusHandlers: Array<(status: WebSocketStatus) => void> = [];

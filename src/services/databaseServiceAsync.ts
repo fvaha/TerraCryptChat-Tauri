@@ -286,6 +286,14 @@ class DatabaseServiceAsync {
     await invoke('db_async_clear_participant_data');
   }
 
+  async clearMessagesForChat(chatId: string): Promise<void> {
+    await invoke('db_async_clear_messages_for_chat', { chatId });
+  }
+
+  async removeAllParticipantsForChat(chatId: string): Promise<void> {
+    await invoke('db_async_remove_all_participants_for_chat', { chatId });
+  }
+
   // User keys operations
   async insertUserKeys(keys: UserKeys): Promise<void> {
     await invoke('db_async_insert_user_keys', { keys });
