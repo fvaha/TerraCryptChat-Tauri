@@ -10,12 +10,16 @@ export class ChatService {
   private chatNotificationHandlers: Set<() => void> = new Set();
 
   constructor() {
+    console.log("[ChatService] Constructor called - initializing ChatService");
     this.setupChatNotifications();
   }
 
   static getInstance(): ChatService {
     if (!ChatService.instance) {
+      console.log("[ChatService] Creating new ChatService instance");
       ChatService.instance = new ChatService();
+    } else {
+      console.log("[ChatService] Returning existing ChatService instance");
     }
     return ChatService.instance;
   }
