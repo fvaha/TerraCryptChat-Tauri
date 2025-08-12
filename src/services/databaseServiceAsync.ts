@@ -8,8 +8,8 @@ export class DatabaseServiceAsync {
     return await invoke('db_insert_user', { user });
   }
 
-  async get_user_by_id(user_id: string): Promise<User | null> {
-    return await invoke<User | null>('db_get_user_by_id', { userId: user_id });
+  async getUserById(user_id: string): Promise<User | null> {
+    return await invoke<User | null>('db_get_user_by_id', { user_id });
   }
 
   async get_user_by_token(token: string): Promise<User | null> {

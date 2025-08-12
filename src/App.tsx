@@ -32,6 +32,12 @@ const ChatApp: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isSessionChecking, setIsSessionChecking] = useState(true);
   
+  // Professional loading states
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('Initializing application...');
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
   // Chat options screen state
   const [showChatOptions, setShowChatOptions] = useState(false);
   const [selectedChatForOptions, setSelectedChatForOptions] = useState<Chat | null>(null);
@@ -77,16 +83,62 @@ const ChatApp: React.FC = () => {
     }
   }, [token]);
 
-  // Initialize app instantly
-  useEffect(() => {
-    setIsInitializing(false);
+  // Professional loading sequence
+  const startLoadingSequence = useCallback(async () => {
+    setLoadingMessage('Starting TerraCrypt Messenger...');
+    setLoadingProgress(5);
+    
+    // Simulate initialization steps with realistic timing and detailed messages
+    await new Promise(resolve => setTimeout(resolve, 400));
+    setLoadingMessage('Checking user authentication...');
+    setLoadingProgress(20);
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    setLoadingMessage('Loading user profile and settings...');
+    setLoadingProgress(35);
+    
+    await new Promise(resolve => setTimeout(resolve, 400));
+    setLoadingMessage('Initializing secure database...');
+    setLoadingProgress(50);
+    
+    await new Promise(resolve => setTimeout(resolve, 450));
+    setLoadingMessage('Loading cached conversations...');
+    setLoadingProgress(65);
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    setLoadingMessage('Starting background sync...');
+    setLoadingProgress(80);
+    
+    await new Promise(resolve => setTimeout(resolve, 400));
+    setLoadingMessage('Preparing interface...');
+    setLoadingProgress(90);
+    
+    await new Promise(resolve => setTimeout(resolve, 300));
+    setLoadingMessage('TerraCrypt Messenger is ready!');
+    setLoadingProgress(100);
+    
+    // Hold on "Ready!" for a moment before transitioning
+    await new Promise(resolve => setTimeout(resolve, 600));
+    setIsLoading(false);
   }, []);
 
-  // Handle session checking - instant
+  // Initialize app with professional loading
+  useEffect(() => {
+    const initializeApp = async () => {
+      await startLoadingSequence();
+      setIsInitializing(false);
+    };
+    
+    initializeApp();
+  }, [startLoadingSequence]);
+
+  // Handle session checking with smooth transition
   useEffect(() => {
     if (user && token) {
+      setIsAuthenticated(true);
       setIsSessionChecking(false);
     } else if (sessionState.is_session_initialized) {
+      setIsAuthenticated(false);
       setIsSessionChecking(false);
     }
   }, [user, token, sessionState.is_session_initialized]);
@@ -102,46 +154,40 @@ const ChatApp: React.FC = () => {
   // Auto-resize window based on content (non-blocking)
   useEffect(() => {
     const resizeWindow = async () => {
+      console.log('Resizing window - Token:', !!token, 'User:', !!user, 'ShowRegister:', showRegister);
+      
       if (!token || !user) {
         if (showRegister) {
-          // Registration screen - auto-adjust based on content
-          const registrationCard = document.querySelector('[data-screen="registration"]');
-          if (registrationCard) {
-            const cardHeight = registrationCard.getBoundingClientRect().height;
-            const windowHeight = Math.max(700, cardHeight + 100); // Minimum 700px, add padding
-            const windowWidth = 500; // Fixed width for registration
-            try {
-              await nativeApiService.resizeWindow(windowWidth, windowHeight);
-            } catch (error) {
-              console.error('Failed to resize window:', error);
-            }
+          // Registration screen - compact size
+          console.log('Setting registration window size: 400x500+');
+          try {
+            await nativeApiService.resizeWindow(400, 500);
+          } catch (error) {
+            console.error('Failed to resize window for registration:', error);
           }
         } else {
-          // Login screen - auto-adjust based on content
-          const loginCard = document.querySelector('[data-screen="login"]');
-          if (loginCard) {
-            const cardHeight = loginCard.getBoundingClientRect().height;
-            const windowHeight = Math.max(650, cardHeight + 120); // Increased minimum height and padding
-            const windowWidth = 500; // Increased width for login
-            try {
-              await nativeApiService.resizeWindow(windowWidth, windowHeight);
-            } catch (error) {
-              console.error('Failed to resize window:', error);
-            }
+          // Login screen - compact size
+          console.log('Setting login window size: 400x500+');
+          try {
+            await nativeApiService.resizeWindow(400, 700);
+          } catch (error) {
+            console.error('Failed to resize window for login:', error);
           }
         }
       } else {
-        // Main app - 960x600 size (20% wider)
+        // Main app - full size
+        console.log('Setting main app window size: 960x600');
         try {
           await nativeApiService.resizeWindow(960, 600);
         } catch (error) {
-          console.error('Failed to resize window:', error);
+          console.error('Failed to resize window for main app:', error);
         }
       }
     };
 
-    // Resize after a short delay to ensure DOM is ready
-    const timeoutId = setTimeout(resizeWindow, 100);
+    // Resize immediately and also after a delay to ensure DOM is ready
+    resizeWindow();
+    const timeoutId = setTimeout(resizeWindow, 200);
     
     return () => {
       clearTimeout(timeoutId);
@@ -207,36 +253,130 @@ const ChatApp: React.FC = () => {
     );
   }
 
-  // Show loading screen while initializing or checking session
-  if (isInitializing || isSessionChecking) {
+  // Show professional loading screen while initializing, checking session, or loading
+  if (isInitializing || isSessionChecking || isLoading) {
     return (
-      <div style={{
-        height: '100vh',
-        width: '100vw',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#1a1a1a',
-        color: '#ffffff',
-        fontFamily: 'Inter, system-ui, sans-serif'
-      }}>
-        <div style={{
+      <div 
+        style={{
+          height: '100vh',
+          width: '100vw',
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
-          gap: '16px'
+          justifyContent: 'center',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          backgroundColor: '#0a0a0a',
+          color: '#ffffff'
+        }}
+      >
+        {/* Main loading content */}
+        <div style={{
+          textAlign: 'center',
+          padding: '40px',
+          maxWidth: '500px',
+          width: '100%'
         }}>
+          {/* App Logo */}
+          <img 
+            src="logo.png"
+            alt="TerraCrypt Messenger App"
+            style={{
+              width: '165px',
+              height: '111px',
+              margin: '0 auto 30px auto',
+              display: 'block'
+            }}
+          />
+
+          {/* App Name */}
+          <h1 style={{
+            fontSize: '32px',
+            fontWeight: '600',
+            margin: '0 0 8px 0',
+            color: '#ffffff'
+          }}>
+            TerraCrypt Messenger App
+          </h1>
+
+          {/* App Description */}
+          <p style={{
+            fontSize: '16px',
+            margin: '0 0 40px 0',
+            color: '#9ca3af'
+          }}>
+            Secure Communication Platform
+          </p>
+
+          {/* Loading Message */}
+          <h2 
+            style={{
+              fontSize: '20px',
+              fontWeight: '500',
+              margin: '0 0 30px 0',
+              color: '#e5e7eb',
+              minHeight: '28px'
+            }}
+          >
+            {loadingMessage}
+          </h2>
+
+          {/* Simple Progress Bar */}
           <div style={{
-            width: '32px',
-            height: '32px',
-            border: '3px solid #404040',
-            borderTop: '3px solid #3b82f6',
+            width: '100%',
+            height: '8px',
+            marginBottom: '20px',
+            background: '#1f2937',
+            borderRadius: '4px',
+            overflow: 'hidden'
+          }}>
+            <div 
+              style={{
+                width: `${loadingProgress}%`,
+                height: '100%',
+                background: '#fbbf24',
+                borderRadius: '4px',
+                transition: 'width 0.3s ease-in-out'
+              }}
+            />
+          </div>
+
+          {/* Progress Details */}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            marginBottom: '30px'
+          }}>
+            <span style={{
+              fontSize: '18px',
+              fontWeight: '600',
+              color: '#ffffff'
+            }}>
+              {loadingProgress}%
+            </span>
+            <span style={{
+              fontSize: '14px',
+              color: '#9ca3af'
+            }}>
+              {loadingProgress < 20 && 'Initializing...'}
+              {loadingProgress >= 20 && loadingProgress < 35 && 'Loading data...'}
+              {loadingProgress >= 35 && loadingProgress < 50 && 'Preparing UI...'}
+              {loadingProgress >= 50 && loadingProgress < 65 && 'Database setup...'}
+              {loadingProgress >= 65 && loadingProgress < 80 && 'Sync starting...'}
+              {loadingProgress >= 80 && loadingProgress < 90 && 'Finalizing...'}
+              {loadingProgress >= 90 && 'Almost ready...'}
+            </span>
+          </div>
+
+          {/* Simple Loading Spinner */}
+          <div style={{ 
+            width: '32px', 
+            height: '32px', 
+            margin: '0 auto',
+            border: '3px solid #374151',
+            borderTop: '3px solid #fbbf24',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite'
           }} />
-          <span style={{ fontSize: '14px', color: '#9ca3af' }}>
-            {isInitializing ? 'Initializing application...' : 'Checking session...'}
-          </span>
         </div>
       </div>
     );
@@ -245,16 +385,19 @@ const ChatApp: React.FC = () => {
   // Show loading screen while theme is loading
   if (themeLoading) {
     return (
-      <div style={{
-        height: '100vh',
-        width: '100vw',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.background,
-        color: theme.text,
-        fontFamily: 'Inter, system-ui, sans-serif'
-      }}>
+      <div 
+        className="loading-screen"
+        style={{
+          height: '100vh',
+          width: '100vw',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: theme.background,
+          color: theme.text,
+          fontFamily: 'Inter, system-ui, sans-serif'
+        }}
+      >
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -277,20 +420,22 @@ const ChatApp: React.FC = () => {
     );
   }
 
-  // Show login/register screens
-  if (!token || !user) {
-    
+  // Show login/register screens only if not authenticated
+  if (!isAuthenticated) {
     return (
-      <div style={{
-        height: '100vh',
-        width: '100vw',
-        backgroundColor: theme.background,
-        color: theme.text,
-        fontFamily: 'Inter, system-ui, sans-serif',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
+      <div 
+        className="auth-screen"
+        style={{
+          height: '100vh',
+          width: '100vw',
+          backgroundColor: theme.background,
+          color: theme.text,
+          fontFamily: 'Inter, system-ui, sans-serif',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
         {showRegister ? (
           <RegisterForm 
             onSuccess={() => setShowRegister(false)}
@@ -308,18 +453,19 @@ const ChatApp: React.FC = () => {
 
   // Show main app
   return (
-    <div style={{
-      height: '100vh',
-      width: '100vw',
-      display: 'flex',
-      flexDirection: 'column',
-      backgroundColor: theme.background,
-      color: theme.text,
-      fontFamily: 'Inter, system-ui, sans-serif',
-      overflow: 'hidden',
-      opacity: 1, // Removed opacity transition as it's not needed for smooth transition
-      transition: 'opacity 0.3s ease-in-out'
-    }}>
+    <div 
+      className="main-app"
+      style={{
+        height: '100vh',
+        width: '100vw',
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: theme.background,
+        color: theme.text,
+        fontFamily: 'Inter, system-ui, sans-serif',
+        overflow: 'hidden'
+      }}
+    >
       {/* Menu Bar */}
       <MenuBar 
         onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -331,26 +477,32 @@ const ChatApp: React.FC = () => {
       />
 
       {/* Main Content */}
-      <div style={{
-        flex: 1,
-        display: 'flex',
-        overflow: 'hidden'
-      }}>
+      <div 
+        className="content-area"
+        style={{
+          flex: 1,
+          display: 'flex',
+          overflow: 'hidden',
+          position: 'relative'
+        }}
+      >
         {/* FIRST WINDOW: Sidebar */}
-        <div style={{
-           width: sidebarCollapsed ? '0px' : '72px',
-           backgroundColor: theme.sidebar,
-           borderRight: `1px solid ${theme.sidebarBorder}`,
-           display: 'flex',
-           flexDirection: 'column',
-           alignItems: 'center',
-           padding: '16px 0',
-           flexShrink: 0,
-           transition: 'width 0.2s ease-in-out',
-           position: 'relative',
-           overflow: 'hidden',
-           opacity: sidebarCollapsed ? 0 : 1
-         }}>
+        <div 
+          className="content-panel"
+          style={{
+             width: sidebarCollapsed ? '0px' : '72px',
+             backgroundColor: theme.sidebar,
+             borderRight: `1px solid ${theme.sidebarBorder}`,
+             display: 'flex',
+             flexDirection: 'column',
+             alignItems: 'center',
+             padding: '16px 0',
+             flexShrink: 0,
+             position: 'relative',
+             overflow: 'hidden',
+             opacity: sidebarCollapsed ? 0 : 1
+           }}
+         >
            <Sidebar
              activeTab={activeTab}
              onTabChange={setActiveTab}
@@ -362,24 +514,28 @@ const ChatApp: React.FC = () => {
         
 
         {/* SECOND & THIRD WINDOW: Content Area */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          overflow: 'hidden',
-          position: 'relative',
-          opacity: 1,
-          transition: 'opacity 0.5s ease-in-out'
-        }}>
-          {/* SECOND WINDOW: Always visible content panel */}
-          <div style={{
-            width: activeTab === 'settings' ? '250px' : '280px',
-            backgroundColor: theme.sidebar,
-            borderRight: `1px solid ${theme.sidebarBorder}`,
+        <div 
+          className="content-area"
+          style={{
+            flex: 1,
             display: 'flex',
-            flexDirection: 'column',
             overflow: 'hidden',
             position: 'relative'
-          }}>
+          }}
+        >
+          {/* SECOND WINDOW: Always visible content panel */}
+          <div 
+            className="content-panel"
+            style={{
+              width: activeTab === 'settings' ? '250px' : '280px',
+              backgroundColor: theme.sidebar,
+              borderRight: `1px solid ${theme.sidebarBorder}`,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              position: 'relative'
+            }}
+          >
             {activeTab === 'chats' && (
               <ChatList
                 onSelect={setSelectedChatId}
@@ -423,12 +579,15 @@ const ChatApp: React.FC = () => {
           </div>
 
           {/* THIRD WINDOW: Always visible detail panel */}
-          <div style={{
-            flex: 1,
-            backgroundColor: theme.background,
-            overflow: 'hidden',
-            position: 'relative'
-          }}>
+          <div 
+            className="detail-panel"
+            style={{
+              flex: 1,
+              backgroundColor: theme.background,
+              overflow: 'hidden',
+              position: 'relative'
+            }}
+          >
             {showChatOptions && selectedChatForOptions ? (
               <ChatOptionsScreen
                 chat={selectedChatForOptions}

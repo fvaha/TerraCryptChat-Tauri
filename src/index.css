@@ -13,7 +13,8 @@
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+                color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   html, body, #root {
@@ -42,7 +43,10 @@
     --input-bg-color: #ffffff;
     --card-bg-color: #ffffff;
     --shadow-color: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-    --shadow-hover-color: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-hover-color: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 2px 0 rgba(0, 0, 0, 0.06);
+    /* Add transition timing for smooth theme changes */
+    --transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-duration: 0.3s;
   }
 
   /* Dark theme variables */
@@ -65,7 +69,21 @@
     --input-bg-color: #3a3a3a;
     --card-bg-color: #2a2a2a;
     --shadow-color: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
-    --shadow-hover-color: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+    --shadow-hover-color: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 2px 0 rgba(0, 0, 0, 0.2);
+  }
+
+  /* Smooth theme transitions for all elements */
+  * {
+    transition: background-color var(--transition-duration) var(--transition-timing),
+                color var(--transition-duration) var(--transition-timing),
+                border-color var(--transition-duration) var(--transition-timing),
+                box-shadow var(--transition-duration) var(--transition-timing);
+  }
+
+  /* Prevent transition conflicts for specific elements */
+  .no-theme-transition,
+  .no-theme-transition * {
+    transition: none !important;
   }
 }
 

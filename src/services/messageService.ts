@@ -723,7 +723,7 @@ export class MessageService {
       
       // Try to get from user service
       try {
-        const user = await invoke<any>('db_get_user_by_id', { userId: sender_id });
+        const user = await invoke<any>('db_get_user_by_id', { user_id: sender_id });
         if (user && user.username && user.username.trim() !== '' && user.username !== sender_id) {
           console.log(`[MessageService] Resolved username from user service: ${user.username}`);
           return user.username;
@@ -1468,7 +1468,7 @@ export class MessageService {
           if (otherParticipantId) {
             try {
               // Try to get the other participant's user info from database
-              const otherUser = await invoke('db_get_user_by_id', { userId: otherParticipantId });
+              const otherUser = await invoke('db_get_user_by_id', { user_id: otherParticipantId });
               if (otherUser && typeof otherUser === 'object' && otherUser !== null) {
                 const typedUserInfo = otherUser as { username?: string; name?: string };
                 chatName = typedUserInfo.username || otherParticipantId;
@@ -1528,7 +1528,7 @@ export class MessageService {
             let displayName = memberId;
             
             try {
-              const userInfo = await invoke('db_get_user_by_id', { userId: memberId });
+              const userInfo = await invoke('db_get_user_by_id', { user_id: memberId });
               if (userInfo && typeof userInfo === 'object' && userInfo !== null) {
                 const typedUserInfo = userInfo as { username?: string; name?: string };
                 username = typedUserInfo.username || memberId;

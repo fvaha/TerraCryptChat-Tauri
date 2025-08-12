@@ -20,8 +20,8 @@
         "fullscreen": false,
         "resizable": true,
         "title": "TerraCrypt Chat",
-        "width": 960,
-        "height": 600,
+        "width": 400,
+        "height": 700,
         "x": 100,
         "y": 100
       }
