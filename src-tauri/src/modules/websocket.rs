@@ -8,8 +8,29 @@ use tokio::time::sleep;
 use tokio_tungstenite::{connect_async_with_config, tungstenite::Message, tungstenite::client::IntoClientRequest};
 use url::Url;
 use serde_json::json;
-use base64::Engine;
 use serde::Deserialize;
+use base64::{Engine as _, engine::general_purpose};
+
+// Encryption key - must match the frontend exactly
+const INTERNAL_KEY: &str = "hardcoded_key";
+
+// Decrypt message content using XOR encryption (matches frontend implementation)
+fn decrypt_message_content(encrypted_content: &str) -> Result<String, String> {
+    // Decode base64
+    let encrypted_bytes = general_purpose::STANDARD.decode(encrypted_content)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+    
+    // XOR decrypt with the same key as frontend
+    let key_bytes = INTERNAL_KEY.as_bytes();
+    let decrypted_bytes: Vec<u8> = encrypted_bytes.iter()
+        .enumerate()
+        .map(|(i, &byte)| byte ^ key_bytes[i % key_bytes.len()])
+        .collect();
+    
+    // Convert back to string
+    String::from_utf8(decrypted_bytes)
+        .map_err(|e| format!("Failed to convert decrypted bytes to string: {}", e))
+}
 
 
 #[derive(Default)]
@@ -110,7 +131,8 @@ async fn handle_message_status(message_text: &str, app: AppHandle) -> Result<(),
     
     // Emit status update to frontend for MessageLinkingManager to handle
     app.emit("message-status-update", json!({
-        "server_message_id": server_message_id,
+        "message_id": server_message_id,
+        "client_message_id": status._client_message_id, // Include client_message_id for linking
         "status": status_type,
         "chat_id": status.chat_id,
         "sender_id": status.sender_id,
@@ -223,11 +245,13 @@ pub async fn connect_socket(
     // Emit connection status
     println!("[WebSocket] Emitting 'connected' status to frontend...");
     app.emit("websocket-status", json!({
-        "type": "connection-status",
-        "message": {
-            "status": "connected",
-            "timestamp": chrono::Utc::now().timestamp()
-        }
+        "connection_state": "connected",
+        "is_connected": true,
+        "is_connecting": false,
+        "reconnect_attempts": 0,
+        "last_heartbeat": 0,
+        "max_reconnect_attempts": 5,
+        "heartbeat_interval": 30
     })).ok();
     println!("[WebSocket] Connection status emitted successfully");
 
@@ -360,11 +384,13 @@ pub async fn connect_socket(
             drop(ws_state_guard);
             
             app_clone.emit("websocket-status", json!({
-                "type": "connection-status",
-                "message": {
-                    "status": "disconnected",
-                    "timestamp": chrono::Utc::now().timestamp()
-                }
+                "connection_state": "disconnected",
+                "is_connected": false,
+                "is_connecting": false,
+                "reconnect_attempts": 0,
+                "last_heartbeat": 0,
+                "max_reconnect_attempts": 5,
+                "heartbeat_interval": 30
             })).ok();
             println!("[WebSocket] Disconnected status emitted to frontend");
         } else {
@@ -468,11 +494,13 @@ pub async fn connect_socket(
             drop(ws_state_guard);
             
             app_clone.emit("websocket-status", json!({
-                "type": "connection-status",
-                "message": {
-                    "status": "heartbeat_timeout",
-                    "timestamp": chrono::Utc::now().timestamp()
-                }
+                "connection_state": "disconnected",
+                "is_connected": false,
+                "is_connecting": false,
+                "reconnect_attempts": 0,
+                "last_heartbeat": 0,
+                "max_reconnect_attempts": 5,
+                "heartbeat_interval": 30
             })).ok();
             println!("[WebSocket] Heartbeat timeout status emitted to frontend");
         } else {
@@ -500,11 +528,13 @@ pub async fn disconnect_socket(
     println!("[WebSocket] WebSocket disconnected successfully");
     
     app.emit("websocket-status", json!({
-        "type": "connection-status",
-        "message": {
-            "status": "disconnected",
-            "timestamp": chrono::Utc::now().timestamp()
-        }
+        "connection_state": "disconnected",
+        "is_connected": false,
+        "is_connecting": false,
+        "reconnect_attempts": 0,
+        "last_heartbeat": 0,
+        "max_reconnect_attempts": 5,
+        "heartbeat_interval": 30
     })).ok();
     println!("[WebSocket] Disconnected status emitted to frontend");
     
@@ -674,28 +704,38 @@ async fn handle_chat_message(message_text: &str, app: AppHandle) -> Result<(), S
         .and_then(|v| v.as_str())
         .ok_or("No content in message")?;
     
-    // Decrypt the content (simple XOR decryption to match frontend)
-    let decrypted_content = decrypt_message(encrypted_content);
+    // Decrypt message content before storing in database
+    println!("[WebSocket] Decrypting message content before database storage");
+    
+    // Use the same encryption key as the frontend
+    let decrypted_content = decrypt_message_content(encrypted_content)?;
+    println!("[WebSocket] Message decrypted successfully: {} -> {}", 
+             encrypted_content, decrypted_content);
     
     let sent_at = message.get("sent_at")
         .and_then(|v| v.as_str())
         .ok_or("No sent_at in message")?;
     
-    // Parse timestamp
-    let timestamp = chrono::DateTime::parse_from_rfc3339(sent_at)
-        .map_err(|e| format!("Failed to parse timestamp: {}", e))?
-        .timestamp();
+    // Parse timestamp with nanosecond precision for proper message ordering
+    let parsed_datetime = chrono::DateTime::parse_from_rfc3339(sent_at)
+        .map_err(|e| format!("Failed to parse timestamp: {}", e))?;
     
-    println!("[WebSocket] Saving message to database: {}", message_id);
+    // Convert to nanoseconds since epoch for maximum precision
+    let timestamp = parsed_datetime.timestamp_nanos_opt()
+        .unwrap_or_else(|| parsed_datetime.timestamp() * 1_000_000_000);
     
-    // Save message to database (decrypted)
+    println!("[WebSocket] Parsed timestamp: {} -> {} (nanoseconds)", sent_at, timestamp);
+    
+    println!("[WebSocket] Saving decrypted message to database: {}", message_id);
+    
+    // Save decrypted message to database
     let db_message = crate::database_async::Message {
         id: None,
         message_id: Some(message_id.to_string()),
         client_message_id: message_id.to_string(), // Use server ID as client ID for incoming messages
         chat_id: chat_id.to_string(),
         sender_id: sender_id.to_string(),
-        content: decrypted_content.clone(),
+        content: decrypted_content.clone(), // Store decrypted content in database
         timestamp,
         is_read: false,
         is_sent: true,
@@ -710,15 +750,15 @@ async fn handle_chat_message(message_text: &str, app: AppHandle) -> Result<(), S
         return Err(format!("Database error: {}", e));
     }
     
-    println!("[WebSocket] Message saved to database successfully");
+    println!("[WebSocket] Decrypted message saved to database successfully");
     
-    // Emit message saved event to frontend
+    // Emit message saved event to frontend (with decrypted content)
     println!("[WebSocket] Emitting message-saved event to frontend");
     app.emit("message-saved", json!({
         "message_id": message_id,
         "chat_id": chat_id,
         "sender_id": sender_id,
-        "content": decrypted_content,
+        "content": decrypted_content, // Send decrypted content - no need for frontend to decrypt
         "timestamp": timestamp
     })).ok();
     
@@ -733,39 +773,4 @@ async fn handle_chat_message(message_text: &str, app: AppHandle) -> Result<(), S
     println!("[WebSocket] Test event emitted");
     
     Ok(())
-}
-
-// XOR decryption function to match frontend implementation
-fn decrypt_message(encrypted_string: &str) -> String {
-    const INTERNAL_KEY: &str = "hardcoded_key"; // Must match frontend key
-    
-    if encrypted_string.is_empty() {
-        return String::new();
-    }
-    
-    // Decode base64
-    let encrypted_bytes = match base64::engine::general_purpose::STANDARD.decode(encrypted_string) {
-        Ok(bytes) => bytes,
-        Err(_) => {
-            println!("[WebSocket] Failed to decode base64, returning original");
-            return encrypted_string.to_string();
-        }
-    };
-    
-    // XOR decrypt
-    let key_bytes = INTERNAL_KEY.as_bytes();
-    let decrypted_bytes: Vec<u8> = encrypted_bytes
-        .iter()
-        .enumerate()
-        .map(|(i, &byte)| byte ^ key_bytes[i % key_bytes.len()])
-        .collect();
-    
-    // Convert to string
-    match String::from_utf8(decrypted_bytes) {
-        Ok(decrypted) => decrypted,
-        Err(_) => {
-            println!("[WebSocket] Failed to convert decrypted bytes to string, returning original");
-            encrypted_string.to_string()
-        }
-    }
 }

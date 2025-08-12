@@ -1,12 +1,27 @@
+import { sessionManager } from '../utils/sessionManager';
 import { friendService } from '../friend/friendService';
 import { chatService } from './chatService';
 import { participantService } from '../participant/participantService';
+import { websocketService } from '../websocket/websocketService';
+
+export interface InitializationStep {
+  id: string;
+  name: string;
+  weight: number; // How much this step contributes to overall progress
+  description: string;
+}
+
+export interface InitializationProgress {
+  currentStep: string;
+  progress: number;
+  isComplete: boolean;
+  error?: string;
+}
 
 export class BackgroundSyncManager {
   private static instance: BackgroundSyncManager;
-  private isSyncing: boolean = false;
-  private lastSyncTime: number = 0;
-  private readonly SYNC_COOLDOWN = 30000; // 30 seconds cooldown between syncs
+  private isInitializing = false;
+  private progressCallbacks: Set<(progress: InitializationProgress) => void> = new Set();
 
   static getInstance(): BackgroundSyncManager {
     if (!BackgroundSyncManager.instance) {
@@ -15,187 +30,267 @@ export class BackgroundSyncManager {
     return BackgroundSyncManager.instance;
   }
 
-  // MARK: - Screen-based Delta Updates
+  // Define all initialization steps with their weights
+  private readonly initializationSteps: InitializationStep[] = [
+    {
+      id: 'database',
+      name: 'Database',
+      weight: 10,
+      description: 'Initializing local database...'
+    },
+    {
+      id: 'session',
+      name: 'Session',
+      weight: 15,
+      description: 'Verifying user session...'
+    },
+    {
+      id: 'friends',
+      name: 'Friends',
+      weight: 20,
+      description: 'Loading friends from database...'
+    },
+    {
+      id: 'friends_sync',
+      name: 'Friends Sync',
+      weight: 15,
+      description: 'Syncing friends from server...'
+    },
+    {
+      id: 'chats',
+      name: 'Chats',
+      weight: 20,
+      description: 'Loading chats from database...'
+    },
+    {
+      id: 'participants',
+      name: 'Participants',
+      weight: 15,
+      description: 'Syncing chat participants...'
+    },
+    {
+      id: 'websocket',
+      name: 'WebSocket',
+      weight: 5,
+      description: 'Connecting to chat server...'
+    }
+  ];
 
-  /**
-   * Triggered when user opens the friends screen
-   */
-  async onFriendsScreenOpened(): Promise<void> {
-    console.log('[BackgroundSyncManager] Friends screen opened, triggering delta sync...');
-    await this.performFriendsDeltaSync();
+  // Calculate total weight for progress calculation
+  private get totalWeight(): number {
+    return this.initializationSteps.reduce((sum, step) => sum + step.weight, 0);
   }
 
   /**
-   * Triggered when user opens the chat screen
+   * Subscribe to initialization progress updates
    */
-  async onChatScreenOpened(): Promise<void> {
-    console.log('[BackgroundSyncManager] Chat screen opened, triggering delta sync...');
-    await this.performChatsDeltaSync();
+  onProgressUpdate(callback: (progress: InitializationProgress) => void): () => void {
+    this.progressCallbacks.add(callback);
+    return () => this.progressCallbacks.delete(callback);
   }
 
   /**
-   * Triggered when user opens a specific chat
+   * Notify all subscribers of progress updates
    */
-  async onSpecificChatOpened(chatId: string): Promise<void> {
-    console.log('[BackgroundSyncManager] Specific chat opened:', chatId, 'triggering delta sync...');
-    await this.performChatsDeltaSync();
-    await this.performParticipantsDeltaSync(chatId);
+  private notifyProgress(progress: InitializationProgress): void {
+    this.progressCallbacks.forEach(callback => {
+      try {
+        callback(progress);
+      } catch (error) {
+        console.error('[BackgroundSyncManager] Error in progress callback:', error);
+      }
+    });
   }
 
   /**
-   * Triggered when user opens the chat list screen
+   * Calculate progress percentage based on completed steps
    */
-  async onChatListScreenOpened(): Promise<void> {
-    console.log('[BackgroundSyncManager] Chat list screen opened, triggering delta sync...');
-    await this.performChatsDeltaSync();
+  private calculateProgress(completedSteps: Set<string>): number {
+    let completedWeight = 0;
+    this.initializationSteps.forEach(step => {
+      if (completedSteps.has(step.id)) {
+        completedWeight += step.weight;
+      }
+    });
+    return Math.min((completedWeight / this.totalWeight) * 100, 100);
   }
 
-  // MARK: - Delta Sync Methods
-
-  private async performFriendsDeltaSync(): Promise<void> {
-    if (this.shouldSkipSync()) {
-      console.log('[BackgroundSyncManager] Skipping friends delta sync due to cooldown');
+  /**
+   * Main initialization method that handles all setup steps
+   */
+  async initializeApp(): Promise<void> {
+    if (this.isInitializing) {
+      console.log('[BackgroundSyncManager] Initialization already in progress');
       return;
     }
 
-    try {
-      this.isSyncing = true;
-      console.log('[BackgroundSyncManager] Starting friends delta sync...');
-      
-      await friendService.performDeltaFriendSync();
-      
-      this.updateLastSyncTime();
-      console.log('[BackgroundSyncManager] Friends delta sync completed');
-    } catch (error) {
-      console.error('[BackgroundSyncManager] Friends delta sync failed:', error);
-    } finally {
-      this.isSyncing = false;
-    }
-  }
-
-  private async performChatsDeltaSync(): Promise<void> {
-    if (this.shouldSkipSync()) {
-      console.log('[BackgroundSyncManager] Skipping chats delta sync due to cooldown');
-      return;
-    }
+    this.isInitializing = true;
+    const completedSteps = new Set<string>();
+    let currentStep = '';
 
     try {
-      this.isSyncing = true;
-      console.log('[BackgroundSyncManager] Starting chats delta sync...');
+      console.log('[BackgroundSyncManager] Starting app initialization...');
+
+      // Step 1: Database (already done by Tauri)
+      currentStep = 'Database';
+      console.log('[BackgroundSyncManager] Step 1: Database initialization...');
+      this.notifyProgress({
+        currentStep: 'Initializing local database...',
+        progress: this.calculateProgress(completedSteps),
+        isComplete: false
+      });
+      completedSteps.add('database');
+      await this.delay(500); // Small delay for smooth UX
+
+      // Step 2: Session verification
+      currentStep = 'Session';
+      console.log('[BackgroundSyncManager] Step 2: Session verification...');
+      this.notifyProgress({
+        currentStep: 'Verifying user session...',
+        progress: this.calculateProgress(completedSteps),
+        isComplete: false
+      });
       
-      // Use the new approach that fetches chats and participants together
-      await chatService.syncChatsFromServer();
+      const token = await sessionManager.getToken();
+      const userId = await sessionManager.getCurrentUserId();
       
-      this.updateLastSyncTime();
-      console.log('[BackgroundSyncManager] Chats delta sync completed');
+      console.log('[BackgroundSyncManager] Session check - Token:', !!token, 'User:', !!userId);
+      
+      if (!token || !userId) {
+        throw new Error('No valid session found');
+      }
+      
+      completedSteps.add('session');
+      await this.delay(300);
+
+      // Step 3: Load friends from database
+      currentStep = 'Friends';
+      console.log('[BackgroundSyncManager] Step 3: Loading friends from database...');
+      this.notifyProgress({
+        currentStep: 'Loading friends from database...',
+        progress: this.calculateProgress(completedSteps),
+        isComplete: false
+      });
+      
+      await friendService.get_cached_friends_for_current_user();
+      completedSteps.add('friends');
+      await this.delay(400);
+
+      // Step 4: Sync friends from server (background)
+      currentStep = 'Friends Sync';
+      console.log('[BackgroundSyncManager] Step 4: Syncing friends from server...');
+      this.notifyProgress({
+        currentStep: 'Syncing friends from server...',
+        progress: this.calculateProgress(completedSteps),
+        isComplete: false
+      });
+      
+      try {
+        await friendService.syncFriendsFromServer();
+        console.log('[BackgroundSyncManager] Friends synced successfully');
+      } catch (error) {
+        console.warn('[BackgroundSyncManager] Friend sync failed (non-critical):', error);
+      }
+      
+      completedSteps.add('friends_sync');
+      await this.delay(500);
+
+      // Step 5: Load chats from database
+      currentStep = 'Chats';
+      console.log('[BackgroundSyncManager] Step 5: Loading chats from database...');
+      this.notifyProgress({
+        currentStep: 'Loading chats from database...',
+        progress: this.calculateProgress(completedSteps),
+        isComplete: false
+      });
+      
+      await chatService.getAllChats();
+      completedSteps.add('chats');
+      await this.delay(400);
+
+      // Step 6: Sync chat participants (background)
+      currentStep = 'Participants';
+      console.log('[BackgroundSyncManager] Step 6: Syncing chat participants...');
+      this.notifyProgress({
+        currentStep: 'Syncing chat participants...',
+        progress: this.calculateProgress(completedSteps),
+        isComplete: false
+      });
+      
+      try {
+        await participantService.syncAllExistingChats();
+        console.log('[BackgroundSyncManager] Chat participants synced successfully');
+      } catch (error) {
+        console.warn('[BackgroundSyncManager] Participant sync failed (non-critical):', error);
+      }
+      
+      completedSteps.add('participants');
+      await this.delay(500);
+
+      // Step 7: WebSocket connection
+      currentStep = 'WebSocket';
+      console.log('[BackgroundSyncManager] Step 7: Connecting to WebSocket...');
+      this.notifyProgress({
+        currentStep: 'Connecting to chat server...',
+        progress: this.calculateProgress(completedSteps),
+        isComplete: false
+      });
+      
+      try {
+        await websocketService.connect(token);
+        console.log('[BackgroundSyncManager] WebSocket connected successfully');
+      } catch (error) {
+        console.warn('[BackgroundSyncManager] WebSocket connection failed (non-critical):', error);
+      }
+      
+      completedSteps.add('websocket');
+      await this.delay(300);
+
+      // Final progress update
+      console.log('[BackgroundSyncManager] All steps completed, marking as complete');
+      this.notifyProgress({
+        currentStep: 'Initialization complete!',
+        progress: 100,
+        isComplete: true
+      });
+
+      console.log('[BackgroundSyncManager] App initialization completed successfully');
+      
     } catch (error) {
-      console.error('[BackgroundSyncManager] Chats delta sync failed:', error);
+      console.error('[BackgroundSyncManager] Initialization failed at step:', currentStep, 'Error:', error);
+      
+      this.notifyProgress({
+        currentStep: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        progress: this.calculateProgress(completedSteps),
+        isComplete: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      throw error;
     } finally {
-      this.isSyncing = false;
+      this.isInitializing = false;
     }
   }
-
-  private async performParticipantsDeltaSync(chatId: string): Promise<void> {
-    if (this.shouldSkipSync()) {
-      console.log('[BackgroundSyncManager] Skipping participants delta sync due to cooldown');
-      return;
-    }
-
-    try {
-      this.isSyncing = true;
-      console.log('[BackgroundSyncManager] Starting participants delta sync for chat:', chatId);
-      
-      // For now, just refresh participants from local database
-      await participantService.fetchAndSaveParticipants(chatId);
-      
-      this.updateLastSyncTime();
-      console.log('[BackgroundSyncManager] Participants delta sync completed');
-    } catch (error) {
-      console.error('[BackgroundSyncManager] Participants delta sync failed:', error);
-    } finally {
-      this.isSyncing = false;
-    }
-  }
-
-  // MARK: - Manual Sync Methods
 
   /**
-   * Manual sync for friends (can be called from settings or refresh button)
+   * Utility method for smooth progress transitions
    */
-  async manualFriendsSync(): Promise<void> {
-    console.log('[BackgroundSyncManager] Manual friends sync triggered...');
-    this.lastSyncTime = 0; // Reset cooldown for manual sync
-    await this.performFriendsDeltaSync();
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
-   * Manual sync for chats (can be called from settings or refresh button)
+   * Check if initialization is currently in progress
    */
-  async manualChatsSync(): Promise<void> {
-    console.log('[BackgroundSyncManager] Manual chats sync triggered...');
-    this.lastSyncTime = 0; // Reset cooldown for manual sync
-    await this.performChatsDeltaSync();
+  getInitializingStatus(): boolean {
+    return this.isInitializing;
   }
 
   /**
-   * Full sync for all data (can be called from settings)
+   * Get all initialization steps for reference
    */
-  async fullSync(): Promise<void> {
-    console.log('[BackgroundSyncManager] Full sync triggered...');
-    this.lastSyncTime = 0; // Reset cooldown for manual sync
-    
-    try {
-      this.isSyncing = true;
-      
-      // Perform all delta syncs
-      await Promise.all([
-        this.performFriendsDeltaSync(),
-        this.performChatsDeltaSync()
-      ]);
-      
-      console.log('[BackgroundSyncManager] Full sync completed');
-    } catch (error) {
-      console.error('[BackgroundSyncManager] Full sync failed:', error);
-    } finally {
-      this.isSyncing = false;
-    }
-  }
-
-  // MARK: - Utility Methods
-
-  private shouldSkipSync(): boolean {
-    const now = Date.now();
-    const timeSinceLastSync = now - this.lastSyncTime;
-    
-    if (this.isSyncing) {
-      console.log('[BackgroundSyncManager] Sync already in progress, skipping...');
-      return true;
-    }
-    
-    if (timeSinceLastSync < this.SYNC_COOLDOWN) {
-      console.log('[BackgroundSyncManager] Sync cooldown active, skipping...');
-      return true;
-    }
-    
-    return false;
-  }
-
-  private updateLastSyncTime(): void {
-    this.lastSyncTime = Date.now();
-  }
-
-  // MARK: - Getters
-
-  getIsSyncing(): boolean {
-    return this.isSyncing;
-  }
-
-  getLastSyncTime(): number {
-    return this.lastSyncTime;
-  }
-
-  getSyncCooldown(): number {
-    return this.SYNC_COOLDOWN;
+  getInitializationSteps(): InitializationStep[] {
+    return [...this.initializationSteps];
   }
 }
 

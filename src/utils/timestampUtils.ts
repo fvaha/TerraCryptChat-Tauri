@@ -131,9 +131,13 @@ export function getRelativeDateLabel(timestamp: number): string {
 }
 
 /**
- * Ensure timestamp is in milliseconds (convert from seconds if needed)
+ * Ensure timestamp is in milliseconds (convert from seconds or nanoseconds if needed)
  */
 export function ensureMilliseconds(timestamp: number): number {
+  // If timestamp is in nanoseconds (greater than 1000000000000000000), convert to milliseconds
+  if (timestamp > 1000000000000000000) {
+    return Math.floor(timestamp / 1_000_000);
+  }
   // If timestamp is in seconds (less than 10000000000), convert to milliseconds
   if (timestamp < 10000000000) {
     return timestamp * 1000;

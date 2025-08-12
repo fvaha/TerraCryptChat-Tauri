@@ -26,9 +26,9 @@ const GroupChatScreen: React.FC<GroupChatScreenProps> = ({ onBack, onGroupCreate
   // Load friends list
   useEffect(() => {
     loadFriends();
-  }, [token]);
+  }, [token, loadFriends]);
 
-  const loadFriends = async () => {
+  const loadFriends = useCallback(async () => {
     if (!token) return;
 
     try {
@@ -49,7 +49,7 @@ const GroupChatScreen: React.FC<GroupChatScreenProps> = ({ onBack, onGroupCreate
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [token]);
 
   const toggleFriendSelection = (friendId: string) => {
     setSelectedFriends(prev => 

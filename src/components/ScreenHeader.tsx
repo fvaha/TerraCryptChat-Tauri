@@ -20,6 +20,8 @@ interface ScreenHeaderProps {
   isSearchActive?: boolean;
   showBackButton?: boolean;
   onBackClick?: () => void;
+  showRefreshButton?: boolean;
+  onRefreshClick?: () => void;
   rightContent?: React.ReactNode;
 }
 
@@ -41,6 +43,8 @@ const ScreenHeader: React.FC<ScreenHeaderProps> = ({
   isSearchActive = false,
   showBackButton = false,
   onBackClick,
+  showRefreshButton = false,
+  onRefreshClick,
   rightContent
 }) => {
   const { theme } = useTheme();
@@ -249,6 +253,35 @@ const ScreenHeader: React.FC<ScreenHeaderProps> = ({
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                    <line x1="12" y1="5" x2="12" y2="19"/>
                    <line x1="5" y1="12" x2="19" y2="12"/>
+                 </svg>
+               </button>
+             )}
+
+             {/* Refresh Button */}
+             {showRefreshButton && onRefreshClick && (
+               <button
+                 onClick={onRefreshClick}
+                 style={{
+                   width: "20px",
+                   height: "20px",
+                   border: "none",
+                   backgroundColor: "transparent",
+                   color: theme.textSecondary,
+                   display: "flex",
+                   alignItems: "center",
+                   justifyContent: "center",
+                   cursor: "pointer",
+                   fontSize: "16px",
+                   transition: "all 0.2s ease",
+                   padding: 0
+                 }}
+                 title="Refresh"
+               >
+                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                   <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                   <path d="M21 3v5h-5"/>
+                   <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                   <path d="M3 21v-5h5"/>
                  </svg>
                </button>
              )}

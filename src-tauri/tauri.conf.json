@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devUrl": "http://localhost:4000",
+    "devUrl": "http://localhost:4001",
     "frontendDist": "../dist"
   },
   "app": {
@@ -20,8 +20,10 @@
         "fullscreen": false,
         "resizable": true,
         "title": "TerraCrypt Chat",
-        "width": 1000,
-        "height": 600
+        "width": 960,
+        "height": 600,
+        "x": 100,
+        "y": 100
       }
     ]
   },

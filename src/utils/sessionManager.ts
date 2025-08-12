@@ -1,78 +1,159 @@
-import { nativeApiService } from '../api/nativeApiService';
 import { invoke } from '@tauri-apps/api/core';
 import { websocketService } from '../websocket/websocketService';
 
+interface DatabaseUser {
+  user_id: string;
+  username: string;
+  password?: string;
+  token_hash?: string;
+  [key: string]: unknown;
+}
+
+interface LoginResult {
+  access_token: string;
+  [key: string]: unknown;
+}
+
+interface UserData {
+  user_id: string;
+  username: string;
+  email: string;
+  name?: string;
+  picture?: string;
+  role?: string;
+  verified: boolean;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface SessionUser {
+  id: string;
+  user_id: string;
+  username: string;
+  name: string;
+  email: string;
+  picture?: string;
+  role: string;
+  verified: boolean;
+  is_dark_mode: boolean;
+  created_at: number;
+  updated_at: number;
+  deleted_at?: number;
+  last_seen: number;
+}
+
 export interface SessionState {
-  isLoggedIn: boolean;
-  isSessionInitialized: boolean;
-  currentUser: any | null;
-  isDarkModeEnabled: boolean;
+  is_logged_in: boolean;
+  is_session_initialized: boolean;
+  current_user: SessionUser | null;
+  is_dark_mode_enabled: boolean;
 }
 
 export class SessionManager {
-  private currentUser: any = null;
+  private current_user: SessionUser | null = null;
   private token: string | null = null;
-  private isInitialized = false;
-  private isDarkModeEnabled = false;
-  private stateListeners: ((state: SessionState) => void)[] = [];
+  private is_initialized = false;
+  private is_dark_mode_enabled = false;
+  private static instance: SessionManager;
+  private state_listeners: ((state: SessionState) => void)[] = [];
+  private is_initializing = false;
 
-  // State management
-  getState(): SessionState {
-    return {
-      isLoggedIn: this.isLoggedIn(),
-      isSessionInitialized: this.isInitialized,
-      currentUser: this.currentUser,
-      isDarkModeEnabled: this.isDarkModeEnabled
-    };
+  static getInstance(): SessionManager {
+    if (!SessionManager.instance) {
+      SessionManager.instance = new SessionManager();
+    }
+    return SessionManager.instance;
   }
 
   onStateChange(listener: (state: SessionState) => void): () => void {
-    this.stateListeners.push(listener);
+    this.state_listeners.push(listener);
     return () => {
-      const index = this.stateListeners.indexOf(listener);
+      const index = this.state_listeners.indexOf(listener);
       if (index > -1) {
-        this.stateListeners.splice(index, 1);
+        this.state_listeners.splice(index, 1);
       }
     };
   }
 
-  private emitStateChange(): void {
-    const state = this.getState();
-    console.log(' [SessionManager] Emitting state change:', state);
-    console.log(' [SessionManager] Number of listeners:', this.stateListeners.length);
-    this.stateListeners.forEach(listener => listener(state));
+  private notifyStateChange(): void {
+    const state: SessionState = {
+      is_logged_in: this.isLoggedIn(),
+      is_session_initialized: this.is_initialized,
+      current_user: this.getCurrentUser(),
+      is_dark_mode_enabled: this.getDarkModeEnabled(),
+    };
+    
+    console.log('[SessionManager] notifyStateChange: Notifying', this.state_listeners.length, 'listeners with state:', state);
+    console.log('[SessionManager] Current internal state:', {
+      hasToken: !!this.token,
+      hasUser: !!this.current_user,
+      isInitialized: this.is_initialized
+    });
+    
+    this.state_listeners.forEach((listener, index) => {
+      console.log(`[SessionManager] notifyStateChange: Calling listener ${index + 1}`);
+      try {
+        listener(state);
+        console.log(`[SessionManager] notifyStateChange: Listener ${index + 1} completed successfully`);
+      } catch (error) {
+        console.error(`[SessionManager] notifyStateChange: Listener ${index + 1} failed:`, error);
+      }
+    });
   }
 
-  async initializeSession(): Promise<boolean> {
+  getState(): SessionState {
+    return {
+      is_logged_in: this.isLoggedIn(),
+      is_session_initialized: this.is_initialized,
+      current_user: this.getCurrentUser(),
+      is_dark_mode_enabled: this.getDarkModeEnabled(),
+    };
+  }
+
+  async initialize_session(): Promise<boolean> {
     try {
+      console.log('[SessionManager] Starting initialize_session...');
+      
       // Set initialized to true immediately to avoid blocking
-      this.isInitialized = true;
-      this.emitStateChange();
+      this.is_initialized = true;
+      console.log('[SessionManager] Marked as initialized, notifying state change');
+      this.notifyStateChange();
       
       // Initialize database and check session immediately
       try {
+        console.log('[SessionManager] Ensuring database is initialized...');
         await invoke('db_ensure_initialized');
         
         // Database-first approach like Kotlin app
-        const cachedUser = await invoke<any>('db_get_most_recent_user');
+        console.log('[SessionManager] Getting most recent user from database...');
+        const cachedUser = await invoke<DatabaseUser>('db_get_most_recent_user');
+        console.log('[SessionManager] Cached user found:', !!cachedUser);
         
         if (cachedUser && cachedUser.token_hash) {
+          console.log('[SessionManager] Checking if token is expired...');
           // Check if token is expired (like Kotlin app)
           if (this.isTokenExpired(cachedUser.token_hash)) {
+            console.log('[SessionManager] Token expired, attempting silent relogin...');
             // Try silent relogin with stored credentials
             const success = await this.attemptSilentRelogin();
             if (!success) {
+              console.log('[SessionManager] Silent relogin failed, clearing database...');
               // Reset database on failed session restoration
               try {
                 await invoke('db_clear_all_data');
+                console.log('[SessionManager] Database cleared successfully');
               } catch (resetError) {
+                console.log('[SessionManager] Failed to clear database:', resetError);
                 // Silent fail
               }
               await this.logOut();
-              this.emitStateChange();
+              console.log('[SessionManager] Logged out, notifying state change');
+              this.notifyStateChange();
               return false;
             }
           } else {
+            console.log('[SessionManager] Token valid, restoring session...');
             // Token is valid, restore session immediately
             await this.updateTokenAndState(cachedUser.token_hash, cachedUser);
             
@@ -80,27 +161,31 @@ export class SessionManager {
             setTimeout(async () => {
               try {
                 await websocketService.connect(cachedUser.token_hash);
-              } catch (error) {
+              } catch {
                 // Silent fail - user already has data
               }
             }, 100);
             
-            this.emitStateChange();
+            this.notifyStateChange();
             return true; // User is logged in
           }
         } else {
+          console.log('[SessionManager] No cached user found, logging out...');
           await this.logOut();
         }
         
-        this.emitStateChange();
+        console.log('[SessionManager] Final state change notification');
+        this.notifyStateChange();
         return false; // No user found
       } catch (error) {
+        console.log('[SessionManager] Error during initialization:', error);
         // Don't set error state, just return false
         return false;
       }
     } catch (error) {
-      this.isInitialized = true;
-      this.emitStateChange();
+      console.log('[SessionManager] Outer error during initialization:', error);
+      this.is_initialized = true;
+      this.notifyStateChange();
       return false;
     }
   }
@@ -115,7 +200,7 @@ export class SessionManager {
       const now = Math.floor(Date.now() / 1000);
       
       return exp <= now;
-    } catch (error) {
+    } catch {
       return true;
     }
   }
@@ -123,7 +208,7 @@ export class SessionManager {
   private async attemptSilentRelogin(): Promise<boolean> {
     try {
       // Get stored credentials from database
-      const storedCredentials = await invoke<any>('db_get_most_recent_user');
+      const storedCredentials = await invoke<DatabaseUser>('db_get_most_recent_user');
       if (!storedCredentials?.username || !storedCredentials?.password) {
         return false;
       }
@@ -135,7 +220,7 @@ export class SessionManager {
       });
       
       if (loginResult && typeof loginResult === 'object' && 'access_token' in loginResult) {
-        const token = (loginResult as any).access_token;
+        const token = (loginResult as LoginResult).access_token;
         await this.handleSuccessfulLogin(token, storedCredentials.username, storedCredentials.password);
         return true;
       }
@@ -146,32 +231,32 @@ export class SessionManager {
     }
   }
 
-  private async updateTokenAndState(token: string, user: any) {
-    console.log(' Updating token and state...');
-    console.log(' Token:', token ? token.substring(0, 20) + '...' : 'null');
-    console.log(' User:', user ? 'has user data' : 'null');
+  private async updateTokenAndState(token: string, user: DatabaseUser) {
+    console.log('Updating token and state...');
+    console.log('Token:', token ? token.substring(0, 20) + '...' : 'null');
+    console.log('User:', user ? 'has user data' : 'null');
     
     this.token = token;
-    this.currentUser = user;
+    this.current_user = user;
     
     // Connect WebSocket after successful login
     try {
-      console.log(' Connecting WebSocket...');
+      console.log('Connecting WebSocket...');
       await websocketService.connect(token);
-      console.log(' WebSocket connected successfully');
+      console.log('WebSocket connected successfully');
     } catch (error) {
-      console.error(' Failed to connect WebSocket:', error);
+      console.error('Failed to connect WebSocket:', error);
       // Don't fail the login if WebSocket fails
     }
     
-    console.log(' Emitting state change...');
-    this.emitStateChange();
-    console.log(' State change emitted. Current state:', this.getState());
+    console.log('Emitting state change...');
+    this.notifyStateChange();
+    console.log('State change emitted. Current state:', this.getState());
   }
 
   async login(username: string, password: string): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log(' Attempting login for user:', username);
+      console.log('Attempting login for user:', username);
       
       // Validate input like Kotlin version
       if (!username || username.trim().length === 0) {
@@ -189,7 +274,7 @@ export class SessionManager {
       });
       
       if (loginResult && typeof loginResult === 'object' && 'access_token' in loginResult) {
-        const token = (loginResult as any).access_token;
+        const token = (loginResult as LoginResult).access_token;
         await this.handleSuccessfulLogin(token, username.trim(), password);
         return { success: true };
       } else {
@@ -200,11 +285,11 @@ export class SessionManager {
       
       // Clear database on failed login to ensure clean state
       try {
-        console.log(' Clearing database due to failed login...');
+        console.log('Clearing database due to failed login...');
         await invoke('db_clear_all_data');
-        console.log(' Database cleared after failed login');
+        console.log('Database cleared after failed login');
       } catch (clearError) {
-        console.error(' Failed to clear database after login error:', clearError);
+        console.error('Failed to clear database after login error:', clearError);
       }
       
       // Return user-friendly error message
@@ -223,26 +308,25 @@ export class SessionManager {
     }
   }
 
-  public async handleSuccessfulLogin(accessToken: string, username?: string, password?: string): Promise<void> {
+  async handleSuccessfulLogin(accessToken: string, username?: string, password?: string): Promise<void> {
     try {
-      console.log(' Handling successful login with token:', accessToken.substring(0, 20) + '...');
+      console.log('Handling successful login with token:', accessToken.substring(0, 20) + '...');
       
-      // Set token in native API service
-      nativeApiService.setToken(accessToken);
+      // Note: nativeApiService.setToken() removed as method doesn't exist
 
-      console.log(' Fetching user data from API...');
+      console.log('Fetching user data from API...');
       console.log('Token being used:', accessToken.substring(0, 20) + '...');
       
       // Get user data using the API call (like Kotlin version)
-      const userData = await invoke<any>('get_current_user_with_token', { 
+      const userData = await invoke<UserData>('get_current_user_with_token', { 
         token: accessToken
       });
       
       if (userData) {
-        console.log(' User data received:', userData);
+        console.log('User data received:', userData);
         
         // Save user to database with token_hash (like Kotlin/Swift)
-        console.log(' Saving user to database...');
+        console.log('Saving user to database...');
         // Convert ISO date strings to timestamps if they exist, otherwise use current time
         const created_at = userData.created_at ? new Date(userData.created_at).getTime() : Date.now();
         const updated_at = userData.updated_at ? new Date(userData.updated_at).getTime() : Date.now();
@@ -264,32 +348,41 @@ export class SessionManager {
           password: password || null // Store password for silent relogin
         };
         
-        console.log(' User object to save:', userForDb);
+        console.log('User object to save:', userForDb);
         
         try {
-          console.log(' Attempting to save user to database...');
+          console.log('Attempting to save user to database...');
           await invoke('db_insert_user', { user: userForDb });
-          console.log(' User saved to database successfully');
+          console.log('User saved to database successfully');
           
           // Verify the user was saved by trying to retrieve it
           try {
-            console.log(' Verifying user was saved...');
+            console.log('Verifying user was saved...');
             const savedUser = await invoke('db_get_user_by_id', { user_id: userForDb.user_id });
-            console.log(' User verification successful:', savedUser);
+            console.log('User verification successful:', savedUser);
           } catch (verifyError) {
-            console.error(' User verification failed:', verifyError);
+            console.error('User verification failed:', verifyError);
           }
         } catch (dbError) {
-          console.error(' Failed to save user to database:', dbError);
+          console.error('Failed to save user to database:', dbError);
           throw dbError;
         }
         
-        this.currentUser = {
+        this.current_user = {
           ...userData,
-          tokenHash: accessToken,
-          accessToken: accessToken,
           id: userData.user_id,
-          userId: userData.user_id
+          user_id: userData.user_id,
+          username: userData.username,
+          name: userData.name || userData.username,
+          email: userData.email || '',
+          picture: userData.picture,
+          role: userData.role || 'user',
+          verified: userData.verified || false,
+          is_dark_mode: false,
+          created_at: created_at,
+          updated_at: updated_at,
+          deleted_at: null,
+          last_seen: Date.now(),
         };
         
         // Set the token in the session manager
@@ -297,20 +390,20 @@ export class SessionManager {
         
         // Connect WebSocket after successful login
         try {
-          console.log(' Connecting WebSocket...');
+          console.log('Connecting WebSocket...');
           await websocketService.connect(accessToken);
-          console.log(' WebSocket connected successfully');
+          console.log('WebSocket connected successfully');
         } catch (error) {
-          console.error(' Failed to connect WebSocket:', error);
+          console.error('Failed to connect WebSocket:', error);
           // Don't fail the login if WebSocket fails
         }
         
-        console.log(' Login process completed successfully');
+        console.log('Login process completed successfully');
         
         // Data will be fetched from local SQLite database as needed
         console.log('Using locally stored data from SQLite database');
         
-        this.emitStateChange();
+        this.notifyStateChange();
       } else {
         throw new Error('Failed to get user data');
       }
@@ -322,31 +415,42 @@ export class SessionManager {
 
   async logout(): Promise<void> {
     try {
-      console.log(' Starting logout process...');
+      console.log('[SessionManager] Starting logout process...');
       
       // Disconnect WebSocket
       try {
         await websocketService.disconnect();
-        console.log(' WebSocket disconnected successfully');
+        console.log('[SessionManager] WebSocket disconnected successfully');
       } catch (error) {
-        console.error(' Failed to disconnect WebSocket:', error);
+        console.error('[SessionManager] Failed to disconnect WebSocket:', error);
       }
       
-      // Clear token from native API service
-      nativeApiService.clearToken();
+      // Note: nativeApiService.clearToken() removed as method doesn't exist
       
       this.token = null;
-      this.currentUser = null;
+      this.current_user = null;
       
-      console.log(' Logout completed successfully');
-      this.emitStateChange();
+      console.log('[SessionManager] Logout completed successfully, notifying state change...');
+      this.notifyStateChange();
+      console.log('[SessionManager] State change notification sent');
     } catch (error) {
-      console.error(' Logout failed:', error);
+      console.error('[SessionManager] Logout failed:', error);
     }
   }
 
-  getCurrentUser(): any {
-    return this.currentUser;
+  async logOut(): Promise<void> {
+    console.log('[SessionManager] Public logout called, clearing database...');
+    try {
+      await invoke('db_clear_all_data');
+      console.log('[SessionManager] Database cleared during logout');
+    } catch (error) {
+      console.error('[SessionManager] Failed to clear database during logout:', error);
+    }
+    await this.logout();
+  }
+
+  getCurrentUser(): SessionUser | null {
+    return this.current_user;
   }
 
   getToken(): string | null {
@@ -354,10 +458,10 @@ export class SessionManager {
   }
 
   isLoggedIn(): boolean {
-    const isLoggedIn = !!this.token && !!this.currentUser;
+    const isLoggedIn = !!this.token && !!this.current_user;
     console.log('[SessionManager] isLoggedIn() called:', {
       hasToken: !!this.token,
-      hasUser: !!this.currentUser,
+      hasUser: !!this.current_user,
       result: isLoggedIn
     });
     return isLoggedIn;
@@ -366,21 +470,29 @@ export class SessionManager {
   async refreshToken(): Promise<boolean> {
     try {
       // Get current user from database (like Kotlin/Swift)
-      const currentUser = await invoke<any>('db_get_most_recent_user');
+      const currentUser = await invoke<DatabaseUser>('db_get_most_recent_user');
       if (currentUser && currentUser.token_hash) {
         this.token = currentUser.token_hash;
         
-        // Set token in native API service
-        nativeApiService.setToken(currentUser.token_hash);
+        // Note: nativeApiService.setToken() removed as method doesn't exist
         
-        this.currentUser = {
+        this.current_user = {
           ...currentUser,
-          tokenHash: currentUser.token_hash,
-          accessToken: currentUser.token_hash,
           id: currentUser.user_id,
-          userId: currentUser.user_id
+          user_id: currentUser.user_id,
+          username: currentUser.username,
+          name: currentUser.name || currentUser.username,
+          email: currentUser.email || '',
+          picture: currentUser.picture,
+          role: currentUser.role || 'user',
+          verified: currentUser.verified || false,
+          is_dark_mode: currentUser.is_dark_mode || false,
+          created_at: typeof currentUser.created_at === 'string' ? Date.parse(currentUser.created_at) : Date.now(),
+          updated_at: typeof currentUser.updated_at === 'string' ? Date.parse(currentUser.updated_at) : Date.now(),
+          deleted_at: currentUser.deleted_at ? Date.parse(currentUser.deleted_at) : undefined,
+          last_seen: Date.now(),
         };
-        this.emitStateChange();
+        this.notifyStateChange();
         return true;
       }
       return false;
@@ -390,44 +502,37 @@ export class SessionManager {
     }
   }
 
-  // Additional methods for compatibility
-  async logIn(): Promise<void> {
-    // This method is called by the app context
-    if (this.isLoggedIn()) {
-      return;
-    } else {
-      await this.logout();
-    }
-  }
-
-  async logOut(): Promise<void> {
-    console.log(' Public logout called, clearing database...');
-    try {
-      await invoke('db_clear_all_data');
-      console.log(' Database cleared during logout');
-    } catch (error) {
-      console.error(' Failed to clear database during logout:', error);
-    }
-    await this.logout();
-  }
-
   getCurrentUsername(): string {
-    return this.currentUser?.username || "Unknown";
+    return this.current_user?.username || "Unknown";
   }
 
   getCurrentUserId(): string | null {
-    return this.currentUser?.user_id || null;
+    return this.current_user?.user_id || null;
+  }
+
+  getDarkModeEnabled(): boolean {
+    return this.is_dark_mode_enabled;
   }
 
   async toggleDarkMode(): Promise<void> {
-    this.isDarkModeEnabled = !this.isDarkModeEnabled;
-    this.emitStateChange();
+    try {
+      this.is_dark_mode_enabled = !this.is_dark_mode_enabled;
+      if (this.current_user) {
+        await invoke('db_update_dark_mode', { 
+          user_id: this.current_user.user_id, 
+          is_dark_mode: this.is_dark_mode_enabled 
+        });
+        this.notifyStateChange();
+      }
+    } catch (error) {
+      console.error('[SessionManager] Failed to toggle dark mode:', error);
+    }
   }
 
   // Cleanup
   destroy(): void {
-    this.stateListeners = [];
+    this.state_listeners = [];
   }
 }
 
-export const sessionManager = new SessionManager(); 
+export const sessionManager = SessionManager.getInstance(); 

@@ -117,8 +117,19 @@ pub async fn get_pool() -> Result<SqlitePool, SqlxError> {
         return Ok(pool.clone());
     }
     
-    // Initialize the pool if it doesn't exist
-    let pool = initialize_database().await?;
+    // Initialize the pool if it doesn't exist with timeout
+    let timeout_duration = std::time::Duration::from_secs(10);
+    let init_future = initialize_database();
+    let timeout_future = tokio::time::sleep(timeout_duration);
+    
+    let pool = tokio::select! {
+        pool_result = init_future => pool_result?,
+        _ = timeout_future => {
+            println!("[Database] Database initialization timeout after {} seconds", timeout_duration.as_secs());
+            return Err(SqlxError::Configuration("Database initialization timeout".into()));
+        }
+    };
+    
     Ok(pool)
 }
 
@@ -134,26 +145,55 @@ pub async fn initialize_database() -> Result<SqlitePool, SqlxError> {
     // Create the database URL
     let database_url = format!("sqlite:{}", db_path.display());
     
-    // Create connection pool
-    let pool = SqlitePoolOptions::new()
+    // Create connection pool with timeout
+    let pool_future = SqlitePoolOptions::new()
         .max_connections(5)
         .acquire_timeout(std::time::Duration::from_secs(30))
         .idle_timeout(std::time::Duration::from_secs(300))
-        .connect(&database_url)
-        .await?;
+        .connect(&database_url);
+    
+    let timeout_duration = std::time::Duration::from_secs(15);
+    let timeout_future = tokio::time::sleep(timeout_duration);
+    
+    let pool = tokio::select! {
+        pool_result = pool_future => pool_result?,
+        _ = timeout_future => {
+            println!("[Database] Database connection timeout after {} seconds", timeout_duration.as_secs());
+            return Err(SqlxError::Configuration("Database connection timeout".into()));
+        }
+    };
     
     println!("[Database] Connected to database");
     
-    // Create schema
+    // Create schema with timeout
     let schema_sql = include_str!("../sql/full_tauri_schema.sql");
     println!("[Database] Schema SQL length: {} characters", schema_sql.len());
     
-    sqlx::query(schema_sql).execute(&pool).await?;
-    println!("[Database] Executed schema successfully");
+    let schema_future = sqlx::query(schema_sql).execute(&pool);
+    let schema_timeout = tokio::time::sleep(timeout_duration);
     
-    // Simple verification
-    let _: i32 = sqlx::query_scalar("SELECT 1").fetch_one(&pool).await?;
-    println!("[Database] Database verification successful");
+    tokio::select! {
+        _ = schema_future => println!("[Database] Executed schema successfully"),
+        _ = schema_timeout => {
+            println!("[Database] Schema execution timeout after {} seconds", timeout_duration.as_secs());
+            return Err(SqlxError::Configuration("Schema execution timeout".into()));
+        }
+    }
+    
+    // Simple verification with timeout
+    let verify_future = sqlx::query_scalar("SELECT 1").fetch_one(&pool);
+    let verify_timeout = tokio::time::sleep(timeout_duration);
+    
+    tokio::select! {
+        result = verify_future => {
+            let _: i32 = result?;
+            println!("[Database] Database verification successful");
+        },
+        _ = verify_timeout => {
+            println!("[Database] Database verification timeout after {} seconds", timeout_duration.as_secs());
+            return Err(SqlxError::Configuration("Database verification timeout".into()));
+        }
+    }
     
     println!("[Database] Database initialized successfully");
     
@@ -1148,10 +1188,32 @@ pub async fn get_color_scheme(user_id: &str) -> Result<String, SqlxError> {
 }
 
 pub async fn health_check() -> Result<(), SqlxError> {
-    let pool = get_pool().await?;
+    // Add timeout to prevent hanging
+    let timeout_duration = std::time::Duration::from_secs(5);
     
-    // Simple query to test connection
-    let _: i32 = sqlx::query_scalar("SELECT 1").fetch_one(&pool).await?;
+    let pool_future = get_pool();
+    let timeout_future = tokio::time::sleep(timeout_duration);
+    
+    let pool = tokio::select! {
+        pool_result = pool_future => pool_result?,
+        _ = timeout_future => {
+            println!("[Database] Health check timeout after {} seconds", timeout_duration.as_secs());
+            return Err(SqlxError::Configuration("Database connection timeout".into()));
+        }
+    };
+    
+    // Simple query to test connection with timeout
+    let query_future = sqlx::query_scalar("SELECT 1").fetch_one(&pool);
+    let query_timeout = tokio::time::sleep(timeout_duration);
+    
+    let _: i32 = tokio::select! {
+        result = query_future => result?,
+        _ = query_timeout => {
+            println!("[Database] Health check query timeout after {} seconds", timeout_duration.as_secs());
+            return Err(SqlxError::Configuration("Database query timeout".into()));
+        }
+    };
+    
     Ok(())
 }
 
@@ -1220,4 +1282,124 @@ pub async fn remove_all_participants_for_chat(chat_id: &str) -> Result<(), SqlxE
         .await?;
     
     Ok(())
+} 
+
+// Secure token storage functions
+pub async fn save_secure_token(key: &str, value: &str) -> Result<(), SqlxError> {
+    let pool = get_pool().await?;
+    
+    // Use parameterized query to prevent SQL injection
+    sqlx::query("INSERT OR REPLACE INTO secure_tokens (key_name, encrypted_value, created_at) VALUES (?, ?, ?)")
+        .bind(key)
+        .bind(value) // In production, this should be encrypted
+        .bind(chrono::Utc::now().timestamp())
+        .execute(&pool)
+        .await?;
+    
+    Ok(())
+}
+
+pub async fn load_secure_token(key: &str) -> Result<Option<String>, SqlxError> {
+    let pool = get_pool().await?;
+    
+    let row = sqlx::query("SELECT encrypted_value FROM secure_tokens WHERE key_name = ?")
+        .bind(key)
+        .fetch_optional(&pool)
+        .await?;
+    
+    Ok(row.map(|r| r.get::<String, _>("encrypted_value")))
+}
+
+pub async fn clear_secure_token(key: &str) -> Result<(), SqlxError> {
+    let pool = get_pool().await?;
+    
+    sqlx::query("DELETE FROM secure_tokens WHERE key_name = ?")
+        .bind(key)
+        .execute(&pool)
+        .await?;
+    
+    Ok(())
+}
+
+// MARK: - Local Deletes Management
+
+/// Add a chat to local deletes tracking
+pub async fn add_local_delete(chat_id: &str, user_id: &str, is_creator: bool) -> Result<(), SqlxError> {
+    let pool = get_pool().await?;
+    let timestamp = chrono::Utc::now().timestamp();
+    
+    sqlx::query(
+        "INSERT OR REPLACE INTO local_deletes (chat_id, deleted_at, user_id, is_creator) VALUES (?, ?, ?, ?)"
+    )
+    .bind(chat_id)
+    .bind(timestamp)
+    .bind(user_id)
+    .bind(is_creator)
+    .execute(&pool)
+    .await?;
+    
+    Ok(())
+}
+
+/// Check if a chat is locally deleted
+pub async fn is_chat_locally_deleted(chat_id: &str, user_id: &str) -> Result<bool, SqlxError> {
+    let pool = get_pool().await?;
+    
+    let result = sqlx::query("SELECT 1 FROM local_deletes WHERE chat_id = ? AND user_id = ?")
+        .bind(chat_id)
+        .bind(user_id)
+        .fetch_optional(&pool)
+        .await?;
+    
+    Ok(result.is_some())
+}
+
+/// Remove a chat from local deletes tracking
+pub async fn remove_local_delete(chat_id: &str, user_id: &str) -> Result<(), SqlxError> {
+    let pool = get_pool().await?;
+    
+    sqlx::query("DELETE FROM local_deletes WHERE chat_id = ? AND user_id = ?")
+        .bind(chat_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await?;
+    
+    Ok(())
+}
+
+/// Clean up local deletes for chats that no longer exist on server
+pub async fn cleanup_local_deletes(server_chat_ids: &[String], user_id: &str) -> Result<(), SqlxError> {
+    if server_chat_ids.is_empty() {
+        return Ok(());
+    }
+    
+    let pool = get_pool().await?;
+    
+    // Create placeholders for the IN clause
+    let placeholders = server_chat_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!("DELETE FROM local_deletes WHERE user_id = ? AND chat_id NOT IN ({})", placeholders);
+    
+    let mut query_builder = sqlx::query(&query).bind(user_id);
+    
+    // Bind all server chat IDs
+    for chat_id in server_chat_ids {
+        query_builder = query_builder.bind(chat_id);
+    }
+    
+    query_builder.execute(&pool).await?;
+    
+    Ok(())
+}
+
+/// Get all locally deleted chat IDs for a user
+pub async fn get_local_deleted_chat_ids(user_id: &str) -> Result<Vec<String>, SqlxError> {
+    let pool = get_pool().await?;
+    
+    let rows = sqlx::query("SELECT chat_id FROM local_deletes WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_all(&pool)
+        .await?;
+    
+    let chat_ids: Vec<String> = rows.iter().map(|row| row.get("chat_id")).collect();
+    Ok(chat_ids)
 } 

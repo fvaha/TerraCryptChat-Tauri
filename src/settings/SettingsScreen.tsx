@@ -1,7 +1,8 @@
 // SECOND WINDOW: SettingsScreen component - displays settings categories in the second window
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useAppContext } from '../AppContext';
 import { useTheme } from '../components/ThemeContext';
+import { useThemedStyles } from '../components/useThemedStyles';
 import ScreenHeader from '../components/ScreenHeader';
 
 interface SettingsScreenProps {
@@ -14,6 +15,7 @@ interface SettingsScreenProps {
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ onCategoryChange, onToggleSidebar, sidebarCollapsed }) => {
   const { user } = useAppContext();
   const { theme } = useTheme();
+  const themedStyles = useThemedStyles();
 
   const getUserInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -76,11 +78,11 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ onCategoryChange, onTog
             fontWeight: "600",
             fontSize: "18px"
           }}>
-            {user ? getUserInitials(user.name || user.username) : "U"}
+            {user ? getUserInitials(user.username) : "U"}
           </div>
           <div style={{ flex: 1 }}>
             <h3 style={{ fontSize: "16px", fontWeight: "600", color: theme.text, margin: "0 0 4px 0" }}>
-              {user?.name || user?.username || "Unknown User"}
+              {user?.username || "Unknown User"}
             </h3>
             <p style={{ fontSize: "14px", color: theme.textSecondary, margin: 0 }}>
               {user?.email || "No email"}
@@ -121,7 +123,11 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ onCategoryChange, onTog
       </div>
 
       {/* Settings Categories */}
-      <div style={{ flex: 1, overflowY: "auto", backgroundColor: theme.background }}>
+      <div style={{ 
+        flex: 1, 
+        overflowY: "auto", 
+        backgroundColor: theme.background
+      }}>
         {settingsCategories.map((category) => (
           <button
             key={category.id}

@@ -4,67 +4,66 @@ import { nativeApiService } from '../api/nativeApiService';
 import { websocketService } from '../websocket/websocketService';
 import { sessionManager } from '../utils/sessionManager';
 import { Chat } from '../models/models';
+import { apiService } from '../api/apiService';
+
+interface ChatNotificationEvent {
+  detail: {
+    type: string;
+    message: {
+      action: string;
+      chat_id: string;
+      members: string[];
+    };
+  };
+}
 
 export class ChatService {
   private static instance: ChatService;
   private chatNotificationHandlers: Set<() => void> = new Set();
 
   constructor() {
-    console.log("[ChatService] Constructor called - initializing ChatService");
     this.setupChatNotifications();
   }
 
   static getInstance(): ChatService {
     if (!ChatService.instance) {
-      console.log("[ChatService] Creating new ChatService instance");
       ChatService.instance = new ChatService();
-    } else {
-      console.log("[ChatService] Returning existing ChatService instance");
     }
     return ChatService.instance;
   }
 
   private setupChatNotifications() {
-    console.log("[ChatService] Setting up chat notifications...");
-    websocketService.onMessage((message) => {
-      console.log("[ChatService] Received WebSocket message:", message);
-      if (message.type === 'chat-notification') {
-        console.log("[ChatService] Processing chat notification:", message);
-        this.handleChatNotification(message);
-      }
-    });
+    // REMOVED: Duplicate WebSocket message handler that was causing duplicate chats
+    // MessageService is now the single source of truth for all WebSocket messages
+    
+    // Only listen to custom events from messageService
+    window.addEventListener('chat-notification-received', ((event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log("[ChatService] Received chat notification from messageService:", customEvent.detail);
+      this.handleChatNotification(customEvent.detail);
+    }) as EventListener);
   }
 
   private async handleChatNotification(message: { type: string; message: { action: string; chat_id: string; members: string[] } }) {
     try {
-      console.log("[ChatService] Starting to handle chat notification...");
       const { action, chat_id, members } = message.message;
-      
-      console.log("[ChatService] Parsed message:", { action, chat_id, members });
       
       if (!action || !chat_id || !members) {
         console.warn("[ChatService] Invalid chat-notification format:", message);
         return;
       }
 
-      const currentUserId = await sessionManager.getCurrentUserId();
-      console.log("[ChatService] Current user ID:", currentUserId);
-      
-      if (!currentUserId) {
+      const current_user_id = await sessionManager.getCurrentUserId();
+      if (!current_user_id) {
         console.warn("[ChatService] No current user ID available");
         return;
       }
 
-      const isMember = members.some((memberId: string) => 
-        memberId.toLowerCase() === currentUserId.toLowerCase()
+      const is_member = members.some((member_id: string) => 
+        member_id.toLowerCase() === current_user_id.toLowerCase()
       );
-      
-      console.log("[ChatService] Is user a member?", isMember);
-      console.log("[ChatService] Members:", members);
-      console.log("[ChatService] Current user ID:", currentUserId);
 
-      if (!isMember) {
-        console.log("[ChatService] User is not a member of this chat, ignoring notification");
+      if (!is_member) {
         return;
       }
 
@@ -83,62 +82,62 @@ export class ChatService {
     }
   }
 
-  private async handleChatCreated(chatId: string) {
+  private async handleIncomingChatMessage(message: any) {
     try {
-      console.log("[ChatService] Chat created - syncing now");
-      
-      // Get token for API call
-      const token = await this.getToken();
-      if (!token) {
-        console.warn("[ChatService] No token available for chat sync");
-        return;
-      }
-      
-      // Fetch the specific chat from server and save to local database
-      try {
-        await invoke("fetch_all_chats_and_save", { token });
-        console.log("[ChatService] Successfully synced chats from server after creation");
-      } catch (error) {
-        console.error("[ChatService] Failed to sync chats from server:", error);
-        return;
-      }
-      
-      // Check if chat was successfully added locally
-      const newChat = await this.getChatById(chatId);
-      if (newChat) {
-        console.log("[ChatService] Chat is now saved locally:", newChat.name);
-        this.notifyChatCreated();
-      } else {
-        console.warn("[ChatService] Warning: Chat still not found locally after sync");
-        // Try to fetch it again after a short delay
-        setTimeout(async () => {
-          const retryChat = await this.getChatById(chatId);
-          if (retryChat) {
-            console.log("[ChatService] Chat found on retry:", retryChat.name);
-            this.notifyChatCreated();
-          } else {
-            console.error("[ChatService] Chat still not found after retry");
+      if (message.type === 'chat' && message.message) {
+        const chatMessage = message.message;
+        console.log("[ChatService] Processing incoming chat message:", chatMessage);
+        
+        // Update chat last message and unread count
+        if (chatMessage.chat_id && chatMessage.content) {
+          const timestamp = new Date(chatMessage.sent_at).getTime();
+          await this.updateChatLastMessage(chatMessage.chat_id, chatMessage.content, timestamp);
+          // Get current unread count and increment it
+          const currentChat = await this.getChatById(chatMessage.chat_id);
+          if (currentChat) {
+            const newUnreadCount = (currentChat.unread_count || 0) + 1;
+            await this.updateChatUnreadCount(chatMessage.chat_id, newUnreadCount);
           }
-        }, 1000);
+        }
       }
+    } catch (error) {
+      console.error("[ChatService] Error handling incoming chat message:", error);
+    }
+  }
+
+  private async handleMessageStatus(message: any) {
+    try {
+      if (message.type === 'message-status' && message.message) {
+        const statusMessage = message.message;
+        console.log("[ChatService] Processing message status:", statusMessage);
+        
+        // Handle message status updates if needed
+        // This could include updating UI indicators, etc.
+      }
+    } catch (error) {
+      console.error("[ChatService] Error handling message status:", error);
+    }
+  }
+
+  private async handleChatCreated(chat_id: string) {
+    try {
+      console.log("[ChatService] Handling chat created for chat_id:", chat_id);
+      
+      // FIXED: Remove duplicate chats_delta_update call - MessageService already handles this
+      // This prevents duplicate chat creation from multiple sync calls
+      console.log("[ChatService] Chat creation handled by MessageService, no additional sync needed");
+      
+      // Just notify UI that chat was created
+      this.notifyChatCreated();
+      // Removed confusing console log message
     } catch (error) {
       console.error("[ChatService] Error handling chat created:", error);
     }
   }
 
-  private async handleChatDeleted(chatId: string) {
+  private async handleChatDeleted(chat_id: string) {
     try {
-      console.log("[ChatService] Chat deleted - cleaning local");
-      
-      // Clear messages for this chat
-      await databaseServiceAsync.clearMessagesForChat(chatId);
-      
-      // Remove participants for this chat
-      await databaseServiceAsync.removeAllParticipantsForChat(chatId);
-      
-      // Delete the chat
-      await databaseServiceAsync.deleteChat(chatId);
-      
+      await databaseServiceAsync.deleteChatById(chat_id);
       this.notifyChatDeleted();
     } catch (error) {
       console.error("[ChatService] Error handling chat deleted:", error);
@@ -146,23 +145,11 @@ export class ChatService {
   }
 
   private notifyChatCreated() {
-    this.chatNotificationHandlers.forEach(handler => {
-      try {
-        handler();
-      } catch (error) {
-        console.error("[ChatService] Error in chat created handler:", error);
-      }
-    });
+    this.chatNotificationHandlers.forEach(handler => handler());
   }
 
   private notifyChatDeleted() {
-    this.chatNotificationHandlers.forEach(handler => {
-      try {
-        handler();
-      } catch (error) {
-        console.error("[ChatService] Error in chat deleted handler:", error);
-      }
-    });
+    this.chatNotificationHandlers.forEach(handler => handler());
   }
 
   onChatNotification(handler: () => void): void {
@@ -175,182 +162,201 @@ export class ChatService {
 
   async getAllChats(): Promise<Chat[]> {
     try {
-      const localChats = await databaseServiceAsync.getAllChats();
-      
-      if (!Array.isArray(localChats)) {
-        console.warn("Invalid chats data received:", localChats);
-        return [];
-      }
-      
-      return localChats.map(chat => ({
-        chat_id: chat.chat_id,
-        name: chat.name || 'Unnamed Chat',
-        created_at: chat.created_at,
-        unread_count: chat.unread_count,
-        description: chat.description,
-        group_name: chat.group_name,
-        last_message_content: chat.last_message_content,
-        last_message_timestamp: chat.last_message_timestamp,
-        participants: chat.participants ? JSON.parse(chat.participants) : [],
-        is_group: chat.is_group,
-        creator_id: chat.creator_id
-      }));
+      const chats = await databaseServiceAsync.getAllChats();
+      return chats || [];
     } catch (error) {
-      console.error("Failed to get all chats:", error);
+      console.error("[ChatService] Failed to get all chats:", error);
       return [];
     }
   }
 
-  async getChatById(chatId: string): Promise<Chat | null> {
+  async getChatById(chat_id: string): Promise<Chat | null> {
     try {
-      const chat = await databaseServiceAsync.getChatById(chatId);
-      if (!chat) return null;
-
-      return {
-        chat_id: chat.chat_id,
-        name: chat.name || 'Unnamed Chat',
-        created_at: chat.created_at,
-        unread_count: chat.unread_count,
-        description: chat.description,
-        group_name: chat.group_name,
-        last_message_content: chat.last_message_content,
-        last_message_timestamp: chat.last_message_timestamp,
-        participants: chat.participants ? JSON.parse(chat.participants) : [],
-        is_group: chat.is_group,
-        creator_id: chat.creator_id
-      };
+      const chat = await databaseServiceAsync.getChatById(chat_id);
+      return chat;
     } catch (error) {
-      console.error(`Failed to get chat by ID ${chatId}:`, error);
+      console.error(`[ChatService] Failed to get chat by ID ${chat_id}:`, error);
       return null;
     }
   }
 
-  async syncChatsFromServer(): Promise<void> {
+  async sync_all_chats(): Promise<void> {
     try {
-      console.log("[ChatService] Syncing chats from server...");
-      
-      // Use the new fetch_all_chats_and_save command that also fetches participants
+      const current_user_id = await sessionManager.getCurrentUserId();
+      if (!current_user_id) {
+        console.warn("[ChatService] No current user ID available for chat sync");
+        return;
+      }
+
       const token = await this.getToken();
       if (!token) {
         console.warn("[ChatService] No token available for chat sync");
         return;
       }
-      
-      const chats = await invoke<Chat[]>("fetch_all_chats_and_save", { token });
-      console.log(`[ChatService] Synced ${chats.length} chats with participants from server`);
-      
+
+      // Use chats_delta_update instead of fetch_all_chats_and_save to avoid re-adding deleted chats
+      await invoke("chats_delta_update", { token });
+      console.log("[ChatService] All chats synced successfully");
     } catch (error) {
-      console.error("[ChatService] Failed to sync chats from server:", error);
+      console.error("[ChatService] Failed to sync all chats:", error);
+    }
+  }
+
+  async sync_chats_delta(): Promise<void> {
+    try {
+      const current_user_id = await sessionManager.getCurrentUserId();
+      if (!current_user_id) {
+        console.warn("[ChatService] No current user ID available for chat sync");
+        return;
+      }
+
+      const token = await this.getToken();
+      if (!token) {
+        console.warn("[ChatService] No token available for chat sync");
+        return;
+      }
+
+      // Use chats_delta_update instead of fetch_all_chats_and_save to avoid re-adding deleted chats
+      await invoke("chats_delta_update", { token });
+      console.log("[ChatService] Chats delta sync completed successfully");
+    } catch (error) {
+      console.error("[ChatService] Failed to sync chats delta:", error);
     }
   }
 
   private async getToken(): Promise<string | null> {
     try {
-      // Get token from session manager
-      return sessionManager.getToken();
+      // Use the SessionManager's get_token method
+      return await sessionManager.getToken();
     } catch (error) {
       console.error("[ChatService] Failed to get token:", error);
       return null;
     }
   }
 
-  async updateChatLastMessage(chatId: string, lastMessage: string, timestamp: number): Promise<void> {
+  async updateChatLastMessage(chat_id: string, last_message: string, timestamp: number): Promise<void> {
     try {
-      await databaseServiceAsync.updateChatLastMessage(chatId, lastMessage, timestamp);
+      await databaseServiceAsync.updateChatLastMessage(chat_id, last_message, timestamp);
+      console.log(`[ChatService] Chat last message updated for ${chat_id}`);
     } catch (error) {
-      console.error(`Failed to update chat last message for ${chatId}:`, error);
+      console.error(`[ChatService] Failed to update chat last message for ${chat_id}:`, error);
     }
   }
 
-  async updateChatUnreadCount(chatId: string, unreadCount: number): Promise<void> {
+  async updateChatUnreadCount(chat_id: string, unread_count: number): Promise<void> {
     try {
-      await databaseServiceAsync.updateChatUnreadCount(chatId, unreadCount);
+      await databaseServiceAsync.updateChatUnreadCount(chat_id, unread_count);
+      console.log(`[ChatService] Chat unread count updated for ${chat_id}: ${unread_count}`);
     } catch (error) {
-      console.error(`Failed to update chat unread count for ${chatId}:`, error);
+      console.error(`[ChatService] Failed to update chat unread count for ${chat_id}:`, error);
     }
   }
 
-  async deleteChat(chatId: string): Promise<void> {
+  async deleteChat(chat_id: string): Promise<void> {
     try {
-      await databaseServiceAsync.deleteChat(chatId);
+      const token = await this.getToken();
+      if (!token) {
+        throw new Error("No authentication token available");
+      }
+
+      // First try to delete from server (only works if user is creator/admin)
+      try {
+        await apiService.deleteChat(chat_id);
+        console.log(`[ChatService] Chat successfully deleted from server: ${chat_id}`);
+      } catch (serverError) {
+        console.warn(`[ChatService] Server delete failed: ${serverError}`);
+        // Continue with local cleanup even if server delete fails
+      }
+
+      // Always clean up locally
+      await databaseServiceAsync.deleteChatById(chat_id);
+      console.log(`[ChatService] Chat deleted locally: ${chat_id}`);
     } catch (error) {
-      console.error(`Failed to delete chat ${chatId}:`, error);
+      console.error(`[ChatService] Failed to delete chat ${chat_id}:`, error);
+      throw error;
+    }
+  }
+
+  async leaveChat(chat_id: string): Promise<void> {
+    try {
+      const token = await this.getToken();
+      if (!token) {
+        throw new Error("No authentication token available");
+      }
+
+      // Try to leave chat on server
+      try {
+        await apiService.leaveChat(chat_id);
+        console.log(`[ChatService] Successfully left chat on server: ${chat_id}`);
+      } catch (serverError) {
+        console.warn(`[ChatService] Server leave failed: ${serverError}`);
+        // Continue with local cleanup even if server leave fails
+      }
+
+      // Clean up locally
+      await databaseServiceAsync.deleteChatById(chat_id);
+      console.log(`[ChatService] Chat removed locally after leaving: ${chat_id}`);
+    } catch (error) {
+      console.error(`[ChatService] Failed to leave chat ${chat_id}:`, error);
+      throw error;
     }
   }
 
   async clearAllChats(): Promise<void> {
     try {
       await databaseServiceAsync.clearChatData();
+      console.log("[ChatService] All chats cleared successfully");
     } catch (error) {
-      console.error("Failed to clear all chats:", error);
+      console.error("[ChatService] Failed to clear all chats:", error);
+      throw error;
     }
   }
 
   async getChatStats(): Promise<{ total: number; unread: number }> {
     try {
-      const dbChats = await databaseServiceAsync.getAllChats();
-      const total = dbChats.length;
-      const unread = dbChats.reduce((sum, chat) => sum + (chat.unread_count || 0), 0);
+      const chats = await this.getAllChats();
+      const total = chats.length;
+      const unread = chats.reduce((sum, chat) => sum + (chat.unread_count || 0), 0);
       
       return { total, unread };
     } catch (error) {
-      console.error("Failed to get chat stats:", error);
+      console.error("[ChatService] Failed to get chat stats:", error);
       return { total: 0, unread: 0 };
+    }
+  }
+
+  async getChats(): Promise<Chat[]> {
+    try {
+      const chats = await this.getAllChats();
+      return chats.sort((a, b) => {
+        const a_timestamp = a.last_message_timestamp || 0;
+        const b_timestamp = b.last_message_timestamp || 0;
+        return b_timestamp - a_timestamp;
+      });
+    } catch (error) {
+      console.error("[ChatService] Failed to get sorted chats:", error);
+      return [];
+    }
+  }
+
+  async createChat(name: string, is_group: boolean, participants: string[]): Promise<Chat> {
+    try {
+      const token = await this.getToken();
+      if (!token) {
+        throw new Error("No authentication token available");
+      }
+
+      // Convert string participant IDs to ParticipantSimple objects
+      const members = participants.map(user_id => ({ user_id }));
+
+      const chat = await nativeApiService.createChat(token, name, members);
+      console.log(`[ChatService] Chat created successfully: ${name}`);
+      return chat;
+    } catch (error) {
+      console.error("[ChatService] Failed to create chat:", error);
+      throw error;
     }
   }
 }
 
-export const chatService = {
-  async getChats(): Promise<Chat[]> {
-    try {
-      const chats = await nativeApiService.getCachedChatsOnly();
-      return chats.map(chat => ({
-        chat_id: chat.chat_id,
-        name: chat.name,
-        created_at: chat.created_at,
-        creator_id: chat.creator_id,
-        is_group: chat.is_group,
-        unread_count: chat.unread_count,
-        last_message_content: chat.last_message_content,
-        last_message_timestamp: chat.last_message_timestamp
-      }));
-    } catch (error) {
-      console.error('Failed to get chats:', error);
-      throw error;
-    }
-  },
-
-  async getChatById(chatId: string): Promise<Chat | null> {
-    try {
-      const chats = await this.getChats();
-      return chats.find(chat => chat.chat_id === chatId) || null;
-    } catch (error) {
-      console.error('Failed to get chat by ID:', error);
-      throw error;
-    }
-  },
-
-  async createChat(name: string, isGroup: boolean, participants: string[]): Promise<Chat> {
-    try {
-      // Convert string[] to the expected format
-      const members = participants.map(userId => ({ user_id: userId, is_admin: false }));
-      const chatId = await nativeApiService.createChat(name, isGroup, members);
-      
-      // Create a basic chat object since createChat only returns the chat_id
-      return {
-        chat_id: chatId,
-        name: name,
-        created_at: Date.now(),
-        creator_id: '', // Will be filled by the server
-        is_group: isGroup,
-
-        unread_count: 0,
-        last_message_content: undefined,
-        last_message_timestamp: undefined
-      };
-    } catch (error) {
-      console.error('Failed to create chat:', error);
-      throw error;
-    }
-  }
-}; 
+export const chatService = ChatService.getInstance(); 

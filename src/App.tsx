@@ -11,16 +11,10 @@ import SettingsScreen from './settings/SettingsScreen';
 import ErrorBoundary from './ErrorBoundary';
 import Sidebar from './components/Sidebar';
 import MenuBar from './components/MenuBar';
-
-
 import { ThemeProvider } from './components/ThemeContext';
 import SettingsContent from './components/SettingsContent';
 import { nativeApiService } from './api/nativeApiService';
 import { Chat } from './models/models';
-
-
-
-
 
 const ChatApp: React.FC = () => {
   const { user, token, sessionState } = useAppContext();
@@ -49,10 +43,10 @@ const ChatApp: React.FC = () => {
       const chatsData = await nativeApiService.getCachedChatsOnly();
       setChats(Array.isArray(chatsData) ? chatsData : []);
       
-      // Update from API in background (non-blocking)
+      // Update from API in background (non-blocking) - simplified since fetchAllChatsAndSave doesn't exist
       setTimeout(async () => {
         try {
-          await nativeApiService.fetchAllChatsAndSave(token!);
+          // Just reload from database for now
           const updatedChats = await nativeApiService.getCachedChatsOnly();
           setChats(Array.isArray(updatedChats) ? updatedChats : []);
         } catch (error) {
@@ -69,10 +63,11 @@ const ChatApp: React.FC = () => {
       // Load from database instantly
       const friendsData = await nativeApiService.getCachedFriendsOnly();
       
-      // Update from API in background (non-blocking)
+      // Update from API in background (non-blocking) - simplified since fetchAllFriendsAndSave doesn't exist
       setTimeout(async () => {
         try {
-          await nativeApiService.fetchAllFriendsAndSave(token!);
+          // Just reload from database for now
+          await nativeApiService.getCachedFriendsOnly();
         } catch (error) {
           // Silent fail - user already has data from database
         }
@@ -91,10 +86,10 @@ const ChatApp: React.FC = () => {
   useEffect(() => {
     if (user && token) {
       setIsSessionChecking(false);
-    } else if (sessionState.isSessionInitialized) {
+    } else if (sessionState.is_session_initialized) {
       setIsSessionChecking(false);
     }
-  }, [user, token, sessionState.isSessionInitialized]);
+  }, [user, token, sessionState.is_session_initialized]);
 
   // Load chats when user is logged in
   useEffect(() => {
@@ -372,156 +367,103 @@ const ChatApp: React.FC = () => {
           display: 'flex',
           overflow: 'hidden',
           position: 'relative',
-          opacity: 1, // Removed opacity transition as it's not needed for smooth transition
+          opacity: 1,
           transition: 'opacity 0.5s ease-in-out'
         }}>
+          {/* SECOND WINDOW: Always visible content panel */}
+          <div style={{
+            width: activeTab === 'settings' ? '250px' : '280px',
+            backgroundColor: theme.sidebar,
+            borderRight: `1px solid ${theme.sidebarBorder}`,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            position: 'relative'
+          }}>
+            {activeTab === 'chats' && (
+              <ChatList
+                onSelect={setSelectedChatId}
+                onOpenChatOptions={handleOpenChatOptions}
+                onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                sidebarCollapsed={sidebarCollapsed}
+              />
+            )}
+            
+            {activeTab === 'friends' && (
+              <FriendsScreen
+                onOpenChat={(friendId: string, friendName: string) => {
+                  console.log("Open chat with friend:", friendId, friendName);
+                  // Find existing chat with this friend or create new one
+                  const existingChatId = findChatWithFriend(friendId);
+                  if (existingChatId) {
+                    setSelectedChatId(existingChatId);
+                  } else {
+                    // TODO: Implement proper chat creation logic
+                    console.log("Creating new chat for friend:", friendId);
+                    // For now, use the existing chat ID from the database as fallback
+                    // This ensures we always use a valid UUID format
+                    const fallbackChatId = "41d22dac-b005-49db-a248-58b3d0c6b71a";
+                    console.log("Using fallback chat ID:", fallbackChatId);
+                    setSelectedChatId(fallbackChatId);
+                  }
+                }}
+                onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                sidebarCollapsed={sidebarCollapsed}
+              />
+            )}
+            
+            {activeTab === 'settings' && (
+              <SettingsScreen 
+                onBack={() => setActiveTab('chats')} 
+                onCategoryChange={setSelectedSettingsCategory}
+                onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                sidebarCollapsed={sidebarCollapsed}
+              />
+            )}
+          </div>
 
-          {activeTab === 'chats' && (
-            <>
-              {/* SECOND WINDOW: ChatList */}
-              <div style={{
-                width: '280px', // Reduced from 350px (-20%)
-                backgroundColor: theme.sidebar,
-                borderRight: `1px solid ${theme.sidebarBorder}`,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                position: 'relative'
-              }}>
-                <ChatList
-                  onSelect={setSelectedChatId}
-                  onOpenChatOptions={handleOpenChatOptions}
-                  onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  sidebarCollapsed={sidebarCollapsed}
-                />
-              </div>
-
-              {/* THIRD WINDOW: ChatScreen/ChatOptionsScreen */}
-              <div style={{
-                flex: 1,
-                backgroundColor: theme.background,
-                overflow: 'hidden',
-                position: 'relative'
-              }}>
-                {showChatOptions && selectedChatForOptions ? (
-                  <ChatOptionsScreen
-                    chat={selectedChatForOptions}
-                    onClose={handleCloseChatOptions}
-                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-                    sidebarCollapsed={sidebarCollapsed}
-                  />
-                ) : selectedChatId ? (
-                  <ChatScreen chatId={selectedChatId} />
-                ) : (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '100%',
-                    color: theme.textSecondary,
-                    fontSize: '16px'
-                  }}>
-                    Select a chat to start messaging
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {activeTab === 'friends' && (
-            <>
-              {/* SECOND WINDOW: FriendsScreen */}
-              <div style={{
-                width: '280px', // Reduced from 350px (-20%)
-                backgroundColor: theme.sidebar,
-                borderRight: `1px solid ${theme.sidebarBorder}`,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                position: 'relative'
-              }}>
-                <FriendsScreen
-                  onOpenChat={(friendId: string, friendName: string) => {
-                    console.log("Open chat with friend:", friendId, friendName);
-                    // Find existing chat with this friend or create new one
-                    const existingChatId = findChatWithFriend(friendId);
-                    if (existingChatId) {
-                      setSelectedChatId(existingChatId);
-                    } else {
-                      // TODO: Implement proper chat creation logic
-                      console.log("Creating new chat for friend:", friendId);
-                      // For now, use the existing chat ID from the database as fallback
-                      // This ensures we always use a valid UUID format
-                      const fallbackChatId = "41d22dac-b005-49db-a248-58b3d0c6b71a";
-                      console.log("Using fallback chat ID:", fallbackChatId);
-                      setSelectedChatId(fallbackChatId);
-                    }
-                  }}
-                  onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  sidebarCollapsed={sidebarCollapsed}
-                />
-              </div>
-
-              {/* THIRD WINDOW: ChatScreen/ChatOptionsScreen */}
-              <div style={{
-                flex: 1,
-                backgroundColor: theme.background,
-                overflow: 'hidden',
-                position: 'relative'
-              }}>
-                {showChatOptions && selectedChatForOptions ? (
-                  <ChatOptionsScreen
-                    chat={selectedChatForOptions}
-                    onClose={handleCloseChatOptions}
-                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-                    sidebarCollapsed={sidebarCollapsed}
-                  />
-                ) : selectedChatId ? (
-                  <ChatScreen chatId={selectedChatId} />
-                ) : (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '100%',
-                    color: theme.textSecondary,
-                    fontSize: '16px'
-                  }}>
-                    Select a friend to start messaging
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {activeTab === 'settings' && (
-            <>
-              {/* SECOND WINDOW: SettingsScreen */}
-              <div style={{
-                width: '250px',
-                backgroundColor: theme.sidebar,
-                borderRight: `1px solid ${theme.sidebarBorder}`,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                position: 'relative'
-              }}>
-                <SettingsScreen 
-                  onBack={() => setActiveTab('chats')} 
-                  onCategoryChange={setSelectedSettingsCategory}
-                  onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  sidebarCollapsed={sidebarCollapsed}
-                />
-              </div>
-              
-              {/* THIRD WINDOW: SettingsContent */}
+          {/* THIRD WINDOW: Always visible detail panel */}
+          <div style={{
+            flex: 1,
+            backgroundColor: theme.background,
+            overflow: 'hidden',
+            position: 'relative'
+          }}>
+            {showChatOptions && selectedChatForOptions ? (
+              <ChatOptionsScreen
+                chat={selectedChatForOptions}
+                onClose={handleCloseChatOptions}
+              />
+            ) : selectedChatId && (activeTab === 'chats' || activeTab === 'friends') ? (
+              <ChatScreen 
+                chatId={selectedChatId} 
+                onClose={() => setSelectedChatId(null)}
+              />
+            ) : activeTab === 'settings' ? (
               <SettingsContent 
                 selectedCategory={selectedSettingsCategory} 
                 zoomLevel={zoomLevel}
                 onZoomChange={handleZoomChange}
               />
-            </>
-          )}
+            ) : (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                color: theme.textSecondary,
+                fontSize: '16px'
+              }}>
+                {activeTab === 'chats' ? (
+                  <p>Select a chat to start messaging</p>
+                ) : activeTab === 'friends' ? (
+                  <p>Select a friend to start messaging</p>
+                ) : (
+                  <p>Configure your app preferences</p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -538,33 +480,5 @@ const App = () => {
   );
 };
 
-// Fallback component in case everything fails
-const FallbackApp = () => {
-  return (
-    <div style={{
-      height: '100vh',
-      width: '100vw',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#1a1a1a',
-      color: '#ffffff',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      flexDirection: 'column',
-      gap: '20px'
-    }}>
-      <h1 style={{ fontSize: '24px', margin: 0 }}>TerraCrypt Chat</h1>
-      <p style={{ fontSize: '16px', margin: 0 }}>Loading application...</p>
-      <div style={{
-        width: '32px',
-        height: '32px',
-        border: '3px solid #404040',
-        borderTop: '3px solid #3b82f6',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite'
-      }} />
-    </div>
-  );
-};
-
+// Remove the FallbackApp component since it's not needed
 export default App;

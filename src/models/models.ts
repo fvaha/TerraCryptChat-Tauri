@@ -17,6 +17,7 @@ export interface UserEntity {
   deleted_at?: number;
   last_seen?: number;
   last_login?: Date;
+  color_scheme?: string;
 }
 
 export interface MessageEntity {
@@ -212,15 +213,15 @@ export interface ParticipantEntity {
 export interface Chat {
   chat_id: string;
   name: string;
+  created_at: string;
   creator_id: string;
   is_group: boolean;
-  description?: string;
   group_name?: string;
+  description?: string;
+  participants?: string[];
+  unread_count: number;
   last_message_content?: string;
   last_message_timestamp?: number;
-  unread_count: number;
-  created_at: number;
-  participants?: string[];
 }
 
 export interface Friend {
@@ -237,4 +238,22 @@ export interface ChatMember {
   user: Friend;
   is_admin: boolean;
   joined_at: string;
+}
+
+// User interface (alias for UserEntity)
+export interface User extends UserEntity {}
+
+// Message interface (alias for MessageEntity)
+export interface Message extends MessageEntity {}
+
+// Participant interface (alias for ParticipantEntity)
+export interface Participant extends ParticipantEntity {}
+
+// UserKeys interface for encryption keys
+export interface UserKeys {
+  user_id: string;
+  public_key: string;
+  private_key: string;
+  created_at: number;
+  updated_at: number;
 }

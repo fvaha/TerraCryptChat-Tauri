@@ -1,7 +1,8 @@
 // THIRD WINDOW: SettingsContent component - displays settings content in the third window
-import React, { useState, useEffect } from 'react';
-import { useAppContext } from '../AppContext';
+import React, { useState } from 'react';
 import { useTheme } from './ThemeContext';
+import { useThemedStyles } from './useThemedStyles';
+import { useAppContext } from '../AppContext';
 import { ColorScheme } from './ThemeContext';
 
 interface SettingsContentProps {
@@ -13,6 +14,7 @@ interface SettingsContentProps {
 const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoomLevel, onZoomChange }) => {
   const { user, logout, services } = useAppContext();
   const { isDarkMode, toggleTheme, theme, colorScheme, setColorScheme } = useTheme();
+  const themedStyles = useThemedStyles();
   const [editName, setEditName] = useState(user?.name || "");
   const [editUsername, setEditUsername] = useState(user?.username || "");
   const [editEmail, setEditEmail] = useState(user?.email || "");
@@ -53,7 +55,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
       }
       
       // Call API to update profile
-      const response = await services.apiService.updateUser({
+      const response = await services.apiService.updateUser(user?.user_id || '', {
         name: editName.trim(),
         username: editUsername.trim(),
         email: editEmail.trim()
@@ -685,7 +687,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
             fontSize: "32px",
             margin: "0 auto 16px"
           }}>
-            {user ? getUserInitials(user.name || user.username) : "U"}
+            {user ? getUserInitials(user.username) : "U"}
           </div>
           <button style={{
             backgroundColor: theme.inputBackground,
@@ -703,7 +705,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
         <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
           <span style={{ fontSize: "18px" }}></span>
           <span style={{ color: theme.text, fontSize: "16px", fontWeight: "500" }}>
-            {user?.name || user?.username || "Unknown User"}
+            {user?.username || "Unknown User"}
           </span>
         </div>
 
@@ -815,7 +817,7 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
             fontSize: "32px",
             margin: "0 auto 16px"
           }}>
-            {user ? getUserInitials(user.name || user.username) : "U"}
+            {user ? getUserInitials(user.username) : "U"}
           </div>
           <button style={{
             padding: "8px 16px",
@@ -971,7 +973,8 @@ const SettingsContent: React.FC<SettingsContentProps> = ({ selectedCategory, zoo
     <div style={{ 
       flex: 1, 
       backgroundColor: theme.background, 
-      overflow: "auto"
+      overflow: "auto",
+      ...themedStyles.scrollbar
     }}>
       {renderCategoryContent()}
     </div>

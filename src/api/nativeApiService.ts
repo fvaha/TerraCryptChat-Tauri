@@ -1,514 +1,305 @@
 import { invoke } from '@tauri-apps/api/core';
+import { User, Chat, Message, Friend, Participant, UserKeys } from '../services/databaseServiceAsync';
 
-export interface UserData {
+// Add interface for chat creation
+export interface ParticipantSimple {
   user_id: string;
-  username: string;
-  name: string;
-  email: string;
-  picture?: string;
-  verified: boolean;
+  is_admin?: boolean;
 }
 
-export interface Friend {
-  user_id: string;
-  username: string;
-  name: string;
-  email: string;
-  picture?: string;
-  status?: string;
-  is_favorite?: boolean;
-}
-
-export interface FriendRequest {
-  request_id: string;
-  receiver_id: string;
-  status: string;
-  created_at?: string;
-  sender: Friend;
-}
-
-export interface ChatMember {
-  user: Friend;
-  is_admin: boolean;
-  joined_at: string;
-}
-
-export interface ChatMemberResponse {
-  data: ChatMember[];
-  limit: number;
-  offset: number;
-}
-
-export interface Chat {
-  chat_id: string;
-  name: string;
-  creator_id: string;
-  is_group: boolean;
-  description?: string;
-  group_name?: string;
-  last_message_content?: string;
-  last_message_timestamp?: number;
-  unread_count: number;
-  created_at: number;
-}
-
-export interface ChatMessage {
-  message_id: string;
-  chat_id: string;
-  sender_id: string;
-  content: string;
-  timestamp: number;
-  sender_username: string;
-  reply_to_message_id?: string;
-}
-
-export interface SendMessageResponse {
-  message_id: string;
-  timestamp: number;
-}
-
-class NativeApiService {
-  private token: string | null = null;
-
-  setToken(token: string) {
-    this.token = token;
+export class NativeApiService {
+  // Database operations
+  async initializeDatabase(): Promise<void> {
+    return await invoke('db_initialize_database');
   }
 
-  clearToken() {
-    this.token = null;
+  async ensureDatabaseInitialized(): Promise<void> {
+    return await invoke('db_ensure_initialized');
   }
 
-  private async makeRequest<T>(command: string, args: Record<string, any> = {}): Promise<T> {
-    if (!this.token) {
-      throw new Error('No token available');
-    }
-
-    try {
-      const result = await invoke(command, { token: this.token, ...args });
-      return result as T;
-    } catch (error) {
-      console.error(`Native API ${command} failed:`, error);
-      throw error;
-    }
-  }
-
-  // User API
-  async getCurrentUser(): Promise<UserData> {
-    console.log('Getting current user via native API...');
-    return this.makeRequest<UserData>('get_current_user');
-  }
-
-  // Chats API
-  async getChats(): Promise<Chat[]> {
-    console.log('Getting chats via native API...');
-    return this.makeRequest<Chat[]>('get_chats_with_token');
-  }
-
-  // Cached chats with delta updates
-  async getCachedChatsWithDelta(): Promise<Chat[]> {
-    console.log('Getting cached chats with delta updates...');
-    return this.makeRequest<Chat[]>('get_cached_chats_with_delta');
-  }
-
-  // Cached chats only (no API call)
-  async getCachedChatsOnly(): Promise<Chat[]> {
-    console.log('Getting cached chats only...');
-    try {
-      const result = await invoke('get_cached_chats_only');
-      return result as Chat[];
-    } catch (error) {
-      console.error('Get cached chats failed:', error);
-      throw error;
-    }
-  }
-
-  // Friends API
-  async getFriends(): Promise<Friend[]> {
-    console.log('Getting friends via native API...');
-    return this.makeRequest<Friend[]>('get_friends_with_token');
-  }
-
-  // Cached friends with delta updates
-  async getCachedFriendsWithDelta(): Promise<Friend[]> {
-    console.log('Getting cached friends with delta updates...');
-    return this.makeRequest<Friend[]>('get_cached_friends_with_delta');
-  }
-
-  // Cached friends only (no API call)
-  async getCachedFriendsOnly(): Promise<Friend[]> {
-    console.log('Getting cached friends only...');
-    try {
-      const result = await invoke('get_cached_friends_only');
-      return result as Friend[];
-    } catch (error) {
-      console.error('Get cached friends failed:', error);
-      throw error;
-    }
-  }
-
-  // Cached messages for chat
-  async getCachedMessagesForChat(chatId: string): Promise<ChatMessage[]> {
-    console.log(`Getting cached messages for chat ${chatId}...`);
-    return this.makeRequest<ChatMessage[]>('get_cached_messages_for_chat', { chat_id: chatId });
-  }
-
-  // Cached participants for chat
-  async getCachedParticipantsForChat(chatId: string): Promise<ChatMember[]> {
-    console.log(`Getting cached participants for chat ${chatId}...`);
-    return this.makeRequest<ChatMember[]>('get_cached_participants_for_chat', { chat_id: chatId });
-  }
-
-  // New database-first service methods
-  async fetchAllChatsAndSave(token: string): Promise<Chat[]> {
-    console.log('Fetching all chats from API and saving to database...');
-    try {
-      const result = await invoke<Chat[]>('fetch_all_chats_and_save', { token });
-      return result;
-    } catch (error) {
-      console.error('Fetch all chats and save failed:', error);
-      throw error;
-    }
-  }
-
-  async fetchAllFriendsAndSave(token: string): Promise<Friend[]> {
-    console.log('Fetching all friends from API and saving to database...');
-    try {
-      const result = await invoke<Friend[]>('fetch_all_friends_and_save', { token });
-      return result;
-    } catch (error) {
-      console.error('Fetch all friends and save failed:', error);
-      throw error;
-    }
-  }
-
-  async chatsDeltaUpdate(token: string): Promise<Chat[]> {
-    console.log('Performing delta update for chats...');
-    return this.makeRequest<Chat[]>('chats_delta_update', { token });
-  }
-
-  async friendsDeltaUpdate(token: string): Promise<Friend[]> {
-    console.log('Performing delta update for friends...');
-    return this.makeRequest<Friend[]>('friends_delta_update', { token });
-  }
-
-  async getCachedChatsForCurrentUser(): Promise<Chat[]> {
-    console.log('Getting cached chats for current user...');
-    return this.makeRequest<Chat[]>('get_cached_chats_for_current_user');
-  }
-
-  async getCachedFriendsForCurrentUser(): Promise<Friend[]> {
-    console.log('Getting cached friends for current user...');
-    return this.makeRequest<Friend[]>('get_cached_friends_for_current_user');
-  }
-
-  async deleteChatFromDatabase(chatId: string): Promise<void> {
-    console.log(`Deleting chat ${chatId} from database...`);
-    return this.makeRequest<void>('delete_chat_from_database', { chat_id: chatId });
-  }
-
-  async clearMessagesForChat(chatId: string): Promise<void> {
-    console.log(`Clearing messages for chat ${chatId}...`);
-    return this.makeRequest<void>('db_async_clear_messages_for_chat', { chat_id: chatId });
-  }
-
-  async removeAllParticipantsForChat(chatId: string): Promise<void> {
-    console.log(`Removing all participants for chat ${chatId}...`);
-    return this.makeRequest<void>('db_async_remove_all_participants_for_chat', { chat_id: chatId });
-  }
-
-  async deleteFriendFromDatabase(userId: string): Promise<void> {
-    console.log(`Deleting friend ${userId} from database...`);
-    return this.makeRequest<void>('delete_friend_from_database', { user_id: userId });
-  }
-
-  // Additional methods needed by ChatService
-  async deleteChat(chatId: string, token: string): Promise<void> {
-    console.log(`Deleting chat ${chatId} from server...`);
-    try {
-      const result = await invoke('delete_chat', { chat_id: chatId, token });
-      return result as void;
-    } catch (error) {
-      console.error('Delete chat failed:', error);
-      throw error;
-    }
-  }
-
-  async leaveChat(chatId: string, token: string): Promise<void> {
-    console.log(`Leaving chat ${chatId}...`);
-    try {
-      const result = await invoke('leave_chat_with_token', { chatId, token });
-      return result as void;
-    } catch (error) {
-      console.error('Leave chat failed:', error);
-      throw error;
-    }
-  }
-
-  async resetUnreadCount(chatId: string): Promise<void> {
-    console.log(`Resetting unread count for chat ${chatId}...`);
-    return this.makeRequest<void>('reset_unread_count', { chat_id: chatId });
-  }
-
-  // Additional methods needed by FriendService
-  async deleteFriend(userId: string, token: string): Promise<void> {
-    console.log(`Deleting friend ${userId} from server...`);
-    try {
-      const result = await invoke('delete_friend', { user_id: userId, token });
-      return result as void;
-    } catch (error) {
-      console.error('Delete friend failed:', error);
-      throw error;
-    }
-  }
-
-  async searchFriends(query: string, token: string): Promise<Friend[]> {
-    console.log(`Searching friends with query: ${query}...`);
-    try {
-      const result = await invoke('search_friends', { query, token });
-      return result as Friend[];
-    } catch (error) {
-      console.error('Search friends failed:', error);
-      throw error;
-    }
-  }
-
-  async sendFriendRequest(userId: string, token: string): Promise<void> {
-    console.log(`Sending friend request to ${userId}...`);
-    try {
-      const result = await invoke('send_friend_request', { receiverId: userId, token });
-      return result as void;
-    } catch (error) {
-      console.error('Send friend request failed:', error);
-      throw error;
-    }
-  }
-
-  async acceptFriendRequest(requestId: string, token: string): Promise<void> {
-    console.log(`Accepting friend request ${requestId}...`);
-    try {
-      const result = await invoke('accept_friend_request', { userId: requestId, token });
-      return result as void;
-    } catch (error) {
-      console.error('Accept friend request failed:', error);
-      throw error;
-    }
-  }
-
-  async rejectFriendRequest(requestId: string, token: string): Promise<void> {
-    console.log(`Rejecting friend request ${requestId}...`);
-    try {
-      const result = await invoke('reject_friend_request', { userId: requestId, token });
-      return result as void;
-    } catch (error) {
-      console.error('Reject friend request failed:', error);
-      throw error;
-    }
-  }
-
-
-
-  async getChatById(chatId: string): Promise<any> {
-    console.log(`Getting chat by ID ${chatId}...`);
-    return this.makeRequest<any>('get_chat_by_id', { chat_id: chatId });
-  }
-
-  async createChat(name: string, isGroup: boolean, members: Array<{ user_id: string; is_admin: boolean }>): Promise<string> {
-    console.log(`Creating chat with name: ${name}, isGroup: ${isGroup}, members: ${members.length}...`);
-    return this.makeRequest<string>('create_chat', { 
-      name, 
-      is_group: isGroup, 
-      members 
-    });
-  }
-
-  async addChatMember(chatId: string, userId: string, isAdmin: boolean, token: string): Promise<void> {
-    console.log(`Adding chat member ${userId} to chat ${chatId}...`);
-    try {
-      const result = await invoke('add_chat_member', { chat_id: chatId, user_id: userId, is_admin: isAdmin, token });
-      return result as void;
-    } catch (error) {
-      console.error('Add chat member failed:', error);
-      throw error;
-    }
-  }
-
-  async removeChatMember(chatId: string, userId: string, token: string): Promise<void> {
-    console.log(`Removing chat member ${userId} from chat ${chatId}...`);
-    try {
-      const result = await invoke('remove_chat_member', { chat_id: chatId, user_id: userId, token });
-      return result as void;
-    } catch (error) {
-      console.error('Remove chat member failed:', error);
-      throw error;
-    }
-  }
-
-  async insertOrUpdateParticipant(participant: any): Promise<void> {
-    console.log(`Inserting/updating participant ${participant.participant_id}...`);
-    try {
-      await invoke('db_insert_participant', { participant });
-    } catch (error) {
-      console.error('Insert participant failed:', error);
-      throw error;
-    }
-  }
-
-  async insertOrUpdateFriend(friend: any): Promise<void> {
-    console.log(`Inserting/updating friend ${friend.user_id}...`);
-    try {
-      await invoke('db_insert_friend', { friend });
-    } catch (error) {
-      console.error('Insert friend failed:', error);
-      throw error;
-    }
-  }
-
-  async insertOrUpdateChat(chat: any): Promise<void> {
-    console.log(`Inserting/updating chat ${chat.chat_id}...`);
-    try {
-      await invoke('db_insert_or_update_chat', { chat });
-    } catch (error) {
-      console.error('Insert chat failed:', error);
-      throw error;
-    }
-  }
-
-  async clearAllFriends(): Promise<void> {
-    console.log(`Clearing all friends...`);
-    try {
-      await invoke('db_clear_friend_data');
-    } catch (error) {
-      console.error('Clear friends failed:', error);
-      throw error;
-    }
+  async resetDatabaseInitialization(): Promise<void> {
+    return await invoke('db_reset_initialization');
   }
 
   async clearAllData(): Promise<void> {
-    console.log('Clearing all database data...');
-    try {
-      await invoke('db_clear_all_data');
-    } catch (error) {
-      console.error('Clear all data failed:', error);
-      throw error;
-    }
+    return await invoke('db_clear_all_data');
   }
 
-  async fixDatabaseSchema(): Promise<void> {
-    console.log('Fixing database schema issues...');
-    try {
-      await invoke('db_clear_all_data');
-      console.log('Database cleared successfully');
-    } catch (error) {
-      console.error('Failed to clear database:', error);
-      throw error;
-    }
+  async healthCheck(): Promise<boolean> {
+    return await invoke('db_health_check');
   }
 
-  async getUserById(userId: string): Promise<any> {
-    console.log(`Getting user by ID ${userId}...`);
-    try {
-      return await invoke('db_async_get_user_by_id', { userId });
-    } catch (error) {
-      console.error('Get user by ID failed:', error);
-      throw error;
-    }
+  async getDatabaseStats(): Promise<{ total_chats: number; total_messages: number; total_users: number }> {
+    return await invoke('db_get_stats');
   }
 
-
-
-  async getFriendRequests(): Promise<FriendRequest[]> {
-    console.log('Getting friend requests via native API...');
-    try {
-      const result = await invoke('get_friend_requests_with_token', { token: this.token });
-      return result as FriendRequest[];
-    } catch (error) {
-      console.error('Get friend requests failed:', error);
-      throw error;
-    }
+  // User operations
+  async insertUser(user: User): Promise<void> {
+    return await invoke('db_insert_user', { user });
   }
 
-  async getChatMembers(chatId: string): Promise<ChatMemberResponse> {
-    console.log(`Getting chat members for chat ${chatId} via native API...`);
-    return this.makeRequest<ChatMemberResponse>('get_chat_members_with_token', { chat_id: chatId });
+  async get_user_by_id(user_id: string): Promise<User | null> {
+    return await invoke('db_get_user_by_id', { user_id });
   }
 
-  // Messages API
-  async getMessages(chatId: string): Promise<ChatMessage[]> {
-    console.log(`Getting messages for chat ${chatId} via native API...`);
-    return this.makeRequest<ChatMessage[]>('get_messages', { chat_id: chatId });
+  async get_user_by_token(token: string): Promise<User | null> {
+    return await invoke('db_get_user_by_token', { token });
   }
 
-  async sendMessage(
-    content: string,
-    chatId: string,
-    replyToMessageId?: string
-  ): Promise<SendMessageResponse> {
-    console.log(`Sending message to chat ${chatId} via native API...`);
-    return this.makeRequest<SendMessageResponse>('send_message', {
-      content,
-      chat_id: chatId,
-      reply_to_message_id: replyToMessageId
+  async get_most_recent_user(): Promise<User | null> {
+    return await invoke('db_get_most_recent_user');
+  }
+
+  async update_user_token(user_id: string, token: string): Promise<void> {
+    return await invoke('db_update_user_token', { user_id, token });
+  }
+
+  async clearUserData(): Promise<void> {
+    return await invoke('db_clear_user_data');
+  }
+
+  async update_dark_mode(user_id: string, is_dark_mode: boolean): Promise<void> {
+    return await invoke('db_update_dark_mode', { user_id, is_dark_mode });
+  }
+
+  async get_dark_mode(user_id: string): Promise<boolean> {
+    return await invoke('db_get_dark_mode', { user_id });
+  }
+
+  async update_color_scheme(user_id: string, color_scheme: string): Promise<void> {
+    return await invoke('db_update_color_scheme', { user_id, color_scheme });
+  }
+
+  async get_color_scheme(user_id: string): Promise<string> {
+    return await invoke('db_get_color_scheme', { user_id });
+  }
+
+  // Chat operations
+  async insertChat(chat: Chat): Promise<void> {
+    return await invoke('db_insert_chat', { chat });
+  }
+
+  async insertOrUpdateChat(chat: Chat): Promise<void> {
+    return await invoke('db_insert_or_update_chat', { chat });
+  }
+
+  async getChatById(chat_id: string): Promise<Chat | null> {
+    return await invoke('db_get_chat_by_id', { chat_id });
+  }
+
+  async getAllChats(): Promise<Chat[]> {
+    return await invoke('db_get_all_chats');
+  }
+
+  async getCachedChatsOnly(): Promise<Chat[]> {
+    return await invoke('db_get_cached_chats_only');
+  }
+
+  async getCachedChatsForCurrentUserFiltered(token: string): Promise<Chat[]> {
+    return await invoke('get_cached_chats_for_current_user_filtered', { token });
+  }
+
+  async updateChatUnreadCount(chat_id: string, unread_count: number): Promise<void> {
+    return await invoke('db_update_chat_unread_count', { chat_id, unread_count });
+  }
+
+  async updateChatLastMessage(chat_id: string, content?: string, timestamp?: number): Promise<void> {
+    return await invoke('db_update_chat_last_message', { chat_id, content, timestamp });
+  }
+
+  async deleteChat(chat_id: string): Promise<void> {
+    return await invoke('db_delete_chat_by_id', { chat_id });
+  }
+
+  async leaveChat(chat_id: string): Promise<void> {
+    await invoke('leave_chat', { chat_id });
+  }
+
+  async clearChatData(): Promise<void> {
+    return await invoke('db_clear_chat_data');
+  }
+
+  // Message operations
+  async insertMessage(message: Message): Promise<void> {
+    return await invoke('db_insert_message', { message });
+  }
+
+  async insertMessages(messages: Message[]): Promise<void> {
+    return await invoke('db_insert_messages', { messages });
+  }
+
+  async getMessageById(message_id: string): Promise<Message | null> {
+    return await invoke('db_get_message_by_id', { message_id });
+  }
+
+  async getMessageByClientId(client_message_id: string): Promise<Message | null> {
+    return await invoke('db_get_message_by_client_id', { client_message_id });
+  }
+
+  async getMessagesForChat(chat_id: string): Promise<Message[]> {
+    return await invoke('db_get_messages_for_chat', { chat_id });
+  }
+
+  async getMessagesBeforeTimestamp(
+    chat_id: string,
+    before_timestamp: number,
+    limit: number
+  ): Promise<Message[]> {
+    return await invoke('db_get_messages_before_timestamp', {
+      chat_id,
+      before_timestamp,
+      limit
     });
   }
 
-  // User search API
-  async searchUsers(query: string, token?: string): Promise<UserData[]> {
-    console.log(`Searching users with query: ${query} via native API...`);
-    const searchToken = token || this.token;
-    if (!searchToken) {
-      throw new Error('No token available');
-    }
-    try {
-      const result = await invoke('search_users', { token: searchToken, query });
-      return result as UserData[];
-    } catch (error) {
-      console.error('Search users failed:', error);
-      throw error;
-    }
+  async getLastMessage(chat_id: string): Promise<Message | null> {
+    return await invoke('db_get_last_message', { chat_id });
   }
 
-  // Window management
+  async updateMessageSentStatus(client_message_id: string, is_sent: boolean): Promise<void> {
+    return await invoke('db_update_message_sent_status', { client_message_id, is_sent });
+  }
+
+  async updateMessageSentStatusByServerId(server_id: string, is_sent: boolean): Promise<void> {
+    return await invoke('db_update_message_sent_status_by_server_id', { server_id, is_sent });
+  }
+
+  async markMessageDeliveredByServerId(server_id: string): Promise<void> {
+    return await invoke('db_mark_message_delivered_by_server_id', { server_id });
+  }
+
+  async markMessageReadByServerId(server_id: string): Promise<void> {
+    return await invoke('db_mark_message_read_by_server_id', { server_id });
+  }
+
+  async markMessagesReadByServerIds(message_ids: string[]): Promise<void> {
+    return await invoke('db_mark_messages_read_by_server_ids', { message_ids });
+  }
+
+  async getUnreadMessages(chat_id: string): Promise<Message[]> {
+    return await invoke('db_get_unread_messages', { chat_id });
+  }
+
+  async countUnreadMessages(chat_id: string): Promise<number> {
+    return await invoke('db_count_unread_messages', { chat_id });
+  }
+
+  async markMessagesAsRead(chat_id: string): Promise<void> {
+    return await invoke('db_mark_messages_as_read', { chat_id });
+  }
+
+  async updateMessageIdByClient(client_message_id: string, server_id: string): Promise<void> {
+    return await invoke('db_update_message_id_by_client', { client_message_id, server_id });
+  }
+
+  async deleteMessageById(message_id: string): Promise<void> {
+    return await invoke('db_delete_message_by_id', { message_id });
+  }
+
+  async deleteMessageByClientId(client_message_id: string): Promise<void> {
+    return await invoke('db_delete_message_by_client_id', { client_message_id });
+  }
+
+  async clearMessageData(): Promise<void> {
+    return await invoke('db_clear_message_data');
+  }
+
+  async clearMessagesForChat(chat_id: string): Promise<void> {
+    return await invoke('db_clear_messages_for_chat', { chat_id });
+  }
+
+  async removeAllParticipantsForChat(chat_id: string): Promise<void> {
+    return await invoke('db_remove_all_participants_for_chat', { chat_id });
+  }
+
+  // Friend operations
+  async insert_friend(friend: Friend): Promise<void> {
+    return await invoke('db_insert_friend', { friend });
+  }
+
+  async insert_or_update_friend(friend: Friend): Promise<void> {
+    return await invoke('db_insert_or_update_friend', { friend });
+  }
+
+  async get_all_friends(): Promise<Friend[]> {
+    return await invoke('db_get_all_friends');
+  }
+
+  async getCachedFriendsOnly(): Promise<Friend[]> {
+    return await invoke('db_get_cached_friends_only');
+  }
+
+  async getFriendById(friend_id: string): Promise<Friend | null> {
+    return await invoke('db_get_friend_by_id', { friend_id });
+  }
+
+  async deleteFriend(user_id: string): Promise<void> {
+    return await invoke('db_delete_friend', { user_id });
+  }
+
+  async updateFriendStatus(friend_id: string, status: string): Promise<void> {
+    return await invoke('db_update_friend_status', { friend_id, status });
+  }
+
+  async clearFriendData(): Promise<void> {
+    return await invoke('db_clear_friend_data');
+  }
+
+  // Participant operations
+  async insertParticipant(participant: Participant): Promise<void> {
+    return await invoke('db_insert_participant', { participant });
+  }
+
+  async get_participants_for_chat(chat_id: string): Promise<Participant[]> {
+    return await invoke('db_get_participants_for_chat', { chat_id });
+  }
+
+  async getParticipantById(participant_id: string): Promise<Participant | null> {
+    return await invoke('db_get_participant_by_id', { participant_id });
+  }
+
+  async getParticipantByUserIdAndChatId(user_id: string, chat_id: string): Promise<Participant | null> {
+    return await invoke('db_get_participant_by_user_id_and_chat_id', { user_id, chat_id });
+  }
+
+  async updateParticipantRole(participant_id: string, role: string): Promise<void> {
+    return await invoke('db_update_participant_role', { participant_id, role });
+  }
+
+  async deleteParticipant(participant_id: string): Promise<void> {
+    return await invoke('db_delete_participant', { participant_id });
+  }
+
+  async clearParticipantData(): Promise<void> {
+    return await invoke('db_clear_participant_data');
+  }
+
+  // User keys operations
+  async insertUserKeys(keys: UserKeys): Promise<void> {
+    return await invoke('db_insert_user_keys', { keys });
+  }
+
+  async getUserKeys(user_id: string): Promise<UserKeys | null> {
+    return await invoke('db_get_user_keys', { user_id });
+  }
+
+  // Utility operations
+  async resetDatabase(): Promise<void> {
+    return await invoke('db_reset_database');
+  }
+
+  async performHealthCheck(): Promise<boolean> {
+    return await invoke('db_health_check');
+  }
+
+  // Chat creation
+  async createChat(token: string, name: string, members: ParticipantSimple[]): Promise<Chat> {
+    return await invoke('create_chat', { token, name, members });
+  }
+
   async resizeWindow(width: number, height: number): Promise<void> {
-    console.log('Resizing window via native API...');
-    try {
-      await invoke('resize_window', { width, height });
-    } catch (error) {
-      console.error('Window resize failed:', error);
-      throw error;
-    }
+    return await invoke('resize_window', { width, height });
   }
-
-  async centerWindow(): Promise<void> {
-    console.log('Centering window via native API...');
-    try {
-      await invoke('center_window');
-    } catch (error) {
-      console.error('Window center failed:', error);
-      throw error;
-    }
-  }
-
-  async minimizeWindow(): Promise<void> {
-    console.log('Minimizing window via native API...');
-    try {
-      await invoke('minimize_window');
-    } catch (error) {
-      console.error('Window minimize failed:', error);
-      throw error;
-    }
-  }
-
-  async maximizeWindow(): Promise<void> {
-    console.log('Maximizing window via native API...');
-    try {
-      await invoke('maximize_window');
-    } catch (error) {
-      console.error('Window maximize failed:', error);
-      throw error;
-    }
-  }
-
-
 }
 
 export const nativeApiService = new NativeApiService(); 

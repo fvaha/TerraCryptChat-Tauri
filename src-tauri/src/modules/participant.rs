@@ -3,10 +3,11 @@ use serde_json;
 use tauri::State;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use chrono;
 use crate::database_async::{self as db_async};
 
 // ======== PARTICIPANT STRUCTURES ========
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Participant {
     pub user_id: String,
     pub username: String,
@@ -49,6 +50,37 @@ pub struct ParticipantSimple {
 }
 
 // ======== PARTICIPANT COMMANDS ========
+
+#[tauri::command]
+pub async fn create_participant_from_user_id(
+    user_id: String,
+    chat_id: String,
+    is_admin: bool,
+    joined_at: i64,
+) -> Result<db_async::Participant, String> {
+    println!("Creating participant for user_id: {} in chat: {}", user_id, chat_id);
+    
+    // Try to get the actual username from local database or friends list only (no API call without token)
+    let username = get_username_for_user_id_local_only(&user_id).await.unwrap_or_else(|e| {
+        println!("Failed to get username for user_id {}: {}, using fallback", user_id, e);
+        // Fallback: use a placeholder that indicates we need to resolve the username
+        format!("user_{}", user_id.chars().take(8).collect::<String>())
+    });
+    
+    println!("Using username: {} for user_id: {}", username, user_id);
+    
+    let participant = db_async::Participant {
+        participant_id: format!("{}_{}", chat_id, user_id),
+        user_id: user_id.clone(),
+        username: username,
+        joined_at,
+        role: if is_admin { "admin".to_string() } else { "member".to_string() },
+        chat_id: chat_id.clone(),
+    };
+    
+    println!("Created participant: {:?}", participant);
+    Ok(participant)
+}
 
 #[tauri::command]
 pub async fn add_participants(
@@ -314,6 +346,8 @@ pub async fn sync_participants_with_api_token(
                 let user_id = api_participant.user.user_id.clone();
                 let username = api_participant.user.username.clone();
                 
+                println!("Saving participant: user_id={}, username={}", user_id, username);
+                
                 let db_participant = db_async::Participant {
                     participant_id: format!("{}_{}", chat_id, user_id),
                     user_id: user_id,
@@ -325,6 +359,8 @@ pub async fn sync_participants_with_api_token(
                 
                 if let Err(e) = db_async::insert_or_update_participant(&db_participant).await {
                     println!("Failed to save participant {}: {}", api_participant.user.user_id, e);
+                } else {
+                    println!("Successfully saved participant: {}", api_participant.user.user_id);
                 }
             }
             
@@ -345,16 +381,23 @@ pub async fn get_cached_participants_for_chat(chat_id: String) -> Result<Vec<Par
     let participants = db_async::get_participants_for_chat(&chat_id).await
         .map_err(|e| format!("Database error: {e}"))?;
     
+    println!("Found {} participants in database for chat {}", participants.len(), chat_id);
+    
     let converted_participants: Vec<Participant> = participants.into_iter().map(|participant| {
         let username = participant.username.clone();
-        Participant {
+        println!("Converting participant: user_id={}, username={}", participant.user_id, username);
+        
+        let converted = Participant {
             user_id: participant.user_id,
             username: username.clone(),
             name: username, // Use username as name since name field doesn't exist
             email: String::new(), // Participant doesn't have email field
             picture: None, // Participant doesn't have picture field
             is_admin: participant.role == "admin",
-        }
+        };
+        
+        println!("Converted participant: {:?}", converted);
+        converted
     }).collect();
     
     println!("Retrieved {} cached participants", converted_participants.len());
@@ -396,8 +439,176 @@ pub async fn clear_cached_participants(chat_id: String) -> Result<(), String> {
     Ok(())
 }
 
-async fn get_username_for_user_id(_token: &str, user_id: &str) -> Result<String, String> {
-    // This would typically call an API to get user info
-    // For now, we'll return the user_id as username
-    Ok(user_id.to_string())
+#[tauri::command]
+pub async fn get_username_for_user_id_command(token: String, user_id: String) -> Result<String, String> {
+    get_username_for_user_id(&token, &user_id).await
+}
+
+pub async fn get_username_for_user_id_local_only(user_id: &str) -> Result<String, String> {
+    println!("Getting username for user_id (local only): {}", user_id);
+    
+    // First try to get from local database if we have user data
+    match db_async::get_user_by_id(user_id).await {
+        Ok(Some(user)) => {
+            if !user.username.is_empty() && user.username != user_id {
+                println!("Found username in local user database: {}", user.username);
+                return Ok(user.username);
+            } else {
+                println!("User found in local database but username is empty or same as user_id");
+            }
+        }
+        Ok(None) => {
+            println!("User not found in local database");
+        }
+        Err(e) => {
+            println!("Error getting user from local database: {}", e);
+        }
+    }
+    
+    // If no local user data or username is missing, try to get from friends list
+    match db_async::get_friend_by_id(user_id).await {
+        Ok(Some(friend)) => {
+            if !friend.username.is_empty() && friend.username != user_id {
+                println!("Found username in friends list: {}", friend.username);
+                return Ok(friend.username);
+            } else {
+                println!("Friend found but username is empty or same as user_id");
+            }
+        }
+        Ok(None) => {
+            println!("User not found in friends list");
+        }
+        Err(e) => {
+            println!("Error getting friend from database: {}", e);
+        }
+    }
+    
+    // Final fallback: return a truncated user_id as username
+    let truncated_id = if user_id.len() > 8 {
+        format!("user_{}", user_id.chars().take(8).collect::<String>())
+    } else {
+        format!("user_{}", user_id)
+    };
+    
+    println!("Using fallback username: {}", truncated_id);
+    Ok(truncated_id)
+}
+
+pub async fn get_username_for_user_id(token: &str, user_id: &str) -> Result<String, String> {
+    println!("Getting username for user_id: {}", user_id);
+    
+    // First try to get from local database if we have user data
+    match db_async::get_user_by_id(user_id).await {
+        Ok(Some(user)) => {
+            if !user.username.is_empty() && user.username != user_id {
+                println!("Found username in local user database: {}", user.username);
+                return Ok(user.username);
+            } else {
+                println!("User found in local database but username is empty or same as user_id");
+            }
+        }
+        Ok(None) => {
+            println!("User not found in local database");
+        }
+        Err(e) => {
+            println!("Error getting user from local database: {}", e);
+        }
+    }
+    
+    // If no local user data or username is missing, try to get from friends list
+    match db_async::get_friend_by_id(user_id).await {
+        Ok(Some(friend)) => {
+            if !friend.username.is_empty() && friend.username != user_id {
+                println!("Found username in friends list: {}", friend.username);
+                return Ok(friend.username);
+            } else {
+                println!("Friend found but username is empty or same as user_id");
+            }
+        }
+        Ok(None) => {
+            println!("User not found in friends list");
+        }
+        Err(e) => {
+            println!("Error getting friend from database: {}", e);
+        }
+    }
+    
+    // If we have a token, try to get from API using the proper endpoint
+    if !token.is_empty() {
+        println!("Attempting to get username from API for user: {}", user_id);
+        let client = reqwest::Client::new();
+        let res = client
+            .get(&format!("https://dev.v1.terracrypt.cc/api/v1/users/{}", user_id))
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await;
+            
+        if let Ok(response) = res {
+            if response.status().is_success() {
+                if let Ok(user_data) = response.json::<serde_json::Value>().await {
+                    if let Some(username) = user_data["username"].as_str() {
+                        if !username.is_empty() && username != user_id {
+                            println!("Found username from API: {}", username);
+                            // Cache this username in the local database for future use
+                            if let Ok(Some(mut user)) = db_async::get_user_by_id(user_id).await {
+                                user.username = username.to_string();
+                                if let Err(e) = db_async::insert_or_update_user(&user).await {
+                                    println!("Failed to cache username for user {}: {}", user_id, e);
+                                } else {
+                                    println!("Successfully cached username for user {}", user_id);
+                                }
+                            } else {
+                                // Create a new user entry with the fetched username
+                                let new_user = db_async::User {
+                                    user_id: user_id.to_string(),
+                                    username: username.to_string(),
+                                    email: Some(user_data["email"].as_str().unwrap_or("").to_string()),
+                                    name: Some(user_data["name"].as_str().unwrap_or("").to_string()),
+                                    password: None,
+                                    picture: user_data["picture"].as_str().map(|s| s.to_string()),
+                                    role: user_data["role"].as_str().map(|s| s.to_string()),
+                                    token_hash: None,
+                                    verified: user_data["verified"].as_bool().unwrap_or(false),
+                                    created_at: chrono::Utc::now().timestamp(),
+                                    updated_at: chrono::Utc::now().timestamp(),
+                                    deleted_at: None,
+                                    is_dark_mode: false,
+                                    last_seen: chrono::Utc::now().timestamp(),
+                                    color_scheme: Some("blue".to_string()),
+                                };
+                                if let Err(e) = db_async::insert_or_update_user(&new_user).await {
+                                    println!("Failed to create user entry for {}: {}", user_id, e);
+                                } else {
+                                    println!("Successfully created new user entry for {}", user_id);
+                                }
+                            }
+                            return Ok(username.to_string());
+                        } else {
+                            println!("API returned empty username or same as user_id");
+                        }
+                    } else {
+                        println!("API response does not contain username field");
+                    }
+                } else {
+                    println!("Failed to parse API response as JSON");
+                }
+            } else {
+                println!("API request failed for user {}: status {}", user_id, response.status());
+            }
+        } else {
+            println!("Failed to make API request for user {}: {:?}", user_id, res.err());
+        }
+    } else {
+        println!("No token provided, skipping API call");
+    }
+    
+    // Final fallback: return a truncated user_id as username
+    let truncated_id = if user_id.len() > 8 {
+        format!("user_{}", user_id.chars().take(8).collect::<String>())
+    } else {
+        format!("user_{}", user_id)
+    };
+    
+    println!("Using fallback username: {}", truncated_id);
+    Ok(truncated_id)
 } 

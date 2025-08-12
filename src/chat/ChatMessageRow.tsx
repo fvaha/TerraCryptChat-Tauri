@@ -1,128 +1,68 @@
 import React from 'react';
-import { Message as MessageEntity } from '../services/databaseServiceAsync';
+import { MessageEntity } from '../models/models';
 import { normalizeTimestamp } from '../utils/timestampUtils';
+import { useTheme } from '../components/ThemeContext';
 
 interface ChatMessageRowProps {
   message: MessageEntity;
-  isGroupChat: boolean;
-  isCurrentUser: boolean;
-  onReply: (message: MessageEntity) => void;
-  onResend: (message: MessageEntity) => void;
-  onScrollToMessage: (messageId: string) => void;
-  isFirstInGroup?: boolean;
-  formatTime: (timestamp: number) => string;
-  theme: {
-    background: string;
-    surface: string;
-    text: string;
-    textSecondary: string;
-    border: string;
-    primary: string;
-    hover: string;
-    sidebar: string;
-  };
+  isOwnMessage: boolean;
+  onReply: () => void;
+  onDelete: () => void;
 }
 
 const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
   message,
-  isGroupChat,
-  isCurrentUser,
+  isOwnMessage,
   onReply,
-  onResend,
-  onScrollToMessage,
-  isFirstInGroup = true,
-  formatTime,
-  theme
+  onDelete
 }) => {
+  const { theme } = useTheme();
+  
   // Normalize timestamp to ensure it's in milliseconds
   const normalizedTimestamp = normalizeTimestamp(message.timestamp);
   
   // Determine bubble color based on message properties
-  const bubbleColor = isCurrentUser ? theme.primary : theme.surface;
+  const bubbleColor = isOwnMessage ? theme.primary : theme.surface;
   
   // Determine text color
-  const textColor = isCurrentUser ? "white" : theme.text;
+  const textColor = isOwnMessage ? "white" : theme.text;
+
+  // Format time function
+  const formatTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  };
 
   return (
     <div
       style={{
         display: "flex",
-        justifyContent: isCurrentUser ? "flex-end" : "flex-start",
+        justifyContent: isOwnMessage ? "flex-end" : "flex-start",
         marginBottom: "8px",
-        padding: "0 3px" // Reduced from 16px to 3px
+        padding: "0 3px"
       }}
     >
       <div 
         style={{
           maxWidth: message.content.length > 50 ? "70%" : "auto",
           minWidth: message.content.length < 10 ? "120px" : "auto",
-                     padding: "3px 16px",
+          padding: "3px 16px",
           borderRadius: "12px",
           backgroundColor: bubbleColor,
           color: textColor,
-          border: isCurrentUser ? "none" : `1px solid ${theme.border}`,
+          border: isOwnMessage ? "none" : `1px solid ${theme.border}`,
           position: "relative",
           cursor: "pointer"
         }}
         onContextMenu={(e) => {
           e.preventDefault();
-          onReply(message);
+          onReply();
         }}
       >
-        {/* Sender name for group chats */}
-        {isGroupChat && !isCurrentUser && isFirstInGroup && message.sender_username && (
-          <div style={{
-            fontSize: "11px",
-            color: "gray",
-            marginBottom: "2px",
-            paddingLeft: "4px"
-          }}>
-            {message.sender_username}
-          </div>
-        )}
-
-                 {/* Reply preview if exists */}
-         {message.reply_to_message_id && (
-           <div
-             style={{
-               width: "100%",
-               maxWidth: "280px",
-               marginBottom: "6px",
-               padding: "4px 6px 4px 8px",
-               backgroundColor: `${textColor}25`,
-               borderRadius: "4px",
-               cursor: "pointer",
-               borderLeft: `3px solid ${bubbleColor}60`
-             }}
-             onClick={() => onScrollToMessage(message.reply_to_message_id!)}
-           >
-            <div style={{ display: "flex", alignItems: "center" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{
-                  fontSize: "11px",
-                  color: `${textColor}90`,
-                  fontWeight: "500",
-                  maxLines: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis"
-                }}>
-                  ↩ {message.reply_to_username || 'Unknown'}
-                </div>
-                <div style={{
-                  fontSize: "11px",
-                  color: `${textColor}70`,
-                  fontStyle: "italic",
-                  maxLines: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis"
-                }}>
-                  {message.reply_to_content || message.reply_to_message_id}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Message content */}
         <div style={{
           fontSize: "14px",
@@ -147,7 +87,7 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
         }}>
           {/* Reply button on left */}
           <button
-            onClick={() => onReply(message)}
+            onClick={onReply}
             style={{
               background: "none",
               border: "none",
@@ -172,10 +112,12 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
             gap: "1px",
             marginRight: "-8px"
           }}>
-                         <span style={{ marginRight: "3px", opacity: 0.85, fontSize: "10px" }}>{formatTime(normalizedTimestamp)}</span>
+            <span style={{ marginRight: "3px", opacity: 0.85, fontSize: "10px" }}>
+              {formatTime(normalizedTimestamp)}
+            </span>
             
             {/* Status indicators for own messages */}
-            {isCurrentUser && (
+            {isOwnMessage && (
               <div style={{ display: "flex", alignItems: "center", gap: "0px" }}>
                 {message.is_failed ? (
                   <span style={{ color: '#ff4444', fontSize: "10px" }}>⚠</span>
@@ -189,27 +131,6 @@ const ChatMessageRow: React.FC<ChatMessageRowProps> = ({
                   <span style={{ color: 'black', opacity: 0.85, fontSize: "10px" }}>⋯</span>
                 )}
               </div>
-            )}
-            
-            {/* Resend button for failed messages */}
-            {message.is_failed && (
-              <button
-                onClick={() => onResend(message)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "inherit",
-                  cursor: "pointer",
-                  fontSize: "10px",
-                  padding: "1px 3px",
-                  borderRadius: "3px",
-                  opacity: 0.85
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = "0.85"}
-              >
-                Resend
-              </button>
             )}
           </div>
         </div>

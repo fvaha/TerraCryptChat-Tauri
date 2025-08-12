@@ -1,10 +1,10 @@
+-- database: ../database.sqlite
 -- USERS
 CREATE TABLE IF NOT EXISTS user (
     user_id TEXT PRIMARY KEY,
     username TEXT NOT NULL,
     email TEXT,
     name TEXT,
-    password TEXT,
     picture TEXT,
     role TEXT,
     token_hash TEXT,
@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS user (
     is_dark_mode INTEGER DEFAULT 0,
     last_seen INTEGER,
     color_scheme TEXT DEFAULT 'blue'
+);
+
+-- SECURE TOKENS (for encrypted token storage)
+CREATE TABLE IF NOT EXISTS secure_tokens (
+    key_name TEXT PRIMARY KEY,
+    encrypted_value TEXT NOT NULL,
+    created_at INTEGER NOT NULL
 );
 
 -- CHATS
@@ -90,3 +97,15 @@ CREATE TABLE IF NOT EXISTS user_keys (
     private_key3 TEXT,
     private_key4 TEXT
 );
+
+-- LOCAL DELETES (for tracking locally deleted chats to prevent re-adding)
+CREATE TABLE IF NOT EXISTS local_deletes (
+    chat_id TEXT PRIMARY KEY,
+    deleted_at INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    is_creator INTEGER NOT NULL DEFAULT 0
+);
+
+-- Create index for local deletes
+CREATE INDEX IF NOT EXISTS idx_local_deletes_user_id ON local_deletes(user_id);
+CREATE INDEX IF NOT EXISTS idx_local_deletes_chat_id ON local_deletes(chat_id);

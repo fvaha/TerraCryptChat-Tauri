@@ -339,10 +339,94 @@ pub async fn get_cached_friends_with_delta(state: State<'_, Mutex<HashMap<String
 
 
 #[tauri::command]
-pub async fn friends_delta_update(_token: String) -> Result<Vec<Friend>, String> {
-    println!("Performing friends delta update");
-    // For now, just return cached friends
-    // In the future, this could implement proper delta sync
+pub async fn friends_delta_update(token: String) -> Result<Vec<Friend>, String> {
+    println!("Performing friends delta update for current user");
+    
+    // Get current cached friends
+    let cached_friends = get_cached_friends_only().await?;
+    let cached_friend_ids: std::collections::HashSet<String> = cached_friends.iter()
+        .map(|friend| friend.user_id.clone())
+        .collect();
+    
+    println!("Found {} cached friends", cached_friend_ids.len());
+    
+    // Fetch fresh friends from server
+    let server_friends = get_friends_with_token(token.clone()).await?;
+    let server_friend_ids: std::collections::HashSet<String> = server_friends.iter()
+        .map(|friend| friend.user_id.clone())
+        .collect();
+    
+    println!("Found {} server friends", server_friend_ids.len());
+    
+    // Find friends that exist on server but not locally (new friends)
+    let new_friend_ids: Vec<String> = server_friend_ids.difference(&cached_friend_ids)
+        .cloned()
+        .collect();
+    
+    // Find friends that exist locally but not on server (deleted friends)
+    let deleted_friend_ids: Vec<String> = cached_friend_ids.difference(&server_friend_ids)
+        .cloned()
+        .collect();
+    
+    println!("New friends to add: {:?}", new_friend_ids);
+    println!("Friends to delete: {:?}", deleted_friend_ids);
+    
+    // Delete friends that no longer exist on server
+    for user_id in &deleted_friend_ids {
+        println!("Removing deleted friend from database: {}", user_id);
+        
+        if let Err(e) = db_async::delete_friend(user_id).await {
+            println!("Failed to delete friend {}: {}", user_id, e);
+        }
+    }
+    
+    // Add new friends from server
+    for server_friend in &server_friends {
+        if new_friend_ids.contains(&server_friend.user_id) {
+            println!("Adding new friend to database: {}", server_friend.user_id);
+            
+            let db_friend = db_async::Friend {
+                user_id: server_friend.user_id.clone(),
+                username: server_friend.username.clone(),
+                name: server_friend.name.clone(),
+                email: server_friend.email.clone(),
+                picture: server_friend.picture.clone(),
+                is_favorite: server_friend.is_favorite.unwrap_or(false),
+                created_at: Some(chrono::Utc::now().timestamp()),
+                updated_at: Some(chrono::Utc::now().timestamp()),
+                status: Some("accepted".to_string()),
+            };
+            
+            if let Err(e) = db_async::insert_or_update_friend(&db_friend).await {
+                println!("Failed to insert new friend {}: {}", server_friend.user_id, e);
+            }
+        }
+    }
+    
+    // Update existing friends with any changes from server
+    for server_friend in &server_friends {
+        if cached_friend_ids.contains(&server_friend.user_id) {
+            println!("Updating existing friend: {}", server_friend.user_id);
+            
+            let db_friend = db_async::Friend {
+                user_id: server_friend.user_id.clone(),
+                username: server_friend.username.clone(),
+                name: server_friend.name.clone(),
+                email: server_friend.email.clone(),
+                picture: server_friend.picture.clone(),
+                is_favorite: server_friend.is_favorite.unwrap_or(false),
+                created_at: Some(chrono::Utc::now().timestamp()),
+                updated_at: Some(chrono::Utc::now().timestamp()),
+                status: Some("accepted".to_string()),
+            };
+            
+            if let Err(e) = db_async::insert_or_update_friend(&db_friend).await {
+                println!("Failed to update friend {}: {}", server_friend.user_id, e);
+            }
+        }
+    }
+    
+    // Return updated friends list
     get_cached_friends_only().await
 }
 

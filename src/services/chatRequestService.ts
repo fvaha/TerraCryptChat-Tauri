@@ -13,30 +13,32 @@ export interface FriendRequest {
   };
 }
 
-export async function sendFriendRequest(userId: string): Promise<void> {
-  await invoke("send_friend_request", {
-    userId
-  });
+export async function send_friend_request(userId: string): Promise<void> {
+  try {
+    const response = await apiService.send_friend_request(userId);
+    console.log('Friend request sent successfully:', response);
+  } catch (error) {
+    console.error('Failed to send friend request:', error);
+    throw error;
+  }
 }
 
-export async function getFriendRequests(): Promise<FriendRequest[]> {
+export async function get_friend_requests(): Promise<FriendRequest[]> {
   try {
-    // For now, return empty array since we're not storing friend requests locally yet
-    console.log("Getting friend requests from local database (not implemented yet)");
-    return [];
+    const response = await apiService.get_friend_requests();
+    return response || [];
   } catch (error) {
-    console.error("Failed to get friend requests:", error);
+    console.error('Failed to get friend requests:', error);
     return [];
   }
 }
 
-export async function acceptFriendRequest(requestId: string): Promise<void> {
+export async function accept_friend_request(requestId: string): Promise<void> {
   try {
-    await invoke("accept_friend_request", {
-      request_id: requestId
-    });
+    const response = await apiService.accept_friend_request(requestId);
+    console.log('Friend request accepted successfully:', response);
   } catch (error) {
-    console.error("Error accepting friend request:", error);
+    console.error('Failed to accept friend request:', error);
     throw error;
   }
 }

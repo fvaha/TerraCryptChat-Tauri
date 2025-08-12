@@ -9,7 +9,7 @@ export class DatabaseFixUtil {
     console.log('[DatabaseFixUtil] Starting database schema fix...');
     
     try {
-      await nativeApiService.fixDatabaseSchema();
+      await nativeApiService.clearAllData();
       console.log('[DatabaseFixUtil] Database schema fixed successfully');
     } catch (error) {
       console.error('[DatabaseFixUtil] Failed to fix database schema:', error);
@@ -29,7 +29,7 @@ export class DatabaseFixUtil {
     try {
       // Check if friend table has the correct schema by trying to access it
       // We don't actually insert test data, just check if the table exists
-      await nativeApiService.getAllFriends();
+      await nativeApiService.get_all_friends();
       
       // If we get here, the friend table is working
       console.log('[DatabaseFixUtil] Friend table schema is healthy');

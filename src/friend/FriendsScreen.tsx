@@ -1,12 +1,14 @@
 // SECOND WINDOW: FriendsScreen component - displays friends list in the second window
 import React, { useState, useEffect, useRef } from 'react';
-
 import { useTheme } from '../components/ThemeContext';
+import { useThemedStyles } from '../components/useThemedStyles';
 import ScreenHeader from '../components/ScreenHeader';
 import { friendService } from './friendService';
-import { Friend } from '../models/models';
+import FriendRequestsModal, { FriendRequest } from './FriendRequestsModal';
 import NewFriendSearch from './NewFriendSearch';
-import FriendRequestsModal from './FriendRequestsModal';
+import { Friend } from '../models/models';
+import { backgroundSyncManager } from '../services/backgroundSyncManager';
+import UserInitialsAvatar from '../components/UserInitialsAvatar';
 
 interface FriendsScreenProps {
   onOpenChat: (friendId: string, friendName: string) => void;
@@ -17,12 +19,13 @@ interface FriendsScreenProps {
 const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSidebar, sidebarCollapsed }) => {
 
   const { theme } = useTheme();
+  const themedStyles = useThemedStyles();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFriendSearch, setShowFriendSearch] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
-  const [friendRequests, setFriendRequests] = useState<any[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [friendRequestsCount, setFriendRequestsCount] = useState(0);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
   
@@ -37,32 +40,58 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
     try {
       setIsLoading(true);
       setError(null);
-      console.log(" Loading friends...");
+      console.log("[FriendsScreen] Loading friends...");
       
-      const friendsData = await friendService.getCachedFriendsForCurrentUser();
-      console.log(" Friends loaded:", friendsData);
+      // Load friends from database first
+      const friendsData = await friendService.get_cached_friends_for_current_user();
       
+      // Try to sync from server in background
       if (Array.isArray(friendsData)) {
-        setFriends(friendsData);
+        if (friendsData.length === 0) {
+          console.log("[FriendsScreen] No friends found in database, attempting to sync from server...");
+          
+          // Try to sync friends from server
+          try {
+            await friendService.syncFriendsFromServer();
+            console.log("[FriendsScreen] Friends synced from server, reloading...");
+            
+            // Reload friends after sync
+            const syncedFriends = await friendService.get_cached_friends_for_current_user();
+            console.log("[FriendsScreen] Friends after sync:", syncedFriends);
+            
+            if (Array.isArray(syncedFriends)) {
+              setFriends(syncedFriends);
+            } else {
+              console.warn("[FriendsScreen] Invalid synced friends data:", syncedFriends);
+              setFriends([]);
+            }
+          } catch (syncError) {
+            console.warn("[FriendsScreen] Failed to sync friends from server:", syncError);
+            setFriends([]);
+          }
+        } else {
+          setFriends(friendsData);
+        }
       } else {
-        console.warn(" Invalid friends data received:", friendsData);
+        console.warn("[FriendsScreen] Invalid friends data received:", friendsData);
         setFriends([]);
       }
     } catch (error) {
-      console.error(" Failed to load friends:", error);
+      console.error("[FriendsScreen] Failed to load friends:", error);
       setError("Failed to load friends");
+      setFriends([]);
     } finally {
       setIsLoading(false);
     }
   };
 
   // Add friend function
-  const handleAddFriend = async (username: string, userId: string) => {
+  const handleAddFriend = async (username: string) => {
     try {
       console.log(" Adding friend:", username);
       
       // Don't send friend request again - it was already sent in NewFriendSearch
-      // await friendService.sendFriendRequest(userId);
+      // await friendService.send_friend_request(userId);
       console.log(" Friend request already sent in NewFriendSearch");
       
       // Close the search screen immediately after successful request
@@ -86,12 +115,12 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
   const loadFriendRequests = async () => {
     try {
       setIsLoadingRequests(true);
-      const requests = await friendService.getFriendRequests();
+      const requests = await friendService.get_friend_requests();
       setFriendRequests(requests);
       setFriendRequestsCount(requests.length);
       
       // Also update the pending request count from the service
-      const pendingCount = friendService.getPendingRequestCount();
+      const pendingCount = friendService.get_pending_request_count();
       setFriendRequestsCount(pendingCount);
     } catch (error) {
       console.error("Failed to load friend requests:", error);
@@ -130,7 +159,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
   // Handle friend request actions
   const handleAcceptRequest = async (requestId: string) => {
     try {
-      const success = await friendService.acceptFriendRequest(requestId);
+      const success = await friendService.accept_friend_request(requestId);
       if (success) {
         console.log(" Friend request accepted");
         await loadFriendRequests(); // Reload requests
@@ -146,7 +175,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
 
   const handleDeclineRequest = async (requestId: string) => {
     try {
-      const success = await friendService.rejectFriendRequest(requestId);
+      const success = await friendService.reject_friend_request(requestId);
       if (success) {
         console.log(" Friend request declined");
         await loadFriendRequests(); // Reload requests
@@ -162,8 +191,26 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
   // Load friends on mount
   useEffect(() => {
     const initializeScreen = async () => {
-      await loadFriends();
-      await loadFriendRequests();
+      // Load friends and requests immediately (fast path)
+      loadFriends().catch(error => {
+        console.error("[FriendsScreen] Failed to load friends:", error);
+      });
+      loadFriendRequests().catch(error => {
+        console.error("[FriendsScreen] Failed to load friend requests:", error);
+      });
+      
+      // DISABLED: Background sync to prevent UI blocking
+      console.log("[FriendsScreen] Background sync disabled to prevent UI blocking");
+      /*
+      // Move background sync to completely non-blocking operation with longer delay
+      setTimeout(async () => {
+        try {
+          await backgroundSyncManager.onFriendsScreenOpened();
+        } catch (error) {
+          console.warn("[FriendsScreen] Background sync failed:", error);
+        }
+      }, 400); // Longer delay to ensure UI is fully responsive
+      */
     };
     
     initializeScreen();
@@ -176,10 +223,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
       loadFriends();
     };
 
-    friendService.onRequestChange(handleRequestChange);
+    friendService.on_request_change(handleRequestChange);
 
     return () => {
-      friendService.offRequestChange(handleRequestChange);
+      friendService.off_request_change(handleRequestChange);
     };
   }, []);
 
@@ -197,8 +244,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
 
   // Filter friends based on search query
   const filteredFriends = friends.filter(friend => 
-    friend.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    friend.name.toLowerCase().includes(searchQuery.toLowerCase())
+    friend.username.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (isLoading) {
@@ -226,10 +272,18 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
           searchPlaceholder="Search friends..."
+          showRefreshButton={true}
+          onRefreshClick={loadFriends}
         />
         
         {/* Loading skeleton */}
-        <div style={{ flex: 1, padding: "12px", overflowY: "auto", overflowX: "hidden" }}>
+        <div style={{ 
+          flex: 1, 
+          padding: "12px", 
+          overflowY: "auto", 
+          overflowX: "hidden",
+          ...themedStyles.scrollbar
+        }}>
           {[...Array(6)].map((_, i) => (
             <div key={i} style={{ 
               display: "flex", 
@@ -344,10 +398,17 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
         searchPlaceholder="Search friends..."
+        showRefreshButton={true}
+        onRefreshClick={loadFriends}
       />
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ 
+        flex: 1, 
+        overflowY: "auto", 
+        overflowX: "hidden",
+        ...themedStyles.scrollbar
+      }}>
         {filteredFriends.length === 0 && (
           <div style={{
             display: "flex",
@@ -363,11 +424,30 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onOpenChat, onToggleSideb
                 marginBottom: "8px",
                 color: theme.text
               }}>
-                No friends found
+                {searchQuery ? "No friends found" : "No friends yet"}
               </h3>
-              <p style={{ fontSize: "14px", color: theme.textSecondary }}>
-                Try a different search term
+              <p style={{ fontSize: "14px", color: theme.textSecondary, marginBottom: "16px" }}>
+                {searchQuery 
+                  ? "Try a different search term" 
+                  : "Add some friends to start chatting with them"
+                }
               </p>
+              {!searchQuery && (
+                <button
+                  onClick={() => setShowFriendSearch(true)}
+                  style={{
+                    padding: "8px 16px",
+                    backgroundColor: theme.primary,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontSize: "14px"
+                  }}
+                >
+                  Add Friend
+                </button>
+              )}
             </div>
           </div>
         )}

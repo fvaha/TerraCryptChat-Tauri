@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../components/ThemeContext';
+import { useThemedStyles } from '../components/useThemedStyles';
 import { friendService } from './friendService';
 
 interface NewFriendSearchProps {
@@ -7,14 +8,23 @@ interface NewFriendSearchProps {
   onAddFriend: (username: string, userId: string) => void;
 }
 
+interface SearchResult {
+  user_id: string;
+  username: string;
+  name?: string;
+  email?: string;
+  picture?: string;
+}
+
 const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userErrors, setUserErrors] = useState<Record<string, string>>({});
   const [userTimeouts, setUserTimeouts] = useState<Record<string, ReturnType<typeof setTimeout>>>({});
   const { theme } = useTheme();
+  const themedStyles = useThemedStyles();
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -29,7 +39,7 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
   // Create an instance of FriendService
   // const friendService = new FriendService(); // This line is removed
 
-  const searchUsers = async (query: string) => {
+  const search_users = async (query: string) => {
     console.log(" searchUsers called with query:", query);
     
     if (!query.trim()) {
@@ -44,10 +54,10 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
       console.log(" Searching users with query:", query);
       console.log(" Query length:", query.length);
       console.log(" friendService available:", !!friendService);
-      console.log(" friendService.searchUsers available:", !!friendService.searchUsers);
+      console.log(" friendService.searchUsers available:", !!friendService.search_users);
       
       // Use the same API call as in FriendsScreen
-      const results = await friendService.searchUsers(query);
+      const results = await friendService.search_users(query);
       console.log(" Search results received:", results);
       console.log(" Number of results:", results?.length || 0);
       console.log(" Results type:", typeof results);
@@ -72,7 +82,7 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
       console.log(" Debounced search executing with query:", searchQuery);
       if (searchQuery.trim()) {
         console.log(" Calling searchUsers with:", searchQuery);
-        searchUsers(searchQuery);
+        search_users(searchQuery);
       } else {
         console.log(" Empty query, clearing results");
         setSearchResults([]);
@@ -86,21 +96,21 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
     };
   }, [searchQuery]);
 
-  const handleAddFriend = async (username: string, userId: string) => {
+  const handleSendFriendRequest = async (userId: string) => {
     try {
-      console.log(` [NewFriendSearch] handleAddFriend called with:`, { username, userId });
+      console.log(` [NewFriendSearch] handleAddFriend called with:`, { userId });
       console.log(` [NewFriendSearch] Clearing previous errors...`);
       
       // Clear any existing error for this user
       setUserErrors(prev => ({ ...prev, [userId]: "" }));
       setError(null);
       
-      console.log(` [NewFriendSearch] Calling friendService.sendFriendRequest(${userId})...`);
-      await friendService.sendFriendRequest(userId);
-      console.log(` [NewFriendSearch] Friend request sent successfully to: ${username}`);
+      console.log(` [NewFriendSearch] Calling friendService.send_friend_request(${userId})...`);
+      await friendService.send_friend_request(userId);
+      console.log(` [NewFriendSearch] Friend request sent successfully to: ${userId}`);
       
       console.log(` [NewFriendSearch] Calling onAddFriend callback...`);
-      onAddFriend(username, userId);
+      onAddFriend(userId, userId); // Assuming userId is the username and user_id
       
       console.log(` [NewFriendSearch] Showing success message...`);
       // Show success message briefly for this user
@@ -244,7 +254,12 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ 
+        flex: 1, 
+        overflowY: "auto", 
+        overflowX: "hidden",
+        ...themedStyles.scrollbar
+      }}>
         {isLoading && (
           <div style={{ padding: "16px", textAlign: "center" }}>
             <p style={{ color: theme.textSecondary, fontSize: "14px" }}>
@@ -345,7 +360,7 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap"
                   }}>
-                    {user.name || user.username}
+                    {user.username}
                   </h3>
                   <div style={{
                     display: "flex",
@@ -354,7 +369,7 @@ const NewFriendSearch: React.FC<NewFriendSearchProps> = ({ onBack, onAddFriend }
                     flexShrink: 0
                   }}>
                     <button
-                      onClick={() => handleAddFriend(user.username, user.user_id)}
+                      onClick={() => handleSendFriendRequest(user.user_id)}
                       style={{
                         padding: "6px 10px",
                         backgroundColor: theme.primary,

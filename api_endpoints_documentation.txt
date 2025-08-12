@@ -1,0 +1,1028 @@
+# Messenger Chat Application API Documentation
+
+## 📋 Overview
+This document provides comprehensive API documentation for the Messenger Chat Application backend server.
+
+**Base URL:** `http://localhost:8080/api/v1`  
+**Content-Type:** `application/json`  
+**Authentication:** JWT Bearer Token
+
+---
+
+## 🔐 Authentication
+
+### Headers
+```http
+Authorization: Bearer <your_jwt_token>
+Content-Type: application/json
+```
+
+---
+
+## 📡 API Endpoints
+
+### 1. Authentication
+
+#### 🔑 User Registration
+**POST** `/auth/signup`
+
+**Description:** Create a new user account
+
+**Request Body:**
+```json
+{
+  "name": "John Doe",
+  "username": "johndoe",
+  "email": "johndoe@example.com",
+  "password": "sifra12"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVJ9..."
+}
+```
+
+**Example cURL:**
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "username": "johndoe",
+    "email": "johndoe@example.com",
+    "password": "sifra12"
+  }'
+```
+
+---
+
+#### 🔐 User Login
+**POST** `/auth/signin`
+
+**Description:** Authenticate existing user
+
+**Request Body:**
+```json
+{
+  "username": "johndoe",
+  "password": "sifra12"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVJ9..."
+}
+```
+
+**Example cURL:**
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/signin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "johndoe",
+    "password": "sifra12"
+  }'
+```
+
+---
+
+### 2. User Management
+
+#### 👤 Get Current User Profile
+**GET** `/users/me`
+
+**Description:** Retrieve current authenticated user's profile
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "username": "johndoe",
+  "email": "johndoe@example.com",
+  "name": "John Doe",
+  "picture": "https://example.com/avatar.jpg",
+  "role": "user",
+  "verified": true,
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z"
+}
+```
+
+**Example cURL:**
+```bash
+curl -X GET http://localhost:8080/api/v1/users/me \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### 👥 Get User by ID
+**GET** `/users/{user_id}`
+
+**Description:** Retrieve user profile by UUID
+
+**Path Parameters:**
+| Parameter | Type   | Required | Description           |
+|-----------|--------|----------|-----------------------|
+| user_id   | UUID   | Yes      | Unique identifier of user |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200 OK):** Same structure as GET /users/me
+
+**Example cURL:**
+```bash
+curl -X GET http://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### ✏️ Update User Profile
+**PATCH** `/users`
+
+**Description:** Update current user's profile information
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Request Body:**
+```json
+{
+  "username": "newusername",
+  "email": "newemail@example.com",
+  "name": "New Name",
+  "picture": "https://example.com/new-avatar.jpg"
+}
+```
+
+**Response (200 OK):** Updated user profile
+
+**Example cURL:**
+```bash
+curl -X PATCH http://localhost:8080/api/v1/users \
+  -H "Authorization: Bearer <your_jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "newusername",
+    "name": "New Name"
+  }'
+```
+
+---
+
+#### 🔍 Search Users
+**GET** `/users/search`
+
+**Description:** Search for users by username
+
+**Query Parameters:**
+| Parameter | Type   | Required | Description           |
+|-----------|--------|----------|-----------------------|
+| username  | string | Yes      | Username to search for |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "username": "johndoe",
+    "email": "johndoe@example.com",
+    "name": "John Doe",
+    "picture": "https://example.com/avatar.jpg",
+    "created_at": "2024-01-01T00:00:00Z"
+  }
+]
+```
+
+**Example cURL:**
+```bash
+curl -X GET "http://localhost:8080/api/v1/users/search?username=johndoe" \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+### 3. User Encryption Keys
+
+#### 🔑 Create User Keys
+**POST** `/users/keys`
+
+**Description:** Create or store user's encryption keys
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Request Body:**
+```json
+{
+  "key_1": "encryption_key_1_here",
+  "key_2": "encryption_key_2_here",
+  "key_3": "encryption_key_3_here",
+  "key_4": "encryption_key_4_here"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "key_1": "encryption_key_1_here",
+  "key_2": "encryption_key_2_here",
+  "key_3": "encryption_key_3_here",
+  "key_4": "encryption_key_4_here",
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z"
+}
+```
+
+**Example cURL:**
+```bash
+curl -X POST http://localhost:8080/api/v1/users/keys \
+  -H "Authorization: Bearer <your_jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key_1": "key1",
+    "key_2": "key2",
+    "key_3": "key3",
+    "key_4": "key4"
+  }'
+```
+
+---
+
+#### 📖 Get User Keys
+**GET** `/users/keys`
+
+**Description:** Retrieve current user's encryption keys
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200 OK):** Same structure as POST response
+
+**Example cURL:**
+```bash
+curl -X GET http://localhost:8080/api/v1/users/keys \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### 🔄 Update User Keys
+**PUT** `/users/keys`
+
+**Description:** Update user's encryption keys
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Request Body:** Same as POST /users/keys
+
+**Response (200 OK):** Updated keys structure
+
+**Example cURL:**
+```bash
+curl -X PUT http://localhost:8080/api/v1/users/keys \
+  -H "Authorization: Bearer <your_jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key_1": "new_key1",
+    "key_2": "new_key2",
+    "key_3": "new_key3",
+    "key_4": "new_key4"
+  }'
+```
+
+---
+
+### 4. Friend Management
+
+#### 👥 Get Friends List
+**GET** `/friends`
+
+**Description:** Retrieve current user's friends list
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "user1_id": "550e8400-e29b-41d4-a716-446655440000",
+    "user2_id": "660e8400-e29b-41d4-a716-446655440000",
+    "created_at": "2024-01-01T00:00:00Z"
+  }
+]
+```
+
+**Example cURL:**
+```bash
+curl -X GET http://localhost:8080/api/v1/friends \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### ❌ Remove Friend
+**DELETE** `/friends/{friend_id}`
+
+**Description:** Remove a friend from user's friends list
+
+**Path Parameters:**
+| Parameter | Type   | Required | Description           |
+|-----------|--------|----------|-----------------------|
+| friend_id | UUID   | Yes      | UUID of friend to remove |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (204 No Content):** Successfully removed
+
+**Example cURL:**
+```bash
+curl -X DELETE http://localhost:8080/api/v1/friends/660e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+### 5. Friend Requests
+
+#### 📨 Send Friend Request
+**POST** `/friends/request`
+
+**Description:** Send a friend request to another user
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Request Body:**
+```json
+{
+  "sender_id": "550e8400-e29b-41d4-a716-446655440000",
+  "receiver_id": "660e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Response (201 Created):** Friend request sent successfully
+
+**Example cURL:**
+```bash
+curl -X POST http://localhost:8080/api/v1/friends/request \
+  -H "Authorization: Bearer <your_jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender_id": "550e8400-e29b-41d4-a716-446655440000",
+    "receiver_id": "660e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+---
+
+#### 📬 Get Pending Requests
+**GET** `/friends/request/pending`
+
+**Description:** Retrieve pending friend requests
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "request_id": "770e8400-e29b-41d4-a716-446655440000",
+    "sender": {
+      "user_id": "660e8400-e29b-41d4-a716-446655440000",
+      "username": "janesmith",
+      "email": "jane@example.com",
+      "name": "Jane Smith",
+      "picture": "https://example.com/jane-avatar.jpg",
+      "created_at": "2024-01-01T00:00:00Z"
+    },
+    "receiver_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "pending",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+]
+```
+
+**Example cURL:**
+```bash
+curl -X GET http://localhost:8080/api/v1/friends/request/pending \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### ✅ Accept Friend Request
+**PUT** `/friends/request/{request_id}/accept`
+
+**Description:** Accept a pending friend request
+
+**Path Parameters:**
+| Parameter   | Type   | Required | Description           |
+|-------------|--------|----------|-----------------------|
+| request_id  | UUID   | Yes      | UUID of request to accept |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (204 No Content):** Request accepted successfully
+
+**Example cURL:**
+```bash
+curl -X PUT http://localhost:8080/api/v1/friends/request/770e8400-e29b-41d4-a716-446655440000/accept \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### ❌ Reject Friend Request
+**PUT** `/friends/request/{request_id}/reject`
+
+**Description:** Reject a pending friend request
+
+**Path Parameters:**
+| Parameter   | Type   | Required | Description           |
+|-------------|--------|----------|-----------------------|
+| request_id  | UUID   | Yes      | UUID of request to reject |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (204 No Content):** Request rejected successfully
+
+**Example cURL:**
+```bash
+curl -X PUT http://localhost:8080/api/v1/friends/request/770e8400-e29b-41d4-a716-446655440000/reject \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+### 6. Chat Management
+
+#### 💬 Create Chat
+**POST** `/chats`
+
+**Description:** Create a new chat (individual or group)
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Request Body:**
+```json
+{
+  "name": "Group Chat Name",
+  "is_group": true,
+  "members": [
+    {
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "is_admin": true
+    },
+    {
+      "user_id": "660e8400-e29b-41d4-a716-446655440000",
+      "is_admin": false
+    }
+  ]
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+  "name": "Group Chat Name",
+  "is_group": true,
+  "created_at": "2024-01-01T00:00:00Z",
+  "creator_id": "550e8400-e29b-41d4-a716-446655440000",
+  "members": [
+    {
+      "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "is_admin": true,
+      "joined_at": "2024-01-01T00:00:00Z",
+      "user": {
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        "name": "John Doe",
+        "email": "johndoe@example.com",
+        "username": "johndoe"
+      },
+      "friendship_status": "active"
+    }
+  ]
+}
+```
+
+**Example cURL:**
+```bash
+curl -X POST http://localhost:8080/api/v1/chats \
+  -H "Authorization: Bearer <your_jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Group Chat",
+    "is_group": true,
+    "members": [
+      {"user_id": "550e8400-e29b-41d4-a716-446655440000", "is_admin": true},
+      {"user_id": "660e8400-e29b-41d4-a716-446655440000", "is_admin": false}
+    ]
+  }'
+```
+
+---
+
+#### 📋 Get User Chats
+**GET** `/chats`
+
+**Description:** Retrieve current user's chats with pagination
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description           |
+|-----------|------|----------|---------|-----------------------|
+| limit     | int  | No       | 50      | Number of chats to return |
+| offset    | int  | No       | 0       | Number of chats to skip |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "data": [
+    {
+      "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+      "name": "Chat Name",
+      "is_group": false,
+      "created_at": "2024-01-01T00:00:00Z",
+      "creator_id": "550e8400-e29b-41d4-a716-446655440000",
+      "members": [...]
+    }
+  ],
+  "limit": 50,
+  "offset": 0
+}
+```
+
+**Example cURL:**
+```bash
+curl -X GET "http://localhost:8080/api/v1/chats?limit=10&offset=0" \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### 👥 Get Chat Members
+**GET** `/chats/{chat_id}/members`
+
+**Description:** Retrieve chat members with pagination
+
+**Path Parameters:**
+| Parameter | Type   | Required | Description           |
+|-----------|--------|----------|-----------------------|
+| chat_id   | UUID   | Yes      | UUID of the chat |
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description           |
+|-----------|------|----------|---------|-----------------------|
+| limit     | int  | No       | 50      | Number of members to return |
+| offset    | int  | No       | 0       | Number of members to skip |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200 OK):** Paginated list of chat members
+
+**Example cURL:**
+```bash
+curl -X GET "http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/members?limit=20" \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### ➕ Add Chat Members
+**POST** `/chats/{chat_id}/members`
+
+**Description:** Add new members to an existing chat (admin only)
+
+**Path Parameters:**
+| Parameter | Type   | Required | Description           |
+|-----------|--------|----------|-----------------------|
+| chat_id   | UUID   | Yes      | UUID of the chat |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Request Body:**
+```json
+{
+  "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+  "members": [
+    {
+      "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+      "user_id": "990e8400-e29b-41d4-a716-446655440000",
+      "is_admin": false,
+      "joined_at": "2024-01-01T00:00:00Z",
+      "user": {...},
+      "friendship_status": "active"
+    }
+  ]
+}
+```
+
+**Response (204 No Content):** Members added successfully
+
+**Example cURL:**
+```bash
+curl -X POST http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/members \
+  -H "Authorization: Bearer <your_jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+    "members": [
+      {"user_id": "990e8400-e29b-41d4-a716-446655440000", "is_admin": false}
+    ]
+  }'
+```
+
+---
+
+#### ➖ Remove Chat Member
+**DELETE** `/chats/{chat_id}/members/{user_id}`
+
+**Description:** Remove a member from chat (admin only)
+
+**Path Parameters:**
+| Parameter | Type   | Required | Description           |
+|-----------|--------|----------|-----------------------|
+| chat_id   | UUID   | Yes      | UUID of the chat |
+| user_id   | UUID   | Yes      | UUID of user to remove |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (204 No Content):** Member removed successfully
+
+**Example cURL:**
+```bash
+curl -X DELETE http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/members/990e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### 🗑️ Delete Chat
+**DELETE** `/chats/{chat_id}`
+
+**Description:** Delete a chat (admin only)
+
+**Path Parameters:**
+| Parameter | Type   | Required | Description           |
+|-----------|--------|----------|-----------------------|
+| chat_id   | UUID   | Yes      | UUID of the chat to delete |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (204 No Content):** Chat deleted successfully
+
+**Example cURL:**
+```bash
+curl -X DELETE http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+#### 🚪 Leave Chat
+**DELETE** `/chats/{chat_id}/leave`
+
+**Description:** Leave a chat as a member
+
+**Path Parameters:**
+| Parameter | Type   | Required | Description           |
+|-----------|--------|----------|-----------------------|
+| chat_id   | UUID   | Yes      | UUID of the chat to leave |
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (204 No Content):** Successfully left chat
+
+**Example cURL:**
+```bash
+curl -X DELETE http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/leave \
+  -H "Authorization: Bearer <your_jwt_token>"
+```
+
+---
+
+### 7. WebSocket Communication
+
+#### 🔌 WebSocket Connection
+**GET** `/ws`
+
+**Description:** Establish WebSocket connection for real-time messaging
+
+**Headers:**
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+**Connection:** WebSocket upgrade from HTTP
+
+**Message Types:**
+
+##### 💬 Chat Message
+```json
+{
+  "message": {
+    "message_id": "aa0e8400-e29b-41d4-a716-446655440000",
+    "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+    "sender_id": "550e8400-e29b-41d4-a716-446655440000",
+    "content": "Hello world!",
+    "sent_at": "2024-01-01T00:00:00Z",
+    "recipients": [
+      {
+        "message_id": "aa0e8400-e29b-41d4-a716-446655440000",
+        "recipient_id": "660e8400-e29b-41d4-a716-446655440000",
+        "status": "sent",
+        "updated_at": "2024-01-01T00:00:00Z"
+      }
+    ]
+  },
+  "type": "chat"
+}
+```
+
+##### 📊 Message Status Update
+```json
+
+{
+  "message": {
+    "message_id": "aa0e8400-e29b-41d4-a716-446655440000",
+    "client_message_id": "client_generated_id_123",
+    "status": "sent",
+    "recipient_id": "660e8400-e29b-41d4-a716-446655440000",
+    "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+    "sender_id": "550e8400-e29b-41d4-a716-446655440000",
+    "timestamp": "2024-01-01T00:00:00Z"
+  },
+  "type": "message-status"
+}
+
+{
+  "message": {
+    "message_id": "aa0e8400-e29b-41d4-a716-446655440000",
+    "client_message_id": "client_generated_id_123",
+    "status": "delivered",
+    "recipient_id": "660e8400-e29b-41d4-a716-446655440000",
+    "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+    "sender_id": "550e8400-e29b-41d4-a716-446655440000",
+    "timestamp": "2024-01-01T00:00:00Z"
+  },
+  "type": "message-status"
+}
+```
+
+##### 🔗 Connection Status
+```json
+{
+  "message": {
+    "status": "established",
+    "timestamp": "2024-01-01T00:00:00Z"
+  },
+  "type": "connection-status"
+}
+```
+
+##### 📨 Friend Request Notification
+```json
+{
+  "message": {
+    "request_id": "770e8400-e29b-41d4-a716-446655440000",
+    "sender_id": "660e8400-e29b-41d4-a716-446655440000",
+    "receiver_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "pending",
+    "timestamp": "2024-01-01T00:00:00Z"
+  },
+  "type": "request-notification"
+}
+```
+
+##### 💬 Chat Creation Notification
+```json
+{
+  "message": {
+    "chat_id": "880e8400-e29b-41d4-a716-446655440000",
+    "creator_id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "New Chat",
+    "is_group": true,
+    "timestamp": "2024-01-01T00:00:00Z",
+    "members": ["550e8400-e29b-41d4-a716-446655440000", "660e8400-e29b-41d4-a716-446655440000"],
+    "action": "created"
+  },
+  "type": "chat-notification"
+}
+```
+
+##### ❌ Error Message
+```json
+{
+  "message": {
+    "error": "Error description here",
+    "timestamp": "2024-01-01T00:00:00Z"
+  },
+  "type": "error"
+}
+```
+
+**Example WebSocket Connection:**
+```javascript
+const ws = new WebSocket('ws://localhost:8080/api/v1/ws');
+ws.onopen = function() {
+  console.log('WebSocket connected');
+};
+ws.onmessage = function(event) {
+  const data = JSON.parse(event.data);
+  console.log('Received:', data);
+};
+```
+
+---
+
+### 8. Health Check
+
+#### 🏥 Database Health
+**GET** `/db-health`
+
+**Description:** Check database health status
+
+**Response (200 OK):**
+```json
+{
+  "status": "healthy",
+  "config_version": "2.0.1-001"
+}
+```
+
+**Example cURL:**
+```bash
+curl -X GET http://localhost:8080/api/v1/db-health
+```
+
+---
+
+## 📊 Common Data Models
+
+### Pagination Parameters
+```json
+{
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### Paginated Response
+```json
+{
+  "data": [...],
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### Error Response
+```json
+{
+  "error": "Error message description",
+  "details": "Additional error details or stack trace"
+}
+```
+
+---
+
+## 📋 HTTP Status Codes
+
+| Status Code | Description                    | Usage                                    |
+|-------------|--------------------------------|------------------------------------------|
+| 200         | OK                            | Request successful                       |
+| 201         | Created                       | Resource created successfully            |
+| 204         | No Content                    | Request successful, no content to return |
+| 400         | Bad Request                   | Invalid request payload or parameters    |
+| 401         | Unauthorized                  | Authentication required or failed        |
+| 403         | Forbidden                     | Access denied (e.g., not admin)          |
+| 404         | Not Found                     | Resource not found                       |
+| 409         | Conflict                      | Resource conflict                        |
+| 500         | Internal Server Error         | Server error                             |
+
+---
+
+## ⚙️ Configuration
+
+### Rate Limiting
+- **Limit:** 30 requests per 10 seconds per IP address
+- **Purpose:** Prevent API abuse and ensure fair usage
+
+### CORS Settings
+- **Allowed Origins:** `http://localhost:5173`
+- **Allowed Methods:** GET, POST, PUT, DELETE, OPTIONS
+- **Allowed Headers:** Content-Type, Authorization
+- **Allow Credentials:** true
+
+### Authentication
+- **Type:** JWT (JSON Web Token)
+- **Algorithm:** HS256
+- **Expiration:** Configurable via environment variables
+- **Header:** `Authorization: Bearer <token>`
+
+---
+
+## 🧪 Testing Examples
+
+### Postman Collection
+You can import this API into Postman using the base URL:
+```
+http://localhost:8080/api/v1
+```
+
+### Environment Variables
+Set these in your Postman environment:
+```
+base_url: http://localhost:8080/api/v1
+auth_token: <your_jwt_token>
+```
+
+### Testing Flow
+1. **Register/Login** → Get JWT token
+2. **Set Authorization Header** → Bearer <token>
+3. **Test Protected Endpoints** → Use token in requests
+4. **WebSocket Testing** → Use tools like wscat or browser console
+
+---
+
+## 📝 Notes
+
+- All UUIDs are in standard format: `550e8400-e29b-41d4-a716-446655440000`
+- Timestamps are in ISO 8601 format: `2024-01-01T00:00:00Z`
+- Pagination defaults: `limit=50`, `offset=0`
+- WebSocket messages include a `type` field for message routing
+- Admin-only operations require user to be chat admin
+- Friend operations require existing friendship or pending request

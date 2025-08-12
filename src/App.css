@@ -234,3 +234,67 @@ html, body {
 .reload-button:hover {
   background-color: #106ebe;
 }
+
+/* Custom Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: #404040;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #666666;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #888888;
+}
+
+::-webkit-scrollbar-corner {
+  background-color: #404040;
+}
+
+/* Firefox scrollbar styles */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #666666 #404040;
+}
+
+/* Custom scrollbar classes for different themes */
+.scrollbar-dark {
+  scrollbar-color: #666666 #404040;
+}
+
+.scrollbar-dark::-webkit-scrollbar-track {
+  background-color: #404040;
+}
+
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background-color: #666666;
+}
+
+.scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background-color: #888888;
+}
+
+.scrollbar-light {
+  scrollbar-color: #d1d5db #f3f4f6;
+}
+
+.scrollbar-light::-webkit-scrollbar-track {
+  background-color: #f3f4f6;
+}
+
+.scrollbar-light::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+}
+
+.scrollbar-light::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af;
+}

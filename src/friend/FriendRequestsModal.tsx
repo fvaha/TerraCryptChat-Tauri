@@ -1,16 +1,19 @@
-import React from "react";
+import React from 'react';
 import { useTheme } from '../components/ThemeContext';
+import { useThemedStyles } from '../components/useThemedStyles';
 
-interface FriendRequest {
+export interface FriendRequest {
   request_id: string;
+  sender_id: string;
   receiver_id: string;
   status: string;
-  created_at?: string;
-  sender: {
+  created_at: string;
+  sender?: {
     user_id: string;
     username: string;
-    name: string;
-    email: string;
+    name?: string;
+    email?: string;
+    picture?: string;
   };
 }
 
@@ -32,6 +35,7 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
   isLoading = false
 }) => {
   const { theme } = useTheme();
+  const themedStyles = useThemedStyles();
   const getUserInitials = (name: string, username: string) => {
     const displayName = name || username;
     return displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -100,7 +104,8 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
         {/* Content */}
         <div style={{
           maxHeight: "60vh",
-          overflowY: "auto"
+          overflowY: "auto",
+          ...themedStyles.scrollbar
         }}>
           {isLoading ? (
             <div style={{ padding: "40px", textAlign: "center" }}>
@@ -173,7 +178,7 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
                     fontSize: "14px",
                     marginRight: "16px"
                   }}>
-                    {getUserInitials(request.sender?.name || "", request.sender?.username || "U")}
+                    {getUserInitials("", request.sender?.username || "U")}
                   </div>
                   
                   <div style={{ flex: 1 }}>
@@ -183,7 +188,7 @@ const FriendRequestsModal: React.FC<FriendRequestsModalProps> = ({
                       color: theme.text,
                       margin: "0 0 4px 0"
                     }}>
-                      {request.sender?.name || request.sender?.username || "Unknown"}
+                      {request.sender?.username || "Unknown"}
                     </h3>
                     <p style={{
                       fontSize: "14px",

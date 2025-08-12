@@ -18,8 +18,8 @@ export default defineConfig({
   },
   // Reduce white flash in development
   server: {
-    port: 4000, // Match Tauri's expected port
-    strictPort: true, // Ensure it uses exactly port 4000
+    port: 4001, // Back to default port
+    strictPort: false, // Allow fallback to other ports if needed
     hmr: {
       overlay: false // Disable error overlay to reduce flash
     },

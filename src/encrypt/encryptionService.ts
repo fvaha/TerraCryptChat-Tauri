@@ -1,28 +1,32 @@
 // Encryption service matching the Kotlin MessageEncryptionManager logic
 
-const INTERNAL_KEY = "hardcoded_key"; // Must match the Kotlin version's key
+// IMPORTANT: This key MUST match the Swift and Kotlin versions exactly
+// Both Swift and Kotlin use "hardcoded_key" for XOR encryption
+const INTERNAL_KEY = "hardcoded_key"; // Must match Swift and Kotlin versions
 
 export class EncryptionService {
-  private useRustSdkEncryption = false; // Toggle for encryption type
+  private useRustSdkEncryption = false; // Toggle for encryption type - set to false to use XOR
   private sdkInstancePtr: number | null = null; // SDK instance pointer
 
-  // XOR encryption - matches Kotlin implementation
+  // XOR encryption - matches Kotlin implementation exactly
   private xorEncrypt(data: Uint8Array): Uint8Array {
     const keyBytes = new TextEncoder().encode(INTERNAL_KEY);
+    console.log("[Encryption] Encrypting with key:", INTERNAL_KEY, "Key bytes length:", keyBytes.length);
     return data.map((byte, index) => 
       byte ^ keyBytes[index % keyBytes.length]
     );
   }
 
-  // XOR decryption - matches Kotlin implementation  
+  // XOR decryption - matches Kotlin implementation exactly
   private xorDecrypt(data: Uint8Array): Uint8Array {
     const keyBytes = new TextEncoder().encode(INTERNAL_KEY);
+    console.log("[Encryption] Decrypting with key:", INTERNAL_KEY, "Key bytes length:", keyBytes.length);
     return data.map((byte, index) => 
       byte ^ keyBytes[index % keyBytes.length]
     );
   }
 
-  // Public encrypt method - matches Kotlin API
+  // Public encrypt method - matches Kotlin API exactly
   encryptMessage(message: string, targetUserId?: string): string {
     if (!message || message.trim().length === 0) {
       console.log("[Encryption] Cannot encrypt an empty message.");
@@ -32,14 +36,16 @@ export class EncryptionService {
     if (this.useRustSdkEncryption && this.sdkInstancePtr !== null && targetUserId) {
       return this.encryptMessageWithSdk(targetUserId, message);
     } else {
-      // Use XOR encryption
+      // Use XOR encryption with hardcoded_key (matches Swift/Kotlin)
       const messageBytes = new TextEncoder().encode(message);
       const encryptedBytes = this.xorEncrypt(messageBytes);
-      return btoa(String.fromCharCode(...encryptedBytes));
+      const result = btoa(String.fromCharCode(...encryptedBytes));
+      console.log("[Encryption] Encrypted:", message, "→", result);
+      return result;
     }
   }
 
-  // Public decrypt method - matches Kotlin API
+  // Public decrypt method - matches Kotlin API exactly
   decryptMessage(encryptedString: string, sourceUserId?: string): string {
     if (!encryptedString || encryptedString.trim().length === 0) {
       console.log("[Decryption] Cannot decrypt an empty message.");
@@ -54,13 +60,15 @@ export class EncryptionService {
       if (this.useRustSdkEncryption && this.sdkInstancePtr !== null && sourceUserId) {
         return this.decryptMessageWithSdk(sourceUserId, encryptedBytes);
       } else {
-        // Use XOR decryption
+        // Use XOR decryption with hardcoded_key (matches Swift/Kotlin)
         const decryptedBytes = this.xorDecrypt(encryptedBytes);
-        return new TextDecoder().decode(decryptedBytes);
+        const result = new TextDecoder().decode(decryptedBytes);
+        console.log("[Encryption] Decrypted:", encryptedString, "→", result);
+        return result;
       }
     } catch (error) {
       console.error("[Decryption] Failed to decrypt message:", error);
-      return "";
+      return encryptedString; // Return original if decryption fails
     }
   }
 
@@ -98,64 +106,32 @@ export class EncryptionService {
       console.log("[SDK] SDK instance not initialized, falling back to XOR encryption");
       return this.encryptMessage(message);
     }
-
-    try {
-      // TODO: Implement SDK encryption when needed
-      // const encryptedBytes = await invoke<Uint8Array>("sdk_encrypt_message", {
-      //   sdk: this.sdkInstancePtr,
-      //   targetUserId,
-      //   messageBytes: new TextEncoder().encode(message)
-      // });
-      // return btoa(String.fromCharCode(...encryptedBytes));
-      
-      console.log("[SDK] SDK encryption not yet implemented, falling back to XOR");
-      return this.encryptMessage(message);
-    } catch (error) {
-      console.error("[SDK] SDK encryption failed, falling back to XOR:", error);
-      return this.encryptMessage(message);
-    }
+    // TODO: Implement SDK encryption
+    return "";
   }
 
   // Decrypt a message using SDK
-  private decryptMessageWithSdk(sourceUserId: string, encryptedBytes: Uint8Array): string {
+  private decryptMessageWithSdk(_sourceUserId: string, _encryptedBytes: Uint8Array): string {
     if (this.sdkInstancePtr === null) {
       console.log("[SDK] SDK instance not initialized, falling back to XOR decryption");
-      return this.decryptMessage(btoa(String.fromCharCode(...encryptedBytes)));
+      return "";
     }
-
-    try {
-      // TODO: Implement SDK decryption when needed
-      // const decryptedBytes = await invoke<Uint8Array>("sdk_decrypt_message", {
-      //   sdk: this.sdkInstancePtr,
-      //   sourceUserId,
-      //   encryptedBytes
-      // });
-      // return new TextDecoder().decode(decryptedBytes);
-      
-      console.log("[SDK] SDK decryption not yet implemented, falling back to XOR");
-      return this.decryptMessage(btoa(String.fromCharCode(...encryptedBytes)));
-    } catch (error) {
-      console.error("[SDK] SDK decryption failed, falling back to XOR:", error);
-      return this.decryptMessage(btoa(String.fromCharCode(...encryptedBytes)));
-    }
+    // TODO: Implement SDK decryption
+    return "";
   }
 
-  // Enable/disable SDK encryption
+  // Toggle between XOR and SDK encryption
   setUseRustSdkEncryption(enabled: boolean): void {
     this.useRustSdkEncryption = enabled;
-    console.log(`[Encryption] SDK encryption ${enabled ? 'enabled' : 'disabled'}`);
-    
-    if (enabled && this.sdkInstancePtr === null) {
-      this.initializeSdk();
-    }
+    console.log(`[SDK] Rust SDK encryption ${enabled ? 'enabled' : 'disabled'}`);
   }
 
-  // Get SDK encryption status
+  // Check if SDK encryption is enabled
   isSdkEncryptionEnabled(): boolean {
     return this.useRustSdkEncryption;
   }
 
-  // Get SDK instance status
+  // Check if SDK is initialized
   isSdkInitialized(): boolean {
     return this.sdkInstancePtr !== null;
   }

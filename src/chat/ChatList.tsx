@@ -3,19 +3,38 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../AppContext';
 
 import { useTheme } from '../components/ThemeContext';
+import { useThemedStyles } from '../components/useThemedStyles';
 import ScreenHeader from '../components/ScreenHeader';
-import { friendService } from '../friend/friendService';
+
 import { participantService } from '../participant/participantService';
 import { nativeApiService } from '../api/nativeApiService';
 import CreateChatForm from './CreateChatForm';
 import { Chat } from '../models/models';
-import { ChatService } from '../services/chatService';
+import { chatService } from '../services/chatService';
+import { sessionManager } from '../utils/sessionManager';
+import { invoke } from '@tauri-apps/api/core';
+import { backgroundSyncManager } from '../services/backgroundSyncManager';
+
+// Add CSS for spinner animation
+const spinnerStyles = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
+// Inject styles
+if (typeof document !== 'undefined') {
+  const styleElement = document.createElement('style');
+  styleElement.textContent = spinnerStyles;
+  document.head.appendChild(styleElement);
+}
 
 interface ChatData {
   chat_id: string;
   name?: string;
   chat_type?: string;
-  is_group: boolean;
+  is_group_chat: boolean;
   created_at: string;
   creator_id?: string;
   admin_id?: string;
@@ -27,6 +46,28 @@ interface ChatData {
   participants?: Array<{ user_id: string; username: string; role: string }>;
   last_message?: { content: string; timestamp: number; sender_id: string };
   display_name?: string; // Computed display name
+}
+
+interface NativeChatData {
+  chat_id: string;
+  name?: string;
+  is_group_chat?: boolean;
+  created_at: number;
+  creator_id?: string;
+  admin_id?: string;
+  unread_count?: number;
+  description?: string;
+  group_name?: string;
+  last_message_content?: string;
+  last_message_timestamp?: number;
+}
+
+interface FriendData {
+  user_id: string;
+  username: string;
+  name?: string;
+  email?: string;
+  picture?: string;
 }
 
 interface ChatListProps {
@@ -42,17 +83,18 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
   // Simple cache for chat names to avoid repeated API calls
   const chatNameCache = useRef<Map<string, string>>(new Map());
   const { theme } = useTheme();
+  const themedStyles = useThemedStyles();
   const [chats, setChats] = useState<ChatData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [showCreateChat, setShowCreateChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [friends, setFriends] = useState<Array<{ user_id: string; username: string; name: string; email: string; picture?: string }>>([]);
+
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [skipBackgroundSync, setSkipBackgroundSync] = useState(false);
   
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -71,46 +113,71 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
   const loadChats = useCallback(async () => {
     // Prevent multiple simultaneous loads
     if (isLoadingChats) {
-      console.log(" Chat loading already in progress, skipping...");
+      console.log("[ChatList] Chat loading already in progress, skipping...");
       return;
     }
 
     setIsLoadingChats(true);
     try {
-      console.log(" Loading chats from database...");
-      const chatsData = await nativeApiService.getCachedChatsOnly();
-      console.log(" Chats loaded from database:", chatsData);
+      console.log("[ChatList] Starting chat load process...");
       
-      console.log(" Raw chats data:", chatsData);
+      // Use filtered method to exclude locally deleted chats
+      let chatsData;
+      const token = services.sessionManager.getToken();
+      if (token) {
+        chatsData = await nativeApiService.getCachedChatsForCurrentUserFiltered(token);
+        console.log(`[ChatList] Loaded ${chatsData?.length || 0} filtered chats from database`);
+      } else {
+        chatsData = await nativeApiService.getCachedChatsOnly();
+        console.log(`[ChatList] Loaded ${chatsData?.length || 0} unfiltered chats from database`);
+      }
       
-      // Process chats and resolve participant names for direct chats
+      if (!chatsData || chatsData.length === 0) {
+        console.log("[ChatList] No chats found in database");
+        setChats([]);
+        return;
+      }
+      
+      // Process chats and resolve participant names for direct chats (optimized)
+      console.log("[ChatList] Processing chats for display...");
       const chatsWithNames = await Promise.all(
         chatsData
-          .filter((chat: any) => chat && chat.chat_id) // Filter out invalid chats
-          .map(async (chat: any) => {
+          .filter((chat: NativeChatData) => chat && chat.chat_id) // Filter out invalid chats
+          .map(async (chat: NativeChatData, index: number) => {
            try {
-             console.log(` Raw chat data:`, chat);
-             console.log(` Current user ID:`, user?.user_id);
-             
-             // Resolve chat name using Swift pattern
-             const displayName = await resolveChatName(chat, user?.user_id);
+             console.log(`[ChatList] Processing chat ${index + 1}/${chatsData.length}: ${chat.chat_id}`);
              
              // Convert the native API response to the expected format
              const chatData: ChatData = {
                chat_id: chat.chat_id,
                name: chat.name || null,
-               chat_type: chat.is_group ? "group" : "direct",
-               is_group: Boolean(chat.is_group),
-               created_at: new Date(chat.created_at * 1000).toISOString(), // Convert timestamp to ISO string
+               chat_type: (chat.is_group_chat ?? false) ? "group" : "direct",
+               is_group_chat: Boolean(chat.is_group_chat ?? false),
+               created_at: new Date(chat.created_at * 1000).toISOString(), // Convert number timestamp to ISO string
                creator_id: chat.creator_id || "",
-               participants: Array.isArray(chat.participants) ? chat.participants : [],
-               display_name: displayName
+               participants: [], // Will be populated separately if needed
+               display_name: ""
              };
              
+             // Resolve chat name using enhanced pattern (fast path)
+             const displayName = await resolveChatName(chatData, user?.user_id);
+             chatData.display_name = displayName;
+             
+             console.log(`[ChatList] Resolved chat name for ${chat.chat_id}: ${displayName}`);
              return chatData;
            } catch (error) {
-             console.error(` Error processing chat ${chat.chat_id}:`, error);
-             return null;
+             console.error(`[ChatList] Error processing chat ${chat.chat_id}:`, error);
+             // Return a fallback chat with basic info instead of null
+             return {
+               chat_id: chat.chat_id,
+               name: chat.name || null,
+               chat_type: (chat.is_group_chat ?? false) ? "group" : "direct",
+               is_group_chat: Boolean(chat.is_group_chat ?? false),
+               created_at: new Date(chat.created_at * 1000).toISOString(),
+               creator_id: chat.creator_id || "",
+               participants: [],
+               display_name: chat.name || `Chat ${chat.chat_id.slice(0, 8)}`
+             };
            }
          })
       );
@@ -120,16 +187,16 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
         .filter((chat): chat is ChatData => chat !== null)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       
-      console.log(" Processed chats:", validChats);
+      console.log(`[ChatList] Successfully processed ${validChats.length} chats`);
       setChats(validChats);
+      
     } catch (error) {
-      console.error(" Failed to load chats:", error);
+      console.error("[ChatList] Failed to load chats:", error);
       setError("Failed to load chats");
     } finally {
-      setIsLoading(false);
       setIsLoadingChats(false);
     }
-  }, [user?.user_id]);
+  }, [user?.user_id, services.sessionManager]);
 
   const formatTime = (timestamp: string) => {
     try {
@@ -150,74 +217,151 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
     }
   };
 
-  // Swift-style resolveChatName function using cached participants
+  // Function to refresh chat names for a specific chat
+  const refreshChatName = async (chatId: string) => {
+    try {
+      const chat = chats.find(c => c.chat_id === chatId);
+      if (chat && user?.user_id) {
+        const newName = await resolveChatName(chat, user.user_id);
+        chat.display_name = newName;
+        
+        // Update the chat in state
+        setChats(prevChats => 
+          prevChats.map(c => 
+            c.chat_id === chatId 
+              ? { ...c, display_name: newName }
+              : c
+          )
+        );
+        
+        console.log(`[ChatList] Refreshed chat name for ${chatId}: ${newName}`);
+      }
+    } catch (error) {
+      console.error(`[ChatList] Failed to refresh chat name for ${chatId}:`, error);
+    }
+  };
+
+  // Enhanced resolveChatName function using local database only
   const resolveChatName = async (chat: ChatData, currentUserId?: string): Promise<string> => {
-    // Check cache first
+    if (chat.name) return chat.name;
+    
     const cacheKey = `${chat.chat_id}_${currentUserId}`;
     if (chatNameCache.current.has(cacheKey)) {
       const cachedName = chatNameCache.current.get(cacheKey);
-      console.log(` Using cached chat name for ${chat.chat_id}: ${cachedName}`);
+      console.log(`[ChatList] Using cached chat name for ${chat.chat_id}: ${cachedName}`);
       return cachedName!;
     }
-    
-    // For group chats, use the group name
-    if (chat.is_group) {
-      const groupName = chat.name || "Unnamed Group";
-      chatNameCache.current.set(cacheKey, groupName);
-      return groupName;
-    }
-    
-    // For direct chats, get participants from database
-    if (currentUserId) {
-      try {
-        console.log(` Resolving chat name for direct chat: ${chat.chat_id}, currentUserId: ${currentUserId}`);
+
+    try {
+      if (currentUserId && !chat.is_group_chat) {
+        console.log(`[ChatList] Resolving chat name for direct chat: ${chat.chat_id}, currentUserId: ${currentUserId}`);
         
-        // First, check if API already provided a name (like "vaha")
-        if (chat.name && chat.name !== `Chat ${chat.chat_id.slice(0, 8)}`) {
-          console.log(` Using API-provided name: ${chat.name}`);
-          chatNameCache.current.set(cacheKey, chat.name);
-          return chat.name;
-        }
-        
-        // Get participants from database (fast)
+        // Get participants from local database (fast path)
         try {
-          console.log(` Getting cached participants for chat ${chat.chat_id}`);
-          const participants = await participantService.getParticipantsForChat(chat.chat_id);
-          console.log(` Cached participants for chat ${chat.chat_id}:`, participants);
+          const participants = await services.participantService.get_participants_for_chat(chat.chat_id);
+          console.log(`[ChatList] Found ${participants.length} participants for chat ${chat.chat_id}`);
           
-          if (participants && Array.isArray(participants)) {
+          if (participants.length > 0) {
+            // Find the other participant (not current user)
             const otherParticipant = participants.find(
-              (participant: { user_id: string; username: string }) => participant.user_id !== currentUserId
+              (participant: { user_id: string; username?: string; name?: string }) => 
+                participant.user_id !== currentUserId
             );
             
-            if (otherParticipant && otherParticipant.username) {
-              console.log(` Found other participant via cached data: ${otherParticipant.username}`);
-              chatNameCache.current.set(cacheKey, otherParticipant.username);
-              return otherParticipant.username;
+            if (otherParticipant) {
+              // Try to get username from participant data first
+              if (otherParticipant.username && otherParticipant.username.trim() !== '') {
+                console.log(`[ChatList] Resolved chat name from participant username: ${otherParticipant.username}`);
+                chatNameCache.current.set(cacheKey, otherParticipant.username);
+                return otherParticipant.username;
+              }
+              
+              // Try to get from user service if username is missing
+              try {
+                const user = await services.userService.get_user_by_id(otherParticipant.user_id);
+                if (user && user.username && user.username.trim() !== '') {
+                  console.log(`[ChatList] Resolved chat name from user service: ${user.username}`);
+                  chatNameCache.current.set(cacheKey, user.username);
+                  return user.username;
+                }
+              } catch (userError) {
+                console.warn(`[ChatList] Could not get user data for ${otherParticipant.user_id}:`, userError);
+              }
             }
           }
-        } catch (dbError) {
-          console.warn(` Failed to get cached participants for ${chat.chat_id}:`, dbError);
+        } catch (error) {
+          console.warn(`[ChatList] Error getting participants from database:`, error);
         }
         
-      } catch (error) {
-        console.warn(` All chat name resolution methods failed for ${chat.chat_id}:`, error);
+        // Fallback: try to get from friends list
+        try {
+          const friends = await services.friendService.get_all_friends();
+          if (friends && friends.length > 0) {
+            // Find a friend that might be in this chat
+            const potentialFriend = friends.find(friend => 
+              friend.user_id !== currentUserId
+            );
+            if (potentialFriend) {
+              const friendName = potentialFriend.username;
+              if (friendName && friendName.trim() !== '') {
+                console.log(`[ChatList] Resolved chat name from friends: ${friendName}`);
+                chatNameCache.current.set(cacheKey, friendName);
+                return friendName;
+              }
+            }
+          }
+        } catch (friendError) {
+          console.warn(`[ChatList] Could not get friends for chat name resolution:`, friendError);
+        }
       }
+      
+      // For group chats, try to use the chat name from the database
+      if (chat.is_group_chat && chat.name) {
+        console.log(`[ChatList] Using group chat name: ${chat.name}`);
+        chatNameCache.current.set(cacheKey, chat.name);
+        return chat.name;
+      }
+      
+      // Final fallback: try to construct a meaningful name
+      let fallbackName = "Unknown User";
+      try {
+        if (currentUserId && !chat.is_group_chat) {
+          // Try to get at least one participant to show some info
+          const participants = await services.participantService.get_participants_for_chat(chat.chat_id);
+          if (participants.length > 0) {
+            const otherParticipant = participants.find(p => p.user_id !== currentUserId);
+            if (otherParticipant) {
+              // Always prioritize username over name, never show user ID
+              fallbackName = otherParticipant.username || 'Unknown User';
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`[ChatList] Could not construct fallback name:`, error);
+      }
+      
+      console.log(`[ChatList] Using fallback name: ${fallbackName}`);
+      chatNameCache.current.set(cacheKey, fallbackName);
+      return fallbackName;
+    } catch (error) {
+      console.error(`[ChatList] Error resolving chat name for ${chat.chat_id}:`, error);
+      const fallbackName = "Unknown User";
+      chatNameCache.current.set(cacheKey, fallbackName);
+      return fallbackName;
     }
-    
-    // Final fallback
-    let finalName = "Unknown";
-    if (chat.name) {
-      finalName = chat.name;
-    }
-    
-    // Cache the result
-    chatNameCache.current.set(cacheKey, finalName);
-    return finalName;
   };
 
   const getChatName = (chat: ChatData) => {
-    return chat.display_name || chat.name || `Chat ${chat.chat_id.slice(0, 8)}`;
+    if (chat.display_name && chat.display_name !== "Unknown User") {
+      return chat.display_name;
+    }
+    if (chat.name && chat.name.trim() !== '') {
+      return chat.name;
+    }
+    if (chat.is_group_chat) {
+      return "Group Chat";
+    }
+    return "Direct Message";
   };
 
   // Filter chats based on search query
@@ -260,14 +404,14 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
         chat_id: contextMenu.chat.chat_id,
         name: contextMenu.chat.name || '',
         creator_id: contextMenu.chat.creator_id || '',
-        is_group: contextMenu.chat.is_group,
+        is_group: contextMenu.chat.is_group_chat,
         description: contextMenu.chat.description,
         group_name: contextMenu.chat.group_name,
         last_message_content: contextMenu.chat.last_message_content,
         last_message_timestamp: contextMenu.chat.last_message_timestamp,
         unread_count: contextMenu.chat.unread_count || 0,
-        created_at: new Date(contextMenu.chat.created_at).getTime() / 1000,
-        participants: contextMenu.chat.participants?.map(p => p.user_id) || []
+        created_at: contextMenu.chat.created_at, // Keep as string
+        participants: [] // Will be populated separately if needed
       };
       onOpenChatOptions(chat);
     }
@@ -275,60 +419,25 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
   };
 
   const handleLeaveChat = async () => {
-    if (!contextMenu.chat) {
-      console.log("[ChatList] No chat in context menu");
-      return;
-    }
+    if (!contextMenu.chat) return;
     
     const chatId = contextMenu.chat.chat_id;
     console.log("[ChatList] Leaving chat:", chatId);
     
     try {
-      const token = services.sessionManager.getToken();
-      
-      // Try to leave chat from server (but don't fail if it doesn't exist)
-      if (token) {
-        try {
-          await nativeApiService.leaveChat(chatId, token);
-          console.log("[ChatList] Successfully left chat from server:", chatId);
-        } catch (serverError) {
-          console.warn("[ChatList] Server leave failed (chat may not exist):", serverError);
-          // Continue with local cleanup even if server operation fails
-        }
-      }
-      
-      // Always remove from local database regardless of server response
-      console.log("[ChatList] Starting local database cleanup for chat:", chatId);
-      try {
-        // Clear messages first
-        console.log("[ChatList] Clearing messages for chat:", chatId);
-        await nativeApiService.clearMessagesForChat(chatId);
-        console.log("[ChatList] Successfully cleared messages for chat:", chatId);
-        
-        // Clear participants
-        console.log("[ChatList] Clearing participants for chat:", chatId);
-        await nativeApiService.removeAllParticipantsForChat(chatId);
-        console.log("[ChatList] Successfully cleared participants for chat:", chatId);
-        
-        // Finally delete the chat
-        console.log("[ChatList] Deleting chat from database:", chatId);
-        await nativeApiService.deleteChatFromDatabase(chatId);
-        console.log("[ChatList] Successfully removed chat from local database:", chatId);
-      } catch (dbError) {
-        console.error("[ChatList] Failed to remove chat from local database:", dbError);
-        console.error("[ChatList] Database error details:", JSON.stringify(dbError, null, 2));
-        // Even if database cleanup fails, we should still reload chats
-      }
+      // Use the new chatService.leaveChat method
+      await chatService.leaveChat(chatId);
+      console.log("[ChatList] Successfully left chat:", chatId);
       
       // Clear chat name cache for this chat
       chatNameCache.current.delete(`${chatId}_${user?.user_id}`);
       
+      // Remove from current state immediately for instant UI update
+      setChats(prevChats => prevChats.filter(chat => chat.chat_id !== chatId));
+      
       // Force reload chats to reflect the change
       setIsLoadingChats(false); // Reset loading state
       await loadChats();
-      
-      // Also remove from current state immediately for instant UI update
-      setChats(prevChats => prevChats.filter(chat => chat.chat_id !== chatId));
       
     } catch (error) {
       console.error("[ChatList] Leave chat operation failed:", error);
@@ -355,57 +464,19 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
     }
     
     try {
-      const token = services.sessionManager.getToken();
-      
-      // User is creator, proceed with deletion
-      if (token) {
-        try {
-          // Try to delete from server first
-          await nativeApiService.deleteChat(chatId, token);
-          console.log("[ChatList] Successfully deleted chat from server");
-        } catch (serverError: unknown) {
-          console.warn("[ChatList] Server delete failed:", serverError);
-          
-          // If it's a 403, try to leave the chat instead
-          if (serverError && typeof serverError === 'object' && 'message' in serverError && typeof serverError.message === 'string' && serverError.message.includes('403')) {
-            try {
-              await nativeApiService.leaveChat(chatId, token);
-              console.log("[ChatList] Successfully left chat instead of deleting");
-            } catch (leaveError) {
-              console.warn("[ChatList] Leave failed but proceeding with cleanup:", leaveError);
-            }
-          }
-          // Continue with local cleanup even if server operations fail
-        }
-      }
-      
-      // Always remove from local database regardless of server response
-      try {
-        // Clear messages first
-        await nativeApiService.clearMessagesForChat(chatId);
-        console.log("[ChatList] Successfully cleared messages for chat:", chatId);
-        
-        // Clear participants
-        await nativeApiService.removeAllParticipantsForChat(chatId);
-        console.log("[ChatList] Successfully cleared participants for chat:", chatId);
-        
-        // Finally delete the chat
-        await nativeApiService.deleteChatFromDatabase(chatId);
-        console.log("[ChatList] Successfully removed chat from local database");
-      } catch (dbError) {
-        console.error("[ChatList] Failed to remove chat from local database:", dbError);
-        // Even if database cleanup fails, we should still reload chats
-      }
+      // Use the new chatService.deleteChat method
+      await chatService.deleteChat(chatId);
+      console.log("[ChatList] Successfully deleted chat:", chatId);
       
       // Clear chat name cache for this chat
       chatNameCache.current.delete(`${chatId}_${user?.user_id}`);
       
+      // Remove from current state immediately for instant UI update
+      setChats(prevChats => prevChats.filter(chat => chat.chat_id !== chatId));
+      
       // Force reload chats to reflect the change
       setIsLoadingChats(false); // Reset loading state
       await loadChats();
-      
-      // Also remove from current state immediately for instant UI update
-      setChats(prevChats => prevChats.filter(chat => chat.chat_id !== chatId));
       
     } catch (error) {
       console.error("[ChatList] Delete chat operation failed:", error);
@@ -444,63 +515,137 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
 
 
 
-     // Load friends for create chat functionality
-   useEffect(() => {
-     const loadFriends = async () => {
-       try {
-         const friendsData = await friendService.getCachedFriendsForCurrentUser();
-         setFriends(friendsData || []);
-       } catch (error) {
-         console.error("Failed to load friends:", error);
-       }
-     };
 
-     if (showCreateChat) {
-       loadFriends();
-     }
-   }, [showCreateChat]);
 
 
 
   // Load chats on mount
   useEffect(() => {
     const initializeChatList = async () => {
-      // Load chats from local database first (fast)
-      await loadChats();
-      
-      // Trigger background sync to fetch from API and save to database
-      const token = services.sessionManager.getToken();
-      if (token) {
-        try {
-          console.log(" Triggering background chat sync...");
-          await nativeApiService.fetchAllChatsAndSave(token);
-          console.log(" Background chat sync completed");
-          // Reload chats from database after sync
-          await loadChats();
-        } catch (error) {
-          console.error(" Background chat sync failed:", error);
-        }
+      try {
+        console.log("[ChatList] Initializing chat list...");
+        
+        // Load chats from local database first (fast path) - non-blocking
+        loadChats().catch(error => {
+          console.error("[ChatList] Failed to load chats:", error);
+          setError("Failed to load chats");
+        });
+        
+        // Set loading to false immediately to prevent UI hang
+        setIsLoading(false);
+        console.log("[ChatList] Initial chat list load completed");
+        
+        // Move ALL heavy operations to background (completely non-blocking)
+        setTimeout(async () => {
+          try {
+            // Refresh all chat names in background
+            console.log("[ChatList] Refreshing all chat names in background...");
+            const token = await services.sessionManager.getToken();
+            await invoke('refresh_all_chat_names', { token });
+            console.log("[ChatList] Chat names refresh completed in background");
+            
+            // Reload chats after background refresh
+            await loadChats();
+          } catch (refreshError) {
+            console.warn("[ChatList] Background chat names refresh failed:", refreshError);
+          }
+        }, 300); // Increased delay to ensure UI is fully responsive
+        
+      } catch (error) {
+        console.error("[ChatList] Failed to initialize chat list:", error);
+        setError("Failed to initialize chat list");
+        setIsLoading(false);
       }
     };
     
     initializeChatList();
-  }, []);
+  }, [skipBackgroundSync]);
 
-  // Listen for chat notifications
+  // Listen for chat notifications to refresh the list
   useEffect(() => {
-    const chatService = ChatService.getInstance();
+    const handleChatNotification = (event: CustomEvent) => {
+      console.log("[ChatList] Chat notification received:", event.detail);
+      
+      const { type, message } = event.detail;
+      if (type === 'chat-notification') {
+        const { action, chat_id } = message;
+        
+        switch (action) {
+          case 'created':
+            console.log("[ChatList] Chat created notification, refreshing chat list...");
+            // Refresh chats to show the new chat
+            loadChats();
+            break;
+            
+          case 'updated':
+            console.log("[ChatList] Chat updated notification, refreshing chat list...");
+            // Refresh chats to show updated information
+            loadChats();
+            break;
+            
+          case 'deleted':
+            console.log("[ChatList] Chat deleted notification, removing from local state...");
+            // Remove the deleted chat from local state immediately
+            setChats(prevChats => prevChats.filter(chat => chat.chat_id !== chat_id));
+            // Also clear the chat name cache
+            if (user?.user_id) {
+              chatNameCache.current.delete(`${chat_id}_${user.user_id}`);
+            }
+            break;
+            
+          case 'left':
+            console.log("[ChatList] User left chat notification, removing from local state...");
+            // Remove the chat that the user left from local state
+            setChats(prevChats => prevChats.filter(chat => chat.chat_id !== chat_id));
+            // Also clear the chat name cache
+            if (user?.user_id) {
+              chatNameCache.current.delete(`${chat_id}_${user.user_id}`);
+            }
+            break;
+            
+          case 'cleanup':
+            console.log("[ChatList] Chat cleanup completed, refreshing chat list...");
+            // Refresh the entire chat list after cleanup
+            loadChats();
+            break;
+            
+          default:
+            console.log("[ChatList] Unknown chat action:", action);
+        }
+      }
+    };
+
+    // Listen for chat notification events
+    window.addEventListener('chat-notification-received', handleChatNotification as EventListener);
     
-    const handleChatNotification = () => {
-      console.log("[ChatList] Chat notification received, reloading chats...");
-      loadChats();
-    };
-
-    chatService.onChatNotification(handleChatNotification);
-
     return () => {
-      chatService.offChatNotification(handleChatNotification);
+      window.removeEventListener('chat-notification-received', handleChatNotification as EventListener);
     };
-  }, []);
+  }, [loadChats, user?.user_id]);
+
+  // Trigger background sync when the ChatList is opened
+  useEffect(() => {
+    const triggerSync = async () => {
+      if (user?.user_id) {
+        // DISABLED: Background sync is re-adding deleted chats
+        // This will be re-enabled once proper delta sync is implemented
+        console.log("[ChatList] Background sync disabled to prevent deleted chats from reappearing");
+        /*
+        // Make background sync completely non-blocking with longer delay
+        setTimeout(async () => {
+          try {
+            await backgroundSyncManager.onChatListScreenOpened();
+            console.log("[ChatList] Background sync triggered for chats delta.");
+          } catch (error) {
+            console.warn("[ChatList] Background sync failed:", error);
+          }
+        }, 500); // Longer delay to ensure UI is fully responsive
+        */
+      }
+    };
+
+    triggerSync();
+  }, [user?.user_id]);
 
   if (isLoading) {
     return (
@@ -529,33 +674,248 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
             }}>
               Chats
             </h2>
-            <button
-              onClick={() => setShowCreateChat(!showCreateChat)}
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "8px",
-                border: `1px solid ${theme.border}`,
-                backgroundColor: "transparent",
-                color: theme.textSecondary,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                fontSize: "16px",
-                transition: "all 0.2s ease"
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-            </button>
+            <div style={{
+              display: "flex",
+              gap: "8px"
+            }}>
+                             <button
+                 onClick={async () => {
+                   try {
+                     console.log('[ChatList] Manual refresh triggered');
+                     await loadChats();
+                   } catch (error) {
+                     console.error('Failed to refresh chats:', error);
+                   }
+                 }}
+                 style={{
+                   width: "32px",
+                   height: "32px",
+                   borderRadius: "8px",
+                   border: `1px solid ${theme.border}`,
+                   backgroundColor: "transparent",
+                   color: theme.textSecondary,
+                   display: "flex",
+                   alignItems: "center",
+                   justifyContent: "center",
+                   cursor: "pointer",
+                   fontSize: "16px",
+                   transition: "all 0.2s ease"
+                 }}
+                 title="Refresh chats and sync deletions"
+               >
+                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                   <path d="M21 2v6h-6"/>
+                   <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                   <path d="M3 22v-6h6"/>
+                   <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                 </svg>
+               </button>
+               <button
+                 onClick={async () => {
+                   try {
+                     console.log('[ChatList] Refreshing all chat names...');
+                     for (const chat of chats) {
+                       await refreshChatName(chat.chat_id);
+                     }
+                     console.log('[ChatList] All chat names refreshed');
+                   } catch (error) {
+                     console.error('Failed to refresh chat names:', error);
+                   }
+                 }}
+                 style={{
+                   width: "32px",
+                   height: "32px",
+                   borderRadius: "8px",
+                   border: `1px solid ${theme.border}`,
+                   backgroundColor: "transparent",
+                   color: theme.textSecondary,
+                   display: "flex",
+                   alignItems: "center",
+                   justifyContent: "center",
+                   cursor: "pointer",
+                   fontSize: "16px",
+                   transition: "all 0.2s ease"
+                 }}
+                 title="Refresh chat names from server"
+               >
+                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                   <path d="M12 2v4"/>
+                   <path d="M12 18v4"/>
+                   <path d="M4.93 4.93l2.83 2.83"/>
+                   <path d="M16.24 16.24l2.83 2.83"/>
+                   <path d="M2 12h4"/>
+                   <path d="M18 12h4"/>
+                   <path d="M4.93 19.07l2.83-2.83"/>
+                   <path d="M16.24 7.76l2.83-2.83"/>
+                 </svg>
+               </button>
+               <button
+                 onClick={async () => {
+                   try {
+                     console.log('[ChatList] Syncing all chat participants from server...');
+                     await services.participantService.syncAllExistingChats();
+                     console.log('[ChatList] All chat participants synced from server');
+                     
+                     // Refresh the chat list to show updated names
+                     await loadChats();
+                   } catch (error) {
+                     console.error('Failed to sync chat participants:', error);
+                   }
+                 }}
+                 style={{
+                   width: "32px",
+                   height: "32px",
+                   borderRadius: "8px",
+                   border: `1px solid ${theme.border}`,
+                   backgroundColor: "transparent",
+                   color: theme.textSecondary,
+                   display: "flex",
+                   alignItems: "center",
+                   justifyContent: "center",
+                   cursor: "pointer",
+                   fontSize: "16px",
+                   transition: "all 0.2s ease"
+                 }}
+                 title="Sync all chat participants from server to fix names"
+               >
+                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                   <circle cx="9" cy="7" r="4"/>
+                   <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                   <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                 </svg>
+               </button>
+               <button
+                 onClick={() => {
+                   console.log('[ChatList] Debug: Manual debug triggered');
+                   console.log('[ChatList] Current chats:', chats);
+                 }}
+                 style={{
+                   width: "32px",
+                   height: "32px",
+                   borderRadius: "8px",
+                   border: `1px solid ${theme.border}`,
+                   backgroundColor: "transparent",
+                   color: theme.textSecondary,
+                   display: "flex",
+                   alignItems: "center",
+                   justifyContent: "center",
+                   cursor: "pointer",
+                   fontSize: "16px",
+                   transition: "all 0.2s ease"
+                 }}
+                 title="Debug localDeletes"
+               >
+                 🐛
+               </button>
+                                     <button
+                        onClick={() => {
+                          console.log('[ChatList] Manual clear triggered');
+                          console.log('[ChatList] Manual clear completed');
+                        }}
+                        style={{
+                          width: "32px",
+                          height: "32px",
+                          borderRadius: "8px",
+                          border: `1px solid ${theme.border}`,
+                          backgroundColor: "transparent",
+                          color: theme.textSecondary,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          fontSize: "16px",
+                          transition: "all 0.2s ease"
+                        }}
+                        title="Clear localDeletes"
+                      >
+                        🗑️
+                      </button>
+                      <button
+                        onClick={async () => {
+                          console.log('[ChatList] Testing WebSocket message flow...');
+                          try {
+                            // Test creating a chat with a friend
+                            const token = await sessionManager.getToken();
+                            if (token) {
+                              // Get the first friend to create a chat with
+                              const friends = await invoke<FriendData[]>('db_get_cached_friends_only');
+                              if (friends && friends.length > 0) {
+                                const friend = friends[0];
+                                console.log('[ChatList] Creating test chat with friend:', friend.username);
+                                
+                                const result = await invoke('create_chat', {
+                                  token: token,
+                                  name: friend.username,
+                                  members: [{
+                                    user_id: friend.user_id,
+                                    is_admin: false
+                                  }]
+                                });
+                                
+                                console.log('[ChatList] Test chat creation result:', result);
+                              } else {
+                                console.log('[ChatList] No friends available for test');
+                              }
+                            } else {
+                              console.log('[ChatList] No token available for test');
+                            }
+                          } catch (error) {
+                            console.error('[ChatList] Test chat creation failed:', error);
+                          }
+                        }}
+                        style={{
+                          width: "32px",
+                          height: "32px",
+                          borderRadius: "8px",
+                          border: `1px solid ${theme.border}`,
+                          backgroundColor: "transparent",
+                          color: theme.textSecondary,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          fontSize: "16px",
+                          transition: "all 0.2s ease"
+                        }}
+                        title="Test WebSocket chat creation"
+                      >
+                        🧪
+                      </button>
+              <button
+                onClick={() => setShowCreateChat(!showCreateChat)}
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  border: `1px solid ${theme.border}`,
+                  backgroundColor: "transparent",
+                  color: theme.textSecondary,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  fontSize: "16px",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
         
         {/* Loading skeleton */}
-        <div style={{ flex: 1, padding: "12px", overflowY: "auto", overflowX: "hidden" }}>
+        <div style={{ 
+          flex: 1, 
+          padding: "12px", 
+          overflowY: "auto", 
+          overflowX: "hidden",
+          ...themedStyles.scrollbar
+        }}>
           {[...Array(8)].map((_, i) => (
             <div key={i} style={{ 
               display: "flex", 
@@ -662,10 +1022,41 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
         showSearchButton={true}
         onSearchClick={handleSearchClick}
         isSearchActive={isSearchActive}
+        showRefreshButton={true}
+        onRefreshClick={loadChats}
       />
 
+      {/* Background Loading Indicator - DISABLED */}
+      {false && (
+        <div style={{
+          padding: '8px 16px',
+          backgroundColor: theme.surface,
+          borderBottom: `1px solid ${theme.border}`,
+          fontSize: '12px',
+          color: theme.textSecondary,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <div style={{
+            width: '12px',
+            height: '12px',
+            border: `2px solid ${theme.border}`,
+            borderTop: `2px solid ${theme.primary}`,
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }} />
+          Updating chat list in background...
+        </div>
+      )}
+
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ 
+        flex: 1, 
+        overflowY: "auto", 
+        overflowX: "hidden",
+        ...themedStyles.scrollbar
+      }}>
         {showCreateChat ? (
           <CreateChatForm
             onCreated={(chatId: string) => {
@@ -824,7 +1215,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelect, onOpenChatOptions, onTogg
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap"
                 }}>
-                  {chat.last_message_content || (chat.is_group ? "Group chat" : "Direct message")}
+                  {chat.last_message_content || (chat.is_group_chat ? "Group chat" : "Direct message")}
                 </p>
               </div>
             </div>

@@ -1,27 +1,27 @@
-use reqwest;
-use serde_json;
-use tauri::State;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use serde::{Deserialize, Serialize};
+use reqwest;
+use tauri::State;
+use crate::database_async;
 
-// ======== AUTH STRUCTURES ========
-#[derive(serde::Serialize)]
+#[derive(Debug, Serialize)]
 struct LoginRequest {
     username: String,
     password: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct LoginResponse {
-    pub access_token: String,
-}
-
-#[derive(serde::Deserialize)]
+#[derive(Debug, Deserialize)]
 struct BackendLoginResponse {
     access_token: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    access_token: String,
+}
+
+#[derive(Debug, Serialize)]
 struct RegisterRequest {
     username: String,
     email: String,
@@ -53,7 +53,8 @@ pub struct UpdateColorSchemeRequest {
     pub color_scheme: String,
 }
 
-// ======== AUTH COMMANDS ========
+// ======== AUTHENTICATION COMMANDS ========
+
 #[tauri::command]
 pub async fn login(username: String, password: String) -> Result<LoginResponse, String> {
     println!("Logging in user: {}", username);
@@ -63,10 +64,6 @@ pub async fn login(username: String, password: String) -> Result<LoginResponse, 
         username: username.clone(),
         password,
     };
-    
-    // Debug: Print the request being sent
-    println!("Request URL: https://dev.v1.terracrypt.cc/api/v1/auth/signin");
-    println!("Request body: {}", serde_json::to_string(&login_request).unwrap_or_else(|_| "Failed to serialize".to_string()));
     
     let res = client
         .post("https://dev.v1.terracrypt.cc/api/v1/auth/signin")
@@ -140,42 +137,39 @@ pub async fn register(username: String, email: String, password: String) -> Resu
 }
 
 // ======== TOKEN MANAGEMENT ========
-type TokenStore = Mutex<HashMap<String, String>>;
+// Use secure token storage instead of plain text
 
 #[tauri::command]
-pub async fn save_token(
-    state: State<'_, TokenStore>,
+pub async fn save_secure_token(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    let mut store = state.lock().unwrap();
-    store.insert(key, value);
-    Ok(())
+    // Store token in secure database instead of memory
+    database_async::save_secure_token(&key, &value).await
+        .map_err(|e| format!("Failed to save token: {e}"))
 }
 
 #[tauri::command]
-pub async fn load_token(
-    state: State<'_, TokenStore>,
+pub async fn load_secure_token(
     key: String,
 ) -> Result<Option<String>, String> {
-    let store = state.lock().unwrap();
-    Ok(store.get(&key).cloned())
+    // Load token from secure database
+    database_async::load_secure_token(&key).await
+        .map_err(|e| format!("Failed to load token: {e}"))
 }
 
 #[tauri::command]
-pub async fn remove_token(
-    state: State<'_, TokenStore>,
+pub async fn clear_secure_token(
     key: String,
 ) -> Result<(), String> {
-    let mut store = state.lock().unwrap();
-    store.remove(&key);
-    Ok(())
+    // Clear token from secure database
+    database_async::clear_secure_token(&key).await
+        .map_err(|e| format!("Failed to clear token: {e}"))
 }
 
 
-
 #[tauri::command]
-pub async fn get_current_user(state: State<'_, TokenStore>) -> Result<UserData, String> {
+pub async fn get_current_user(state: State<'_, Mutex<HashMap<String, String>>>) -> Result<UserData, String> {
     let token = {
         let store = state.lock().unwrap();
         store.get("access_token")

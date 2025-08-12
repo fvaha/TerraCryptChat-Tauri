@@ -1,364 +1,292 @@
 import { invoke } from '@tauri-apps/api/core';
+import { Chat, User, Message, Friend, Participant, UserKeys } from '../models/models';
 
-export interface User {
-  user_id: string;
-  username: string;
-  email?: string;
-  name?: string;
-  password?: string;
-  picture?: string;
-  role?: string;
-  token_hash?: string;
-  verified: boolean;
-  created_at: number;
-  updated_at: number;
-  deleted_at?: number;
-  is_dark_mode: boolean;
-  last_seen: number;
-}
-
-export interface Chat {
-  chat_id: string;
-  chat_type?: string;
-  name?: string;
-  created_at: number;
-  admin_id?: string;
-  unread_count: number;
-  description?: string;
-  group_name?: string;
-  last_message_content?: string;
-  last_message_timestamp?: number;
-  participants?: string;
-  is_group: boolean;
-  creator_id?: string;
-}
-
-export interface Message {
-  id?: number;
-  message_id?: string;
-  client_message_id: string;
-  chat_id: string;
-  sender_id: string;
-  message_text: string;
-  content: string; // Make content required to match MessageEntity
-  timestamp: number;
-  is_read: boolean;
-  is_sent: boolean;
-  is_delivered: boolean;
-  is_failed: boolean;
-  sender_username?: string;
-  reply_to_message_id?: string;
-  reply_to_username?: string;
-  reply_to_content?: string;
-}
-
-export interface Friend {
-  id: string;
-  user_id: string;
-  username: string;
-  email: string;
-  name: string;
-  picture?: string;
-  created_at: number;
-  updated_at: number;
-  status: "pending" | "accepted" | "rejected" | "blocked";
-  is_favorite: boolean;
-}
-
-export interface Participant {
-  id: string;
-  participant_id: string;
-  user_id: string;
-  chat_id: string;
-  username: string;
-  name?: string;
-  email?: string;
-  picture?: string;
-  role?: string;
-  joined_at: number;
-  left_at?: number;
-  is_active: boolean;
-}
-
-export interface UserKeys {
-  user_id: string;
-  key1: string;
-  key2: string;
-  key3: string;
-  key4: string;
-  private_key1: string;
-  private_key2: string;
-  private_key3: string;
-  private_key4: string;
-}
-
-class DatabaseServiceAsync {
+// Database service for async operations
+export class DatabaseServiceAsync {
   // User operations
   async insertUser(user: User): Promise<void> {
-    await invoke('db_async_insert_user', { user });
+    return await invoke('db_insert_user', { user });
   }
 
-  async getUserById(userId: string): Promise<User | null> {
-    return await invoke<User | null>('db_async_get_user_by_id', { userId });
+  async get_user_by_id(user_id: string): Promise<User | null> {
+    return await invoke<User | null>('db_get_user_by_id', { userId: user_id });
   }
 
-  async getUserByToken(token: string): Promise<User | null> {
-    return await invoke<User | null>('db_async_get_user_by_token', { token });
+  async get_user_by_token(token: string): Promise<User | null> {
+    return await invoke<User | null>('db_get_user_by_token', { token });
   }
 
-  async getMostRecentUser(): Promise<User | null> {
-    return await invoke<User | null>('db_async_get_most_recent_user');
+  async get_most_recent_user(): Promise<User | null> {
+    return await invoke<User | null>('db_get_most_recent_user');
   }
 
-  async updateUserToken(userId: string, token: string): Promise<void> {
-    await invoke('db_async_update_user_token', { userId, token });
+  async update_user_token(user_id: string, token: string): Promise<void> {
+    return await invoke('db_update_user_token', { userId: user_id, token });
+  }
+
+  async update_color_scheme(user_id: string, color_scheme: string): Promise<void> {
+    return await invoke('db_update_color_scheme', { userId: user_id, colorScheme: color_scheme });
+  }
+
+  async get_color_scheme(user_id: string): Promise<string> {
+    return await invoke<string>('db_get_color_scheme', { userId: user_id });
+  }
+
+  async update_dark_mode(user_id: string, is_dark_mode: boolean): Promise<void> {
+    return await invoke('db_update_dark_mode', { userId: user_id, isDarkMode: is_dark_mode });
+  }
+
+  async get_dark_mode(user_id: string): Promise<boolean> {
+    return await invoke<boolean>('db_get_dark_mode', { userId: user_id });
   }
 
   async clearUserData(): Promise<void> {
-    await invoke('db_async_clear_user_data');
+    return await invoke('db_clear_user_data');
   }
 
   // Chat operations
   async insertChat(chat: Chat): Promise<void> {
-    await invoke('db_async_insert_chat', { chat });
+    return await invoke('db_insert_chat', { chat });
   }
 
-  async getChatById(chatId: string): Promise<Chat | null> {
-    return await invoke<Chat | null>('db_async_get_chat_by_id', { chatId });
+  async getChatById(chat_id: string): Promise<Chat | null> {
+    return await invoke<Chat | null>('db_get_chat_by_id', { chatId: chat_id });
   }
 
   async getAllChats(): Promise<Chat[]> {
-    return await invoke<Chat[]>('db_async_get_all_chats');
+    return await invoke<Chat[]>('db_get_all_chats');
   }
 
-  async updateChatUnreadCount(chatId: string, unreadCount: number): Promise<void> {
-    await invoke('db_async_update_chat_unread_count', { chatId, unreadCount });
+  async updateChatUnreadCount(chat_id: string, unread_count: number): Promise<void> {
+    await invoke('db_update_chat_unread_count', { chatId: chat_id, unreadCount: unread_count });
   }
 
-  async updateChatLastMessage(chatId: string, content?: string, timestamp?: number): Promise<void> {
-    await invoke('db_async_update_chat_last_message', { chatId, content, timestamp });
+  async updateChatLastMessage(chat_id: string, content?: string, timestamp?: number): Promise<void> {
+    await invoke('db_update_chat_last_message', { chatId: chat_id, content, timestamp });
   }
 
-  async deleteChatById(chatId: string): Promise<void> {
-    await invoke('db_async_delete_chat_by_id', { chatId });
-  }
-
-  async deleteChat(chatId: string): Promise<void> {
-    await invoke('db_async_delete_chat', { chatId });
+  async deleteChatById(chat_id: string): Promise<void> {
+    await invoke('db_delete_chat_by_id', { chatId: chat_id });
   }
 
   async clearChatData(): Promise<void> {
-    await invoke('db_async_clear_chat_data');
+    return await invoke('db_clear_chat_data');
   }
 
   // Message operations
   async insertMessage(message: Message): Promise<void> {
-    await invoke('db_async_insert_message', { message });
+    return await invoke('db_insert_message', { message });
   }
 
   async insertMessages(messages: Message[]): Promise<void> {
-    await invoke('db_async_insert_messages', { messages });
+    return await invoke('db_insert_messages', { messages });
   }
 
-  async getMessageById(messageId: string): Promise<Message | null> {
-    return await invoke<Message | null>('db_async_get_message_by_id', { messageId });
+  async getMessageById(message_id: string): Promise<Message | null> {
+    return await invoke<Message | null>('db_get_message_by_id', { messageId: message_id });
   }
 
-  async getMessageByClientId(clientMessageId: string): Promise<Message | null> {
-    return await invoke<Message | null>('db_async_get_message_by_client_id', { clientMessageId });
+  async getMessageByClientId(client_message_id: string): Promise<Message | null> {
+    return await invoke<Message | null>('db_get_message_by_client_id', { clientMessageId: client_message_id });
   }
 
-  async getMessagesForChat(chatId: string): Promise<Message[]> {
-    return await invoke<Message[]>('db_async_get_messages_for_chat', { chatId });
+  async getMessagesForChat(chat_id: string): Promise<Message[]> {
+    return await invoke<Message[]>('db_get_messages_for_chat', { chatId: chat_id });
   }
 
-  async getMessagesBeforeTimestamp(chatId: string, beforeTimestamp: number, limit: number): Promise<Message[]> {
-    return await invoke<Message[]>('db_async_get_messages_before_timestamp', { 
-      chatId, 
-      beforeTimestamp, 
-      limit 
+  async getMessagesBeforeTimestamp(
+    chat_id: string,
+    before_timestamp: number,
+    limit: number
+  ): Promise<Message[]> {
+    return await invoke<Message[]>('db_get_messages_before_timestamp', {
+      chatId: chat_id,
+      beforeTimestamp: before_timestamp,
+      limit
     });
   }
 
-  async getLastMessage(chatId: string): Promise<Message | null> {
-    return await invoke<Message | null>('db_async_get_last_message', { chatId });
+  async getLastMessage(chat_id: string): Promise<Message | null> {
+    return await invoke<Message | null>('db_get_last_message', { chatId: chat_id });
   }
 
-  async updateMessageSentStatus(clientMessageId: string, isSent: boolean): Promise<void> {
-    await invoke('db_async_update_message_sent_status', { clientMessageId, isSent });
+  async updateMessageSentStatus(client_message_id: string, is_sent: boolean): Promise<void> {
+    console.log("[DatabaseService] updateMessageSentStatus called with:", { client_message_id, is_sent });
+    console.log("[DatabaseService] Invoking with parameters:", { clientMessageId: client_message_id, isSent: is_sent });
+    await invoke('db_update_message_sent_status', { clientMessageId: client_message_id, isSent: is_sent });
   }
 
-  async updateMessageSentStatusByServerId(serverId: string, isSent: boolean): Promise<void> {
-    await invoke('db_async_update_message_sent_status_by_server_id', { serverId, isSent });
+  async updateMessageSentStatusByServerId(server_id: string, is_sent: boolean): Promise<void> {
+    console.log("[DatabaseService] updateMessageSentStatusByServerId called with:", { server_id, is_sent });
+    console.log("[DatabaseService] Invoking with parameters:", { serverId: server_id, isSent: is_sent });
+    await invoke('db_update_message_sent_status_by_server_id', { serverId: server_id, isSent: is_sent });
   }
 
-  async markMessageDeliveredByServerIdNew(serverId: string): Promise<void> {
-    await invoke('db_async_mark_message_delivered_by_server_id_new', { serverId });
+  async markMessageDeliveredByServerId(server_id: string): Promise<void> {
+    await invoke('db_mark_message_delivered_by_server_id', { serverId: server_id });
   }
 
-  async markMessageReadByServerIdNew(serverId: string): Promise<void> {
-    await invoke('db_async_mark_message_read_by_server_id_new', { serverId });
+  async markMessageReadByServerId(server_id: string): Promise<void> {
+    await invoke('db_mark_message_read_by_server_id', { serverId: server_id });
   }
 
-  async markMessagesReadByServerIds(messageIds: string[]): Promise<void> {
-    await invoke('db_async_mark_messages_read_by_server_ids', { messageIds });
+  async markMessagesReadByServerIds(message_ids: string[]): Promise<void> {
+    await invoke('db_mark_messages_read_by_server_ids', { messageIds: message_ids });
   }
 
-  async getUnreadMessages(chatId: string): Promise<Message[]> {
-    return await invoke<Message[]>('db_async_get_unread_messages', { chatId });
+  async getUnreadMessages(chat_id: string): Promise<Message[]> {
+    return await invoke<Message[]>('db_get_unread_messages', { chatId: chat_id });
   }
 
-  async countUnreadMessages(chatId: string): Promise<number> {
-    return await invoke<number>('db_async_count_unread_messages', { chatId });
+  async countUnreadMessages(chat_id: string): Promise<number> {
+    return await invoke<number>('db_count_unread_messages', { chatId: chat_id });
   }
 
-  async markMessagesAsRead(chatId: string): Promise<void> {
-    await invoke('db_async_mark_messages_as_read', { chatId });
+  async markMessagesAsRead(chat_id: string): Promise<void> {
+    await invoke('db_mark_messages_as_read', { chatId: chat_id });
   }
 
-  async updateMessageIdByClient(clientMessageId: string, serverId: string): Promise<void> {
-    await invoke('db_async_update_message_id_by_client', { clientMessageId, serverId });
+  async updateMessageIdByClient(client_message_id: string, server_id: string): Promise<void> {
+    await invoke('db_update_message_id_by_client', { clientMessageId: client_message_id, serverId: server_id });
   }
 
-  async deleteMessageById(messageId: string): Promise<void> {
-    await invoke('db_async_delete_message_by_id', { messageId });
+  async deleteMessageById(message_id: string): Promise<void> {
+    await invoke('db_delete_message_by_id', { messageId: message_id });
   }
 
-  async deleteMessageByClientId(clientMessageId: string): Promise<void> {
-    await invoke('db_async_delete_message_by_client_id', { clientMessageId });
+  async deleteMessageByClientId(client_message_id: string): Promise<void> {
+    await invoke('db_delete_message_by_client_id', { clientMessageId: client_message_id });
   }
 
   async clearMessageData(): Promise<void> {
-    await invoke('db_async_clear_message_data');
+    return await invoke('db_clear_message_data');
+  }
+
+  async clearMessagesForChat(chat_id: string): Promise<void> {
+    await invoke('db_clear_messages_for_chat', { chatId: chat_id });
+  }
+
+  async removeAllParticipantsForChat(chat_id: string): Promise<void> {
+    await invoke('db_remove_all_participants_for_chat', { chatId: chat_id });
   }
 
   // Friend operations
-  async insertFriend(friend: Friend): Promise<void> {
-    await invoke('db_async_insert_friend', { friend });
+  async insert_friend(friend: Friend): Promise<void> {
+    return await invoke('db_insert_friend', { friend });
   }
 
-  async getAllFriends(): Promise<Friend[]> {
-    return await invoke<Friend[]>('db_async_get_all_friends');
+  async get_all_friends(): Promise<Friend[]> {
+    return await invoke<Friend[]>('db_get_all_friends');
   }
 
-  async getFriendById(friendId: string): Promise<Friend | null> {
-    return await invoke<Friend | null>('db_async_get_friend_by_id', { friendId });
+  async getFriendById(friend_id: string): Promise<Friend | null> {
+    return await invoke<Friend | null>('db_get_friend_by_id', { friendId: friend_id });
   }
 
-  async updateFriendStatus(friendId: string, status: string): Promise<void> {
-    await invoke('db_async_update_friend_status', { friendId, status });
+  async updateFriendStatus(friend_id: string, status: string): Promise<void> {
+    await invoke('db_update_friend_status', { friendId: friend_id, status });
   }
 
-  async deleteFriend(friendId: string): Promise<void> {
-    await invoke('db_async_delete_friend', { friendId });
+  async deleteFriend(user_id: string): Promise<void> {
+    await invoke('db_delete_friend', { userId: user_id });
   }
 
   async clearFriendData(): Promise<void> {
-    await invoke('db_async_clear_friend_data');
+    await invoke('db_clear_friend_data');
   }
 
   // Participant operations
   async insertParticipant(participant: Participant): Promise<void> {
-    await invoke('db_async_insert_participant', { participant });
+    return await invoke('db_insert_participant', { participant });
   }
 
-  async getParticipantsForChat(chatId: string): Promise<Participant[]> {
-    return await invoke<Participant[]>('db_async_get_participants_for_chat', { chatId });
+  async get_participants_for_chat(chat_id: string): Promise<Participant[]> {
+    return await invoke<Participant[]>('db_get_participants_for_chat', { chatId: chat_id });
   }
 
-  async getParticipantById(participantId: string): Promise<Participant | null> {
-    return await invoke<Participant | null>('db_async_get_participant_by_id', { participantId });
+  async getParticipantById(participant_id: string): Promise<Participant | null> {
+    return await invoke<Participant | null>('db_get_participant_by_id', { participantId: participant_id });
   }
 
-  async deleteParticipant(participantId: string): Promise<void> {
-    await invoke('db_async_delete_participant', { participantId });
+  async deleteParticipant(participant_id: string): Promise<void> {
+    await invoke('db_delete_participant', { participantId: participant_id });
   }
 
-  async updateParticipantRole(participantId: string, role: string): Promise<void> {
-    await invoke('db_async_update_participant_role', { participantId, role });
+  async updateParticipantRole(participant_id: string, role: string): Promise<void> {
+    await invoke('db_update_participant_role', { participantId: participant_id, role });
   }
 
-  async getParticipantByUserIdAndChatId(userId: string, chatId: string): Promise<Participant | null> {
-    return await invoke<Participant | null>('db_async_get_participant_by_user_id_and_chat_id', { userId, chatId });
+  async getParticipantByUserIdAndChatId(user_id: string, chat_id: string): Promise<Participant | null> {
+    return await invoke<Participant | null>('db_get_participant_by_user_id_and_chat_id', { userId: user_id, chatId: chat_id });
   }
 
   async clearParticipantData(): Promise<void> {
-    await invoke('db_async_clear_participant_data');
-  }
-
-  async clearMessagesForChat(chatId: string): Promise<void> {
-    await invoke('db_async_clear_messages_for_chat', { chatId });
-  }
-
-  async removeAllParticipantsForChat(chatId: string): Promise<void> {
-    await invoke('db_async_remove_all_participants_for_chat', { chatId });
+    return await invoke('db_clear_participant_data');
   }
 
   // User keys operations
   async insertUserKeys(keys: UserKeys): Promise<void> {
-    await invoke('db_async_insert_user_keys', { keys });
+    return await invoke('db_insert_user_keys', { keys });
   }
 
-  async getUserKeys(userId: string): Promise<UserKeys | null> {
-    return await invoke<UserKeys | null>('db_async_get_user_keys', { userId });
+  async getUserKeys(user_id: string): Promise<UserKeys | null> {
+    return await invoke<UserKeys | null>('db_get_user_keys', { userId: user_id });
   }
 
-  // Settings operations
-  async updateDarkMode(userId: string, isDarkMode: boolean): Promise<void> {
-    await invoke('db_async_update_dark_mode', { userId, isDarkMode });
-  }
 
-  async getDarkMode(userId: string): Promise<boolean> {
-    return await invoke<boolean>('db_async_get_dark_mode', { userId });
-  }
 
   // Utility operations
   async clearAllData(): Promise<void> {
-    await invoke('db_async_clear_all_data');
+    return await invoke('db_clear_all_data');
   }
 
-  // Health check
   async healthCheck(): Promise<boolean> {
+    return await invoke<boolean>('db_health_check');
+  }
+
+  async getStats(): Promise<DatabaseStats> {
+    return await invoke<DatabaseStats>('db_get_stats');
+  }
+
+  async performHealthCheck(): Promise<boolean> {
     try {
-      await invoke('db_async_health_check');
-      return true;
+      const result = await this.healthCheck();
+      console.log('[DatabaseServiceAsync] Health check result:', result);
+      return result;
     } catch (error) {
-      console.error('Database health check failed:', error);
+      console.error('[DatabaseServiceAsync] Health check failed:', error);
       return false;
     }
-  }
-
-  // Performance monitoring
-  async getDatabaseStats(): Promise<{
-    totalUsers: number;
-    totalChats: number;
-    totalMessages: number;
-    totalFriends: number;
-  }> {
-    return await invoke('db_async_get_stats');
   }
 }
 
 // Export singleton instance
 export const databaseServiceAsync = new DatabaseServiceAsync();
 
-// Simple connection test function
+// Test function for native connection
 export async function test_native_connection(): Promise<boolean> {
   try {
-    console.log('[Database] Testing native connection...');
-    const result = await invoke('db_async_health_check');
-    console.log('[Database] Native connection test successful:', result);
-    return true;
+    const result = await invoke<boolean>('db_health_check');
+    console.log('[DatabaseServiceAsync] Native connection test result:', result);
+    return result;
   } catch (error) {
-    console.error('[Database] Native connection test failed:', error);
+    console.error('[DatabaseServiceAsync] Native connection test failed:', error);
     return false;
   }
 }
 
-// Additional interfaces for message service
+// WebSocket message interfaces
+export interface DatabaseStats {
+  total_users: number;
+  total_chats: number;
+  total_messages: number;
+  total_friends: number;
+  total_participants: number;
+}
+
 export interface IncomingWSMessage {
   type: string;
-  payload: any;
+  payload: unknown;
 }
 
 export interface MessageStatusMessage {
@@ -392,8 +320,6 @@ export interface ChatMessageWrapper {
   type: "chat";
   client_message_id?: string;
 }
-
-
 
 export enum MessageSendStatus {
   PENDING = "pending",

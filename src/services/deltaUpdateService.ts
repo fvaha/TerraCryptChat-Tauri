@@ -2,12 +2,64 @@
 import { invoke } from '@tauri-apps/api/core';
 import { databaseServiceAsync } from "./databaseServiceAsync";
 
+interface ChatData {
+  chat_id: string;
+  name?: string;
+  created_at: string | number;
+  creator_id?: string;
+  last_message?: string;
+  last_message_timestamp?: number;
+  unread_count?: number;
+  is_group?: boolean;
+  participants?: Array<{ user_id: string; username: string; role: string }>;
+}
+
+interface MessageData {
+  message_id?: string;
+  client_message_id?: string;
+  chat_id: string;
+  sender_id: string;
+  sender_username?: string;
+  content: string;
+  sent_at?: string | number;
+  timestamp?: string | number;
+  is_read?: boolean;
+  is_sent?: boolean;
+  is_delivered?: boolean;
+  is_failed?: boolean;
+  reply_to_message_id?: string;
+}
+
+interface FriendData {
+  id?: string;
+  user_id?: string;
+  friend_id?: string;
+  status: string;
+  created_at?: string | number;
+  username?: string;
+  name?: string;
+  email?: string;
+  picture?: string;
+  is_favorite?: boolean;
+}
+
+interface ParticipantData {
+  participant_id?: string;
+  chat_id: string;
+  user_id: string;
+  role: string;
+  created_at?: string | number;
+  username?: string;
+  name?: string;
+  picture?: string;
+}
+
 export class DeltaUpdateService {
   async performChatsDeltaUpdate(): Promise<void> {
     try {
       console.log("[DeltaUpdateService] Performing chats delta update...");
       
-      const response = await invoke<{ data: any[] }>("get_chats", {});
+      const response = await invoke<{ data: ChatData[] }>("get_chats", {});
       
       if (!response || !response.data) {
         console.warn("[DeltaUpdateService] No chats data received");
@@ -20,12 +72,14 @@ export class DeltaUpdateService {
         const chatEntity = {
           chat_id: chat.chat_id,
           name: chat.name || null,
-          is_group: Boolean(chat.is_group),
-          created_at: new Date(chat.created_at).getTime(),
+          chat_type: chat.is_group ? 'group' : 'direct',
+          created_at: new Date(chat.created_at).toISOString(),
+          updated_at: new Date(chat.created_at).toISOString(),
           creator_id: chat.creator_id,
           last_message_content: chat.last_message || null,
           last_message_timestamp: chat.last_message_timestamp || null,
           unread_count: chat.unread_count || 0,
+          is_group: Boolean(chat.is_group),
           participants: chat.participants ? JSON.stringify(chat.participants) : undefined
         };
         
@@ -42,7 +96,7 @@ export class DeltaUpdateService {
     try {
       console.log("[DeltaUpdateService] Performing messages delta update...");
       
-      const response = await invoke<{ data: any[] }>("get_messages", {});
+      const response = await invoke<{ data: MessageData[] }>("get_messages", {});
       
       if (!response || !response.data) {
         console.warn("[DeltaUpdateService] No messages data received");
@@ -81,7 +135,7 @@ export class DeltaUpdateService {
     try {
       console.log("[DeltaUpdateService] Performing friends delta update...");
       
-      const response = await invoke<{ data: any[] }>("get_friends", {});
+      const response = await invoke<{ data: FriendData[] }>("get_friends", {});
       
       if (!response || !response.data) {
         console.warn("[DeltaUpdateService] No friends data received");
@@ -92,19 +146,18 @@ export class DeltaUpdateService {
       
       for (const friend of response.data) {
         const friendEntity = {
-          id: friend.id || `temp_${Date.now()}`,
+          friend_id: friend.id || `temp_${Date.now()}`,
           user_id: friend.user_id || friend.friend_id,
-          username: friend.username,
-          email: friend.email,
-          name: friend.name,
-          picture: friend.picture,
+          friend_user_id: friend.user_id || friend.friend_id,
           status: friend.status,
-          created_at: new Date(friend.created_at).getTime(),
-          updated_at: new Date(friend.updated_at).getTime(),
-          is_favorite: Boolean(friend.is_favorite)
+          created_at: new Date(friend.created_at).toISOString(),
+          updated_at: new Date(friend.updated_at).toISOString(),
+          friend_username: friend.username,
+          friend_name: friend.name,
+          friend_picture: friend.picture
         };
         
-        await databaseServiceAsync.insertFriend(friendEntity);
+        await databaseServiceAsync.insert_friend(friendEntity);
       }
       
       console.log("[DeltaUpdateService] Friends delta update completed");
@@ -117,7 +170,7 @@ export class DeltaUpdateService {
     try {
       console.log("[DeltaUpdateService] Performing participants delta update...");
       
-      const response = await invoke<{ data: any[] }>("get_participants", {});
+      const response = await invoke<{ data: ParticipantData[] }>("get_participants", {});
       
       if (!response || !response.data) {
         console.warn("[DeltaUpdateService] No participants data received");
@@ -128,14 +181,15 @@ export class DeltaUpdateService {
       
       for (const participant of response.data) {
         const participantEntity = {
-          id: participant.id || `temp_${Date.now()}`,
-          participant_id: participant.id,
-          user_id: participant.user_id,
+          participant_id: participant.participant_id,
           chat_id: participant.chat_id,
-          username: participant.username,
-          joined_at: new Date(participant.joined_at).getTime(),
+          user_id: participant.user_id,
           role: participant.role,
-          is_active: true
+          created_at: new Date(participant.created_at).toISOString(),
+          updated_at: new Date(participant.created_at).toISOString(),
+          username: participant.username,
+          name: participant.name,
+          picture: participant.picture
         };
         
         await databaseServiceAsync.insertParticipant(participantEntity);
