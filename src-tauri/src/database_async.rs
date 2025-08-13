@@ -129,6 +129,20 @@ pub fn get_db_path() -> PathBuf {
             return db_path;
         }
         
+        // Try to get the app bundle path from the executable location
+        if let Some(exe_path) = std::env::current_exe().ok() {
+            // On macOS, the executable is typically in Contents/MacOS/
+            // We need to go up to Contents/Resources/ to find the database
+            if exe_path.to_string_lossy().contains(".app") {
+                if let Some(contents_dir) = exe_path.ancestors().find(|p| p.ends_with("Contents")) {
+                    let resources_dir = contents_dir.join("Resources");
+                    let db_path = resources_dir.join("chat.db");
+                    println!("[Database] Using database from macOS app bundle Resources: {:?}", db_path);
+                    return db_path;
+                }
+            }
+        }
+        
         // Try macOS application support directory
         if let Ok(home) = std::env::var("HOME") {
             let app_support = PathBuf::from(home)
@@ -138,6 +152,15 @@ pub fn get_db_path() -> PathBuf {
             let db_path = app_support.join("chat.db");
             println!("[Database] Using database from macOS Application Support: {:?}", db_path);
             return db_path;
+        }
+        
+        // Try the current executable directory as fallback
+        if let Some(exe_path) = std::env::current_exe().ok() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let db_path = exe_dir.join("chat.db");
+                println!("[Database] Using database from macOS executable directory: {:?}", db_path);
+                return db_path;
+            }
         }
     }
     
@@ -250,11 +273,27 @@ pub async fn initialize_database() -> Result<SqlitePool, SqlxError> {
         }
         if let Ok(current_exe) = std::env::current_exe() {
             println!("[Database] Current executable: {:?}", current_exe);
-        }
-        // Check if we're running from a .app bundle
-        if let Ok(current_exe) = std::env::current_exe() {
+            // Check if we're running from a .app bundle
             if current_exe.to_string_lossy().contains(".app") {
                 println!("[Database] Running from macOS .app bundle");
+                // Show the app bundle structure
+                if let Some(contents_dir) = current_exe.ancestors().find(|p| p.ends_with("Contents")) {
+                    println!("[Database] Found Contents directory: {:?}", contents_dir);
+                    let resources_dir = contents_dir.join("Resources");
+                    if resources_dir.exists() {
+                        println!("[Database] Resources directory exists: {:?}", resources_dir);
+                        // List what's in Resources
+                        if let Ok(entries) = std::fs::read_dir(&resources_dir) {
+                            for entry in entries.flatten() {
+                                println!("[Database] Resource: {:?}", entry.path());
+                            }
+                        }
+                    } else {
+                        println!("[Database] Resources directory does not exist: {:?}", resources_dir);
+                    }
+                }
+            } else {
+                println!("[Database] Not running from .app bundle");
             }
         }
     }
