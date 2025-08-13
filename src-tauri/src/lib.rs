@@ -191,6 +191,8 @@ pub fn run() {
                 )?;
             }
             println!("[App] Setting up Tauri v2 application...");
+            println!("[App] Platform: {}", std::env::consts::OS);
+            println!("[App] Architecture: {}", std::env::consts::ARCH);
             
             // Initialize database
             tauri::async_runtime::spawn(async {

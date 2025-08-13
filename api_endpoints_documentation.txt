@@ -3,7 +3,7 @@
 ## 📋 Overview
 This document provides comprehensive API documentation for the Messenger Chat Application backend server.
 
-**Base URL:** `http://localhost:8080/api/v1`  
+**Base URL:** `https://dev.v1.terracrypt.cc/api/v1/`  
 **Content-Type:** `application/json`  
 **Authentication:** JWT Bearer Token
 
@@ -47,7 +47,7 @@ Content-Type: application/json
 
 **Example cURL:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/auth/signup \
+curl -X POST https://dev.v1.terracrypt.cc/api/v1/auth/signup \
   -H "Content-Type: application/json" \
   -d '{
     "name": "John Doe",
@@ -81,7 +81,7 @@ curl -X POST http://localhost:8080/api/v1/auth/signup \
 
 **Example cURL:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/auth/signin \
+curl -X POST https://dev.v1.terracrypt.cc/api/v1/auth/signin \
   -H "Content-Type: application/json" \
   -d '{
     "username": "johndoe",
@@ -120,7 +120,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X GET http://localhost:8080/api/v1/users/me \
+curl -X GET https://dev.v1.terracrypt.cc/api/v1/users/me \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -145,7 +145,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X GET http://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000 \
+curl -X GET https://dev.v1.terracrypt.cc/api/v1/users/550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -175,7 +175,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X PATCH http://localhost:8080/api/v1/users \
+curl -X PATCH https://dev.v1.terracrypt.cc/api/v1/users \
   -H "Authorization: Bearer <your_jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -217,7 +217,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X GET "http://localhost:8080/api/v1/users/search?username=johndoe" \
+curl -X GET "https://dev.v1.terracrypt.cc/api/v1/users/search?username=johndoe" \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -261,7 +261,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/users/keys \
+curl -X POST https://dev.v1.terracrypt.cc/api/v1/users/keys \
   -H "Authorization: Bearer <your_jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -288,7 +288,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X GET http://localhost:8080/api/v1/users/keys \
+curl -X GET https://dev.v1.terracrypt.cc/api/v1/users/keys \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -310,7 +310,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X PUT http://localhost:8080/api/v1/users/keys \
+curl -X PUT https://dev.v1.terracrypt.cc/api/v1/users/keys \
   -H "Authorization: Bearer <your_jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -348,7 +348,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X GET http://localhost:8080/api/v1/friends \
+curl -X GET https://dev.v1.terracrypt.cc/api/v1/friends \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -373,7 +373,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X DELETE http://localhost:8080/api/v1/friends/660e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://dev.v1.terracrypt.cc/api/v1/friends/660e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -403,7 +403,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/friends/request \
+curl -X POST https://dev.v1.terracrypt.cc/api/v1/friends/request \
   -H "Authorization: Bearer <your_jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -447,7 +447,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X GET http://localhost:8080/api/v1/friends/request/pending \
+curl -X GET https://dev.v1.terracrypt.cc/api/v1/friends/request/pending \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -472,7 +472,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X PUT http://localhost:8080/api/v1/friends/request/770e8400-e29b-41d4-a716-446655440000/accept \
+curl -X PUT https://dev.v1.terracrypt.cc/api/v1/friends/request/770e8400-e29b-41d4-a716-446655440000/accept \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -497,7 +497,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X PUT http://localhost:8080/api/v1/friends/request/770e8400-e29b-41d4-a716-446655440000/reject \
+curl -X PUT https://dev.v1.terracrypt.cc/api/v1/friends/request/770e8400-e29b-41d4-a716-446655440000/reject \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -561,7 +561,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/chats \
+curl -X POST https://dev.v1.terracrypt.cc/api/v1/chats \
   -H "Authorization: Bearer <your_jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -612,7 +612,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X GET "http://localhost:8080/api/v1/chats?limit=10&offset=0" \
+curl -X GET "https://dev.v1.terracrypt.cc/api/v1/chats?limit=10&offset=0" \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -643,7 +643,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X GET "http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/members?limit=20" \
+curl -X GET "https://dev.v1.terracrypt.cc/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/members?limit=20" \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -685,7 +685,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/members \
+curl -X POST https://dev.v1.terracrypt.cc/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/members \
   -H "Authorization: Bearer <your_jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -718,7 +718,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X DELETE http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/members/990e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://dev.v1.terracrypt.cc/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/members/990e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -743,7 +743,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X DELETE http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://dev.v1.terracrypt.cc/api/v1/chats/880e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -768,7 +768,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example cURL:**
 ```bash
-curl -X DELETE http://localhost:8080/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/leave \
+curl -X DELETE https://dev.v1.terracrypt.cc/api/v1/chats/880e8400-e29b-41d4-a716-446655440000/leave \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
@@ -896,7 +896,7 @@ Authorization: Bearer <your_jwt_token>
 
 **Example WebSocket Connection:**
 ```javascript
-const ws = new WebSocket('ws://localhost:8080/api/v1/ws');
+const ws = new WebSocket('wss://dev.v1.terracrypt.cc/api/v1/ws');
 ws.onopen = function() {
   console.log('WebSocket connected');
 };
@@ -925,7 +925,7 @@ ws.onmessage = function(event) {
 
 **Example cURL:**
 ```bash
-curl -X GET http://localhost:8080/api/v1/db-health
+curl -X GET https://dev.v1.terracrypt.cc/api/v1/db-health
 ```
 
 ---
@@ -1000,13 +1000,13 @@ curl -X GET http://localhost:8080/api/v1/db-health
 ### Postman Collection
 You can import this API into Postman using the base URL:
 ```
-http://localhost:8080/api/v1
+https://dev.v1.terracrypt.cc/api/v1/
 ```
 
 ### Environment Variables
 Set these in your Postman environment:
 ```
-base_url: http://localhost:8080/api/v1
+base_url: https://dev.v1.terracrypt.cc/api/v1/
 auth_token: <your_jwt_token>
 ```
 

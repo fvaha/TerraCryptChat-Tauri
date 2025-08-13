@@ -6,6 +6,12 @@
     "core:event:allow-listen",
     "core:event:allow-emit",
     "core:event:allow-emit-to",
-    "core:event:allow-unlisten"
+    "core:event:allow-unlisten",
+    "core:webview:default",
+    "core:window:default",
+    "core:app:default",
+    "core:path:default",
+    "log:default",
+    "sql:default"
   ]
 } 

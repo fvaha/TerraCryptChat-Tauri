@@ -97,15 +97,27 @@ pub struct UserKeys {
 }
 
 pub fn get_db_path() -> PathBuf {
+    #[cfg(target_os = "windows")]
     let app_data_dir = std::env::var("APPDATA")
         .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+
+    #[cfg(target_os = "macos")]
+    let app_data_dir = std::env::var("HOME")
+        .map(|home| PathBuf::from(home).join("Library/Application Support"))
+        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+
+    #[cfg(target_os = "linux")]
+    let app_data_dir = std::env::var("XDG_DATA_HOME")
+        .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            #[cfg(target_os = "macos")]
-            let path = std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/tmp"));
-            #[cfg(not(target_os = "macos"))]
-            let path = PathBuf::from("/tmp");
-            path.join("Library/Application Support")
+            std::env::var("HOME")
+                .map(|home| PathBuf::from(home).join(".local/share"))
+                .unwrap_or_else(|_| PathBuf::from("/tmp"))
         });
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    let app_data_dir = PathBuf::from("/tmp");
 
     let app_dir = app_data_dir.join("terracrypt-chat");
     std::fs::create_dir_all(&app_dir).expect("Failed to create app directory");
@@ -130,6 +142,11 @@ pub async fn get_pool() -> Result<SqlitePool, SqlxError> {
         }
     };
     
+    // Store the pool in the global static for future use
+    if let Err(_) = DB_POOL.set(pool.clone()) {
+        eprintln!("[Database] Warning: Failed to store pool in global static");
+    }
+    
     Ok(pool)
 }
 
@@ -139,11 +156,15 @@ pub async fn initialize_database() -> Result<SqlitePool, SqlxError> {
     
     // Create parent directory if it doesn't exist
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).ok();
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!("[Database] Failed to create parent directory: {}", e);
+            return Err(SqlxError::Configuration(format!("Failed to create directory: {}", e).into()));
+        }
     }
     
     // Create the database URL
     let database_url = format!("sqlite:{}", db_path.display());
+    println!("[Database] Database URL: {}", database_url);
     
     // Create connection pool with timeout
     let pool_future = SqlitePoolOptions::new()
@@ -197,8 +218,10 @@ pub async fn initialize_database() -> Result<SqlitePool, SqlxError> {
     
     println!("[Database] Database initialized successfully");
     
-    // Store the pool globally
-    DB_POOL.set(pool.clone()).ok();
+    // Store the pool in the global static
+    if let Err(_) = DB_POOL.set(pool.clone()) {
+        eprintln!("[Database] Warning: Failed to store pool in global static");
+    }
     
     Ok(pool)
 }
