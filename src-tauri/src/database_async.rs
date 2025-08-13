@@ -108,6 +108,48 @@ pub fn get_db_path() -> PathBuf {
         return db_path;
     }
     
+    // Try to get the app path from other environment variables (Linux/macOS)
+    if let Ok(app_path) = std::env::var("APPIMAGE") {
+        // Linux AppImage
+        let app_path = PathBuf::from(app_path);
+        if let Some(parent) = app_path.parent() {
+            let db_path = parent.join("chat.db");
+            println!("[Database] Using database from AppImage directory: {:?}", db_path);
+            return db_path;
+        }
+    }
+    
+    // macOS-specific paths
+    #[cfg(target_os = "macos")]
+    {
+        // Try macOS app bundle path
+        if let Ok(app_bundle) = std::env::var("APP_BUNDLE_PATH") {
+            let db_path = PathBuf::from(app_bundle).join("Contents").join("Resources").join("chat.db");
+            println!("[Database] Using database from macOS app bundle: {:?}", db_path);
+            return db_path;
+        }
+        
+        // Try macOS application support directory
+        if let Ok(home) = std::env::var("HOME") {
+            let app_support = PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("com.terracrypt.desktop");
+            let db_path = app_support.join("chat.db");
+            println!("[Database] Using database from macOS Application Support: {:?}", db_path);
+            return db_path;
+        }
+    }
+    
+    // Try executable directory (works on most platforms)
+    if let Some(exe_path) = std::env::current_exe().ok() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let db_path = exe_dir.join("chat.db");
+            println!("[Database] Using database from executable directory: {:?}", db_path);
+            return db_path;
+        }
+    }
+    
     // Fallback for development: use the src-tauri directory where the database file is created
     if let Some(current_dir) = std::env::current_dir().ok() {
         if current_dir.ends_with("src-tauri") {
@@ -157,6 +199,43 @@ pub async fn get_pool() -> Result<SqlitePool, SqlxError> {
 pub async fn initialize_database() -> Result<SqlitePool, SqlxError> {
     let db_path = get_db_path();
     println!("[Database] Initializing database at: {:?}", db_path);
+    
+    // Log platform information for debugging
+    #[cfg(target_os = "linux")]
+    {
+        println!("[Database] Running on Linux");
+        if let Ok(appimage) = std::env::var("APPIMAGE") {
+            println!("[Database] APPIMAGE path: {}", appimage);
+        }
+        if let Ok(current_exe) = std::env::current_exe() {
+            println!("[Database] Current executable: {:?}", current_exe);
+        }
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        println!("[Database] Running on macOS");
+        if let Ok(app_bundle) = std::env::var("APP_BUNDLE_PATH") {
+            println!("[Database] APP_BUNDLE_PATH: {}", app_bundle);
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            println!("[Database] HOME directory: {}", home);
+        }
+        if let Ok(current_exe) = std::env::current_exe() {
+            println!("[Database] Current executable: {:?}", current_exe);
+        }
+        // Check if we're running from a .app bundle
+        if let Ok(current_exe) = std::env::current_exe() {
+            if current_exe.to_string_lossy().contains(".app") {
+                println!("[Database] Running from macOS .app bundle");
+            }
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        println!("[Database] Running on Windows");
+    }
     
     // Create parent directory if it doesn't exist
     if let Some(parent) = db_path.parent() {
