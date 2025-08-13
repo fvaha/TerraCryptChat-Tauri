@@ -12,10 +12,12 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:preview": "tauri preview",
-    "tauri:build:macos": "tauri build --target aarch64-apple-darwin",
+    "tauri:build:macos": "tauri build --target x86_64-apple-darwin",
+    "tauri:build:macos:arm64": "tauri build --target aarch64-apple-darwin",
+    "tauri:build:macos:universal": "tauri build --target universal-apple-darwin",
     "tauri:build:linux": "tauri build --target x86_64-unknown-linux-gnu",
     "tauri:build:windows": "tauri build --target x86_64-pc-windows-msvc",
-    "tauri:build:all": "npm run tauri:build:macos && npm run tauri:build:linux && npm run tauri:build:windows",
+    "tauri:build:all": "npm run tauri:build:macos && npm run tauri:build:macos:arm64 && npm run tauri:build:linux && npm run tauri:build:windows",
     "create:db": "node -e \"const fs = require('fs'); const path = require('path'); const dbPath = path.join(__dirname, 'src-tauri', 'chat.db'); if (!fs.existsSync(dbPath)) { fs.writeFileSync(dbPath, ''); console.log('Created empty database file for bundling'); } else { console.log('Database file already exists'); }\""
   },
   "dependencies": {
