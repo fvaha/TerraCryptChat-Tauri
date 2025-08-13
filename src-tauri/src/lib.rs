@@ -51,6 +51,7 @@ pub fn run() {
             db_health_check,
             db_get_stats,
             db_reset_database,
+            db_check_ready,
             
             // User commands
             db_insert_user,
@@ -199,8 +200,8 @@ pub fn run() {
                 match database_async::initialize_database().await {
                     Ok(_) => {
                         println!("[App] Database initialized successfully");
-                        // Add a small delay to ensure database is fully ready
-                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        // Add a longer delay to ensure database is fully ready for frontend access
+                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                         println!("[App] Database ready for frontend access");
                     },
                     Err(e) => eprintln!("[App] Database initialization failed: {}", e),

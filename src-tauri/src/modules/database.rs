@@ -49,6 +49,14 @@ pub async fn db_get_stats() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!(stats))
 }
 
+#[tauri::command]
+pub async fn db_check_ready() -> Result<bool, String> {
+    match database_async::check_database_ready().await {
+        Ok(_) => Ok(true),
+        Err(e) => Err(format!("Database not ready: {}", e))
+    }
+}
+
 // ======== USER COMMANDS ========
 
 #[tauri::command]

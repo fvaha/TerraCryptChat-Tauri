@@ -614,6 +614,52 @@ export class SessionManager {
       return null;
     }
   }
+
+  private async ensureDatabaseReady(): Promise<boolean> {
+    try {
+      // First check if database is ready using the new Tauri command
+      const isReady = await invoke<boolean>('db_check_ready');
+      if (isReady) {
+        console.log('[SessionManager] Database is ready');
+        return true;
+      }
+    } catch (error) {
+      console.log('[SessionManager] Database not ready yet, waiting...');
+    }
+    
+    // If not ready, wait a bit and try again
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    try {
+      const isReady = await invoke<boolean>('db_check_ready');
+      if (isReady) {
+        console.log('[SessionManager] Database is now ready');
+        return true;
+      }
+    } catch (error) {
+      console.log('[SessionManager] Database still not ready');
+    }
+    
+    return false;
+  }
+
+  private async ensure_database_initialized(): Promise<boolean> {
+    try {
+      // First check if database is ready
+      const isReady = await this.ensureDatabaseReady();
+      if (!isReady) {
+        console.log('[SessionManager] Database not ready, cannot initialize');
+        return false;
+      }
+      
+      // Now try to initialize the database
+      const result = await invoke<boolean>('db_ensure_initialized');
+      return result;
+    } catch (error) {
+      console.error('[SessionManager] Failed to ensure database initialized:', error);
+      return false;
+    }
+  }
 }
 
 export const sessionManager = SessionManager.getInstance(); 

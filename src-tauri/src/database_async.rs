@@ -196,6 +196,33 @@ pub async fn get_pool() -> Result<SqlitePool, SqlxError> {
     Ok(pool)
 }
 
+pub async fn check_database_ready() -> Result<(), SqlxError> {
+    let db_path = get_db_path();
+    println!("[Database] Checking if database is ready at: {:?}", db_path);
+    
+    // Check if database file exists
+    if !db_path.exists() {
+        return Err(SqlxError::Configuration("Database file does not exist".into()));
+    }
+    
+    // Try to connect to the database
+    let database_url = format!("sqlite:{}", db_path.display());
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(std::time::Duration::from_secs(5))
+        .connect(&database_url)
+        .await?;
+    
+    // Test a simple query
+    let _: i32 = sqlx::query_scalar("SELECT 1")
+        .fetch_one(&pool)
+        .await?;
+    
+    pool.close().await;
+    println!("[Database] Database is ready and accessible");
+    Ok(())
+}
+
 pub async fn initialize_database() -> Result<SqlitePool, SqlxError> {
     let db_path = get_db_path();
     println!("[Database] Initializing database at: {:?}", db_path);
