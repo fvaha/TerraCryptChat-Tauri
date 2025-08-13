@@ -1,5 +1,6 @@
 {
   "identifier": "com.terracrypt.desktop",
+  "productName": "TerraCrypt Chat",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
