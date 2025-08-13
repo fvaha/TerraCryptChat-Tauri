@@ -123,12 +123,52 @@ export class SessionManager {
       // Initialize database and check session immediately
       try {
         console.log('[SessionManager] Ensuring database is initialized...');
-        await invoke('db_ensure_initialized');
+        
+        // Add retry logic for database initialization
+        let retryCount = 0;
+        const maxRetries = 3;
+        let dbInitialized = false;
+        
+        while (retryCount < maxRetries && !dbInitialized) {
+          try {
+            await invoke('db_ensure_initialized');
+            dbInitialized = true;
+            console.log('[SessionManager] Database initialized successfully');
+          } catch (dbError) {
+            retryCount++;
+            console.log(`[SessionManager] Database initialization attempt ${retryCount} failed:`, dbError);
+            
+            if (retryCount < maxRetries) {
+              // Wait before retrying (exponential backoff)
+              const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+              console.log(`[SessionManager] Retrying in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+              console.log('[SessionManager] Max retries reached, proceeding without database');
+              // Continue without database for now
+              break;
+            }
+          }
+        }
+        
+        if (!dbInitialized) {
+          console.log('[SessionManager] Database initialization failed, proceeding with limited functionality');
+          this.notifyStateChange();
+          return false;
+        }
         
         // Database-first approach like Kotlin app
         console.log('[SessionManager] Getting most recent user from database...');
-        const cachedUser = await invoke<DatabaseUser>('db_get_most_recent_user');
-        console.log('[SessionManager] Cached user found:', !!cachedUser);
+        let cachedUser: DatabaseUser | null = null;
+        
+        try {
+          cachedUser = await invoke<DatabaseUser>('db_get_most_recent_user');
+          console.log('[SessionManager] Cached user found:', !!cachedUser);
+        } catch (dbError) {
+          console.log('[SessionManager] Failed to get cached user:', dbError);
+          // Continue without cached user
+          cachedUser = null;
+        }
         
         if (cachedUser && cachedUser.token_hash) {
           console.log('[SessionManager] Checking if token is expired...');
@@ -237,7 +277,23 @@ export class SessionManager {
     console.log('User:', user ? 'has user data' : 'null');
     
     this.token = token;
-    this.current_user = user;
+    
+    // Convert DatabaseUser to SessionUser
+    this.current_user = {
+      id: user.user_id,
+      user_id: user.user_id,
+      username: user.username,
+      name: user.username, // Use username as name if not provided
+      email: '', // DatabaseUser doesn't have email, set empty
+      picture: undefined,
+      role: 'user', // Default role
+      verified: false, // Default verified status
+      is_dark_mode: false, // Default dark mode
+      created_at: Date.now(), // Default timestamp
+      updated_at: Date.now(), // Default timestamp
+      deleted_at: undefined,
+      last_seen: Date.now() // Default last seen
+    };
     
     // Connect WebSocket after successful login
     try {
@@ -477,19 +533,18 @@ export class SessionManager {
         // Note: nativeApiService.setToken() removed as method doesn't exist
         
         this.current_user = {
-          ...currentUser,
           id: currentUser.user_id,
           user_id: currentUser.user_id,
           username: currentUser.username,
-          name: currentUser.name || currentUser.username,
-          email: currentUser.email || '',
-          picture: currentUser.picture,
-          role: currentUser.role || 'user',
-          verified: currentUser.verified || false,
-          is_dark_mode: currentUser.is_dark_mode || false,
+          name: (currentUser.name as string) || currentUser.username,
+          email: (currentUser.email as string) || '',
+          picture: currentUser.picture as string | undefined,
+          role: (currentUser.role as string) || 'user',
+          verified: (currentUser.verified as boolean) || false,
+          is_dark_mode: (currentUser.is_dark_mode as boolean) || false,
           created_at: typeof currentUser.created_at === 'string' ? Date.parse(currentUser.created_at) : Date.now(),
           updated_at: typeof currentUser.updated_at === 'string' ? Date.parse(currentUser.updated_at) : Date.now(),
-          deleted_at: currentUser.deleted_at ? Date.parse(currentUser.deleted_at) : undefined,
+          deleted_at: currentUser.deleted_at ? (typeof currentUser.deleted_at === 'string' ? Date.parse(currentUser.deleted_at) : Date.now()) : undefined,
           last_seen: Date.now(),
         };
         this.notifyStateChange();
@@ -532,6 +587,32 @@ export class SessionManager {
   // Cleanup
   destroy(): void {
     this.state_listeners = [];
+  }
+
+  // Check if database is ready
+  private async isDatabaseReady(): Promise<boolean> {
+    try {
+      await invoke('db_health_check');
+      return true;
+    } catch (error) {
+      console.log('[SessionManager] Database health check failed:', error);
+      return false;
+    }
+  }
+
+  // Safe database operation wrapper
+  private async safeDatabaseOperation<T>(operation: () => Promise<T>): Promise<T | null> {
+    if (!(await this.isDatabaseReady())) {
+      console.log('[SessionManager] Database not ready, skipping operation');
+      return null;
+    }
+    
+    try {
+      return await operation();
+    } catch (error) {
+      console.log('[SessionManager] Database operation failed:', error);
+      return null;
+    }
   }
 }
 

@@ -97,31 +97,35 @@ pub struct UserKeys {
 }
 
 pub fn get_db_path() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    let app_data_dir = std::env::var("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
-
-    #[cfg(target_os = "macos")]
-    let app_data_dir = std::env::var("HOME")
-        .map(|home| PathBuf::from(home).join("Library/Application Support"))
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
-
-    #[cfg(target_os = "linux")]
-    let app_data_dir = std::env::var("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            std::env::var("HOME")
-                .map(|home| PathBuf::from(home).join(".local/share"))
-                .unwrap_or_else(|_| PathBuf::from("/tmp"))
-        });
-
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    let app_data_dir = PathBuf::from("/tmp");
-
-    let app_dir = app_data_dir.join("terracrypt-chat");
-    std::fs::create_dir_all(&app_dir).expect("Failed to create app directory");
-    app_dir.join("chat.db")
+    // Use the bundled database file from the app resources
+    // This ensures the app works consistently on Windows, macOS, and Linux
+    
+    // First try to get the app path from Tauri (works in both dev and production)
+    if let Ok(app_path) = std::env::var("TAURI_APP_PATH") {
+        let app_path = PathBuf::from(app_path);
+        let db_path = app_path.join("chat.db");
+        println!("[Database] Using bundled database from TAURI_APP_PATH: {:?}", db_path);
+        return db_path;
+    }
+    
+    // Fallback for development: use the src-tauri directory where the database file is created
+    if let Some(current_dir) = std::env::current_dir().ok() {
+        if current_dir.ends_with("src-tauri") {
+            // We're in src-tauri, use the database file here
+            let db_path = current_dir.join("chat.db");
+            println!("[Database] Using database from src-tauri directory: {:?}", db_path);
+            return db_path;
+        } else {
+            // We're in project root, go to src-tauri
+            let db_path = current_dir.join("src-tauri").join("chat.db");
+            println!("[Database] Using database from src-tauri subdirectory: {:?}", db_path);
+            return db_path;
+        }
+    }
+    
+    // Last resort: current directory
+    println!("[Database] Using fallback database path: chat.db");
+    PathBuf::from("chat.db")
 }
 
 pub async fn get_pool() -> Result<SqlitePool, SqlxError> {
@@ -160,7 +164,37 @@ pub async fn initialize_database() -> Result<SqlitePool, SqlxError> {
             eprintln!("[Database] Failed to create parent directory: {}", e);
             return Err(SqlxError::Configuration(format!("Failed to create directory: {}", e).into()));
         }
+        println!("[Database] Parent directory created/verified: {:?}", parent);
     }
+    
+    // Check if database already exists and has data
+    let db_exists = db_path.exists();
+    let db_has_data = if db_exists {
+        println!("[Database] Database file exists, checking if it has data...");
+        // Check if database has tables
+        match sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite:{}", db_path.display()))
+            .await
+        {
+            Ok(pool) => {
+                let result = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name='user'")
+                    .fetch_optional(&pool)
+                    .await;
+                pool.close().await;
+                let has_data = result.is_ok() && result.unwrap().is_some();
+                println!("[Database] Database has data: {}", has_data);
+                has_data
+            }
+            Err(e) => {
+                println!("[Database] Failed to check existing database: {}", e);
+                false
+            }
+        }
+    } else {
+        println!("[Database] Database file does not exist, will create new one");
+        false
+    };
     
     // Create the database URL
     let database_url = format!("sqlite:{}", db_path.display());
@@ -177,7 +211,18 @@ pub async fn initialize_database() -> Result<SqlitePool, SqlxError> {
     let timeout_future = tokio::time::sleep(timeout_duration);
     
     let pool = tokio::select! {
-        pool_result = pool_future => pool_result?,
+        pool_result = pool_future => {
+            match pool_result {
+                Ok(pool) => {
+                    println!("[Database] Successfully connected to database");
+                    pool
+                },
+                Err(e) => {
+                    eprintln!("[Database] Failed to connect to database: {}", e);
+                    return Err(e);
+                }
+            }
+        },
         _ = timeout_future => {
             println!("[Database] Database connection timeout after {} seconds", timeout_duration.as_secs());
             return Err(SqlxError::Configuration("Database connection timeout".into()));
@@ -186,34 +231,51 @@ pub async fn initialize_database() -> Result<SqlitePool, SqlxError> {
     
     println!("[Database] Connected to database");
     
-    // Create schema with timeout
-    let schema_sql = include_str!("../sql/full_tauri_schema.sql");
-    println!("[Database] Schema SQL length: {} characters", schema_sql.len());
-    
-    let schema_future = sqlx::query(schema_sql).execute(&pool);
-    let schema_timeout = tokio::time::sleep(timeout_duration);
-    
-    tokio::select! {
-        _ = schema_future => println!("[Database] Executed schema successfully"),
-        _ = schema_timeout => {
-            println!("[Database] Schema execution timeout after {} seconds", timeout_duration.as_secs());
-            return Err(SqlxError::Configuration("Schema execution timeout".into()));
+    // Only create schema if database doesn't exist or has no data
+    if !db_has_data {
+        println!("[Database] Creating initial database schema...");
+        
+        // Create schema with timeout
+        let schema_sql = include_str!("../sql/full_tauri_schema.sql");
+        println!("[Database] Schema SQL length: {} characters", schema_sql.len());
+        
+        let schema_future = sqlx::query(schema_sql).execute(&pool);
+        let schema_timeout = tokio::time::sleep(timeout_duration);
+        
+        tokio::select! {
+            result = schema_future => {
+                match result {
+                    Ok(_) => println!("[Database] Executed schema successfully"),
+                    Err(e) => {
+                        eprintln!("[Database] Failed to execute schema: {}", e);
+                        return Err(e);
+                    }
+                }
+            },
+            _ = schema_timeout => {
+                println!("[Database] Schema execution timeout after {} seconds", timeout_duration.as_secs());
+                return Err(SqlxError::Configuration("Schema execution timeout".into()));
+            }
         }
-    }
-    
-    // Simple verification with timeout
-    let verify_future = sqlx::query_scalar("SELECT 1").fetch_one(&pool);
-    let verify_timeout = tokio::time::sleep(timeout_duration);
-    
-    tokio::select! {
-        result = verify_future => {
-            let _: i32 = result?;
-            println!("[Database] Database verification successful");
-        },
-        _ = verify_timeout => {
-            println!("[Database] Database verification timeout after {} seconds", timeout_duration.as_secs());
-            return Err(SqlxError::Configuration("Database verification timeout".into()));
+        
+        // Simple verification with timeout
+        let verify_future = sqlx::query_scalar("SELECT 1").fetch_one(&pool);
+        let verify_timeout = tokio::time::sleep(timeout_duration);
+        
+        tokio::select! {
+            result = verify_future => {
+                let _: i32 = result?;
+                println!("[Database] Database verification successful");
+            },
+            _ = verify_timeout => {
+                println!("[Database] Database verification timeout after {} seconds", timeout_duration.as_secs());
+                return Err(SqlxError::Configuration("Database verification timeout".into()));
+            }
         }
+        
+        println!("[Database] Initial database schema created successfully");
+    } else {
+        println!("[Database] Database already exists with data, skipping schema creation");
     }
     
     println!("[Database] Database initialized successfully");

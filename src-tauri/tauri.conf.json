@@ -1,8 +1,5 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TerraCrypt Chat",
-  "version": "1.0.0",
-  "identifier": "com.terracrypt.chat",
+  "identifier": "com.terracrypt.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -10,25 +7,21 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "withGlobalTauri": true,
     "security": {
       "csp": null
     },
     "windows": [
       {
-        "label": "main",
         "fullscreen": false,
         "resizable": true,
+        "title": "Terracrypt Desktop",
+        "width": 400,
+        "height": 500,
         "decorations": true,
         "transparent": false,
         "center": true,
-        "title": "TerraCrypt Chat",
-        "width": 400,
-        "height": 700,
         "minWidth": 400,
-        "minHeight": 300,
-        "x": 100,
-        "y": 100
+        "minHeight": 300
       }
     ]
   },
@@ -36,9 +29,14 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/icon.png",
-      "icons/icon.ico",
-      "icons/icon.icns"
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "chat.db"
     ]
   },
   "plugins": {

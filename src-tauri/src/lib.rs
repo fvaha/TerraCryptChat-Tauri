@@ -197,7 +197,12 @@ pub fn run() {
             // Initialize database
             tauri::async_runtime::spawn(async {
                 match database_async::initialize_database().await {
-                    Ok(_) => println!("[App] Database initialized successfully"),
+                    Ok(_) => {
+                        println!("[App] Database initialized successfully");
+                        // Add a small delay to ensure database is fully ready
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        println!("[App] Database ready for frontend access");
+                    },
                     Err(e) => eprintln!("[App] Database initialization failed: {}", e),
                 }
             });

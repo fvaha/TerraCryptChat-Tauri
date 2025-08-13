@@ -39,6 +39,10 @@ dist-ssr
 chat.db
 src-tauri/chat.db
 
+# Generated database file
+chat.db
+src-tauri/chat.db
+
 # App data (Windows)
 %APPDATA%/terracrypt-chat/
 

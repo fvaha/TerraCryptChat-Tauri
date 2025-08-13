@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS user (
     username TEXT NOT NULL,
     email TEXT,
     name TEXT,
+    password TEXT,
     picture TEXT,
     role TEXT,
     token_hash TEXT,
